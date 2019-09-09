@@ -7,7 +7,7 @@ divider and rheostat mode respectively.
 James Hogge, STFC Application Engineering Group.
 """
 
-from i2c_device import I2CDevice, I2CException
+from odin_devices.i2c_device import I2CDevice, I2CException
 
 class TPL0102(I2CDevice):
     """TPL0102 class.

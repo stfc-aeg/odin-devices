@@ -11,7 +11,7 @@ pins, setting IO direction and enabling pullups.
 James Hogge, STFC Application Engineering Group.
 """
 
-from i2c_device import I2CDevice
+from odin_devices.i2c_device import I2CDevice
 
 
 class MCP23008(I2CDevice):

@@ -6,7 +6,7 @@ frequency with the necessary parameters being determined automatically.
 James Hogge, STFC Application Engineering Group.
 """
 
-from i2c_device import I2CDevice, I2CException
+from odin_devices.i2c_device import I2CDevice, I2CException
 import math, sys
 
 class SI570(I2CDevice):

@@ -7,7 +7,7 @@ divider and rheostat mode respectively.
 Adam Davis, STFC Application Engineering Group.
 """
 
-from i2c_device import I2CDevice, I2CException
+from odin_devices.i2c_device import I2CDevice, I2CException
 
 class AD5272(I2CDevice):
     #AD5272 class.

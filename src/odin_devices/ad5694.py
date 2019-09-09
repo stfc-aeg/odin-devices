@@ -8,7 +8,7 @@ updated by Adam Davis to make more generic
 
 WRITE_UPDATE = 0x30
 
-from i2c_device import I2CDevice, I2CException 
+from odin_devices.i2c_device import I2CDevice, I2CException 
 
 class ad5694(I2CDevice):
 

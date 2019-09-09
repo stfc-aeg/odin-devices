@@ -7,7 +7,7 @@ instance to allow a bus multiplexer channel to be selected.
 
 James Hogge, STFC Application Engineering Group
 """
-from i2c_device import I2CDevice, I2CException
+from odin_devices.i2c_device import I2CDevice, I2CException
 
 
 class I2CContainer(object):
