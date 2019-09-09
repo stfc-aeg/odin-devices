@@ -1,4 +1,4 @@
-"""Test cases for the I2CTContainer class from lpdpower.
+"""Test cases for the I2CTContainer class from odin_devices.
 Tim Nicholls, STFC Application Engineering Group
 """
 

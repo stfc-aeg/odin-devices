@@ -9,7 +9,7 @@ James Hogge, STFC Application Engineering Group.
 from odin_devices.i2c_device import I2CDevice, I2CException
 
 
-class ad7998(I2CDevice):
+class AD7998(I2CDevice):
     """AD7998 class.
 
     This class impleents support for the AD7998 I2C ADC device, allowing input

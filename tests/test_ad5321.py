@@ -1,4 +1,4 @@
-"""Test cases for the AD5321 class from lpdpower.
+"""Test cases for the AD5321 class from odin_devices.
 Tim Nicholls, STFC Application Engineering
 """
  

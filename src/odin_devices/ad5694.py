@@ -10,7 +10,7 @@ WRITE_UPDATE = 0x30
 
 from odin_devices.i2c_device import I2CDevice, I2CException 
 
-class ad5694(I2CDevice):
+class AD5694(I2CDevice):
 
     def __init__(self, address, **kwargs):
 
