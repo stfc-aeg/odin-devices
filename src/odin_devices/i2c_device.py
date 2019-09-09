@@ -42,6 +42,7 @@ class I2CDevice(object):
     """
 
     _enable_exceptions = False
+    _default_i2c_bus = 1
 
     ERROR = -1
 
@@ -57,7 +58,12 @@ class I2CDevice(object):
         logging.debug("Disabling I2CDevice exceptions")
         cls._enable_exceptions = False
 
-    def __init__(self, address, busnum=-1, debug=False):
+    @classmethod
+    def set_default_i2c_bus(cls, busnum):
+        logging.debug("Setting default I2C bus to %d", busnum)
+        cls._default_i2c_bus = busnum
+
+    def __init__(self, address, busnum=None, debug=False):
         """Initialise the I2CDevice object.
 
         :param address: address of device on I2C bus
@@ -65,7 +71,8 @@ class I2CDevice(object):
         :param debug: enable debug access logging
         """
         self.address = address
-        self.bus = smbus.SMBus(busnum if busnum >= 0 else 2)
+        self.busnum = busnum if busnum else self._default_i2c_bus
+        self.bus = smbus.SMBus(self.busnum)
         self.debug = debug
         self.pre_access = None
 
