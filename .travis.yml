@@ -1,0 +1,20 @@
+dist: xenial
+language: python
+sudo: false
+python:
+- 2.7
+- 3.7
+addons:
+  apt:
+    packages:
+    - libzmq3-dev
+
+install:
+- python setup.py develop
+- pip install -e .[test]
+- pip install coveralls
+- pip install codeclimate-test-reporter
+
+script:
+- python setup.py nosetests
+- coverage report -m
