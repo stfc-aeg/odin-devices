@@ -17,5 +17,7 @@ setup(name='odin_devices',
       packages=find_packages('src'),
       package_dir={'': 'src'},
       install_requires=required,
-      zip_safe=False
+      extras_require={
+          'test': ['nose', 'coverage', 'mock']
+      }
       )
