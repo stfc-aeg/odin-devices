@@ -9,7 +9,7 @@ James Hogge, STFC Application Engineering Group.
 """
 
 from odin_devices.i2c_device import I2CDevice, I2CException
-from i2c_container import I2CContainer
+from odin_devices.i2c_container import I2CContainer
 
 
 class TCA9548(I2CDevice):
