@@ -24,9 +24,9 @@ class AD5694(I2CDevice):
         self.dac_mult = [0.0004, 0.1, 0.1, 0.00002]
 
     def set_up(self):
-    """ Sets up the dac values readings,
-    reads the raw i2c value from dac 1 (fine) and dac 4 (coarse)
-    """
+        """ Sets up the dac values readings,
+        reads the raw i2c value from dac 1 (fine) and dac 4 (coarse)
+        """
         self.dac_values[0] = self.read_dac_value(1, True)
         self.dac_values[3] = self.read_dac_value(4, True)
 
@@ -35,10 +35,10 @@ class AD5694(I2CDevice):
         self.dac_mult[dac-1]= value
 
     def set_from_voltage(self, dac, voltage):
-    """ sets the dac i2c value from a voltage
-    @param dac : the dac number to set
-    @param voltage : the voltage value to use
-    """ 
+        """ sets the dac i2c value from a voltage
+        @param dac : the dac number to set
+        @param voltage : the voltage value to use
+        """ 
         if dac == 1:
             value = voltage / self.dac_mult[dac-1]
             self.set_from_value(dac, int(value))
@@ -50,10 +50,10 @@ class AD5694(I2CDevice):
             raise I2CException("Choose DAC 1 or 4, 2/3 not currently implemented")    
    
     def set_from_value(self, dac, value):
-    """ sets the raw i2c dac value from an i2c value
-    @param dac : the dac to set
-    @param value : the value to set
-    """    
+        """ sets the raw i2c dac value from an i2c value
+        @param dac : the dac to set
+        @param value : the value to set
+        """    
         bytearray = [0x00, 0x00]
         data = (value & 0xFFFF) << 4
         bytearray[0] = (data & 0xFFFF) >> 8
@@ -61,9 +61,9 @@ class AD5694(I2CDevice):
         self.writeList(WRITE_UPDATE + self.dacs[dac-1], bytearray)
 
     def read_dac_voltage(self, dac):
-    """ reads the dac value and returns it as a voltage
-    @param dac : the dac to set
-    """
+        """ reads the dac value and returns it as a voltage
+        @param dac : the dac to set
+        """
         if dac == 1:
             return (self.read_dac_value(dac) * self.dac_mult[dac-1])
         elif dac == 4:
@@ -73,9 +73,9 @@ class AD5694(I2CDevice):
 
     def read_dac_value(self, dac):
         """ returns the dac value, if force - performs a new i2c read
-    @param dac : the dac to read from
-    @param force : boolean flag to determine whether to perform a new read
-    """
+        @param dac : the dac to read from
+        @param force : boolean flag to determine whether to perform a new read
+        """
 
         result = [0x00, 0x00]
         byte1, byte2 =  self.readList(WRITE_UPDATE + self.dacs[dac-1], 2)

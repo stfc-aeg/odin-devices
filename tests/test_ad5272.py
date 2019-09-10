@@ -11,6 +11,7 @@ else:                         # pragma: no cover
 
 from nose.tools import *
 
+sys.modules['smbus'] = Mock()
 from odin_devices.ad5272 import AD5272
 from odin_devices.i2c_device import I2CDevice, I2CException
 

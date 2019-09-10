@@ -51,13 +51,13 @@ class SI570(I2CDevice):
     def __calculate_params(self, data):
         
         hs_div = ((data[0] >> 5) & 0b111) + 4
-                n1 = ((data[0] << 2) & 0b01111100) + ((data[1] >> 6) & 0b11) + 1
-                rfreq = data[1] & 0b111111
-                for i in range(2, 6):
-                        rfreq <<= 8
-                        rfreq += data[i]
+        n1 = ((data[0] << 2) & 0b01111100) + ((data[1] >> 6) & 0b11) + 1
+        rfreq = data[1] & 0b111111
+        for i in range(2, 6):
+                rfreq <<= 8
+                rfreq += data[i]
 
-                rfreq /= float(2**28)
+        rfreq /= float(2**28)
 
         return (hs_div, n1, rfreq)
 
