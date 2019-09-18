@@ -4,8 +4,7 @@
 from setuptools import setup, find_packages
 import versioneer
 
-with open('requirements.txt') as f:
-    required = f.read().splitlines()
+required = []
 
 setup(name='odin_devices',
       version=versioneer.get_version(),
