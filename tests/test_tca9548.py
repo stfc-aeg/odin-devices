@@ -5,103 +5,116 @@ Tim Nicholls, STFC Application Engineering Group
 
 import sys
 
+import pytest
+
 if sys.version_info[0] == 3:  # pragma: no cover
     from unittest.mock import Mock, call
 else:                         # pragma: no cover
     from mock import Mock, call
-
-from nose.tools import *
 
 sys.modules['smbus'] = Mock()
 from odin_devices.tca9548 import TCA9548
 from odin_devices.i2c_device import I2CDevice, I2CException
 
 
+class tca9548TestFixture():
+
+    def __init__(self):
+        self.tca = TCA9548()
+        self.tca_callback = Mock()
+        self.tca.pre_access = self.tca_callback
+
+
+@pytest.fixture(scope="class")
+def test_tca9548_driver():
+    driver_fixture = tca9548TestFixture()
+    yield driver_fixture
+
+
 class TestTCA9548():
 
-    @classmethod
-    def setup_class(cls):
-        cls.tca = TCA9548()
-        cls.tca_callback = Mock()
-        cls.tca.pre_access = cls.tca_callback
+    def test_tca_write(self, test_tca9548_driver):
 
-    def test_tca_write(self):
+        test_tca9548_driver.tca.write8(0, 123)
 
-        self.tca.write8(0, 123)
-
-    def test_attach_device(self):
+    def test_attach_device(self, test_tca9548_driver):
 
         line = 1
         address = 0x20
-        device = self.tca.attach_device(line, I2CDevice, address)
+        device = test_tca9548_driver.tca.attach_device(line, I2CDevice, address)
 
-        assert_equal(device.address, address)
-        assert_true(device in self.tca._attached_devices)
-        assert_equal(self.tca._attached_devices[device], line)
+        assert device.address == address
+        assert device in test_tca9548_driver.tca._attached_devices
+        assert test_tca9548_driver.tca._attached_devices[device] == line
 
-    def test_attach_bad_device(self):
+    def test_attach_bad_device(self, test_tca9548_driver):
 
         line = 1
         address = 0x20
+
         class DummyDevice(object):
             def __init__(self, *args, **kwargs):
                 pass
 
-        with assert_raises_regexp(
-            I2CException, 'must be a type or an instance of I2CDevice or I2CContainer'):
-            device = self.tca.attach_device(line, DummyDevice, address)
+        exc_message = 'must be a type or an instance of I2CDevice or I2CContainer'
+        with pytest.raises(I2CException) as excinfo:
+            test_tca9548_driver.tca.attach_device(line, DummyDevice, address)
 
-    def test_remove_device(self):
+            assert exc_message in excinfo.value
 
-        device = self.tca.attach_device(1, I2CDevice, 0x20)
+    def test_remove_device(self, test_tca9548_driver):
 
-        self.tca.remove_device(device)
-        assert_true(device not in self.tca._attached_devices)
+        device = test_tca9548_driver.tca.attach_device(1, I2CDevice, 0x20)
 
-    def test_remove_missing_device(self):
+        test_tca9548_driver.tca.remove_device(device)
+        assert device not in test_tca9548_driver.tca._attached_devices
+
+    def test_remove_missing_device(self, test_tca9548_driver):
 
         device_not_attached = I2CDevice(0x20)
 
-        with assert_raises_regexp(
-            I2CException, 'Device %s is not attached to this TCA' % device_not_attached
-        ):
-            self.tca.remove_device(device_not_attached)
+        exc_message = 'Device %s is not attached to this TCA' % device_not_attached
+        with pytest.raises(I2CException) as excinfo:
+            test_tca9548_driver.tca.remove_device(device_not_attached)
 
-    def test_pre_access_callback_called(self):
+            assert exc_message in excinfo.value
+
+    def test_pre_access_callback_called(self, test_tca9548_driver):
 
         line = 1
         address = 0x20
-        device = self.tca.attach_device(line, I2CDevice, address)
+        device = test_tca9548_driver.tca.attach_device(line, I2CDevice, address)
 
         device.write8(0, 1)
 
-        self.tca_callback.assert_called_with(self.tca)
+        test_tca9548_driver.tca_callback.assert_called_with(test_tca9548_driver.tca)
 
-    def test_pre_access_callback_incomplete_detach(self):
+    def test_pre_access_callback_incomplete_detach(self, test_tca9548_driver):
 
         line = 1
         address = 0x20
-        device = self.tca.attach_device(line, I2CDevice, address)
+        device = test_tca9548_driver.tca.attach_device(line, I2CDevice, address)
 
-        del self.tca._attached_devices[device]
+        del test_tca9548_driver.tca._attached_devices[device]
 
-        with assert_raises_regexp(
-            I2CException, 'Device %s was not properly detached from the TCA' % device
-        ):
+        exc_message = 'Device %s was not properly detached from the TCA' % device
+        with pytest.raises(I2CException) as excinfo:
             device.write8(0, 1)
 
-    def test_pre_access_selects_tca_line(self):
+            assert exc_message in excinfo.value
+
+    def test_pre_access_selects_tca_line(self, test_tca9548_driver):
 
         device1_line = 1
         device1_address = 0x20
         device2_line = 2
         device2_address = 0x21
 
-        device1 = self.tca.attach_device(device1_line, I2CDevice, device1_address)
-        device2 = self.tca.attach_device(device2_line, I2CDevice, device2_address)
+        device1 = test_tca9548_driver.tca.attach_device(device1_line, I2CDevice, device1_address)
+        device2 = test_tca9548_driver.tca.attach_device(device2_line, I2CDevice, device2_address)
 
         device1.write8(0, 1)
-        assert_equal(self.tca._selected_channel, device1_line)
+        assert test_tca9548_driver.tca._selected_channel == device1_line
 
         device2.write8(1, 2)
-        assert_equal(self.tca._selected_channel, device2_line)
+        assert test_tca9548_driver.tca._selected_channel == device2_line
