@@ -19,7 +19,10 @@ from odin_devices.i2c_device import I2CDevice, I2CException
 class si570TestFixture(object):
 
     def __init__(self):
-        self.driver = SI570()
+        self.address = 0x5d
+        self.busnum = 1
+        self.model = SI570.SI570_C
+        self.driver = SI570(self.address, self.model, busnum=self.busnum)
 
 
 @pytest.fixture(scope="class")
