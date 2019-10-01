@@ -1,0 +1,5 @@
+.vscode
+*.pyc
+*.coverage
+*.egg-info
+.tox

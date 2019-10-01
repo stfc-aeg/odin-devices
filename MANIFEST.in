@@ -1,0 +1,2 @@
+include versioneer.py
+include src/odin_devices/_version.py
