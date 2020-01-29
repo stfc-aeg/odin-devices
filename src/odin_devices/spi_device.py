@@ -38,8 +38,8 @@ class SPIDevice():
         self.spi.bits_per_word = bits
 
 
-    def set_spi_mode(self, mode):
-        """Set the SPI mode. Can be between 0 and 3."""
+    def set_mode(self, mode):
+        """Set the SPI mode which dictates the clock polarity and phase. Should be 0, 1, 2 or 3. For the meaning: [https://en.wikipedia.org/wiki/Serial_Peripheral_Interface#Clock_polarity_and_phase]"""
         if mode < 0 or mode > 3:
             logging.debug("Mode must be between 0 and 3 inclusive.")
             return
@@ -61,18 +61,30 @@ class SPIDevice():
         self.spi.writebytes2(values[start:end])
 
 
-    def read_register(self, address, length, write_value=0):
-        """Read length number of bytes from a provided register."""
-    end = length + 1
-    for i in range(1, end):
-        self.BUFFER[i] = write_value  
-    self.BUFFER[0] = address & 0x7F  # 7-bit length (7F = 127)
-
-    results = bytes((self.spi.xfer2(self.BUFFER[:length+1]))[1:])
-    return results
+    def transfer(self, data):  # call function transfer/transaction? It seems as though max has it as a read because it writes only zeroes.
+        """Write the contents of data from the specified register (first byte in data) and simultaneously read a number of bytes equal to len(data) back from the MISO line."""
+        result = self.spi.xfer2(data)[1:]
+        #The result of the transfer is an array equal in length to what was written. The second byte onwards will be in response to what was written.
 
 
     def close():
         """Disconnect from the SPI device."""
         self.spi.close()
-    # Using the max31856 device as a basis for what this class needs to do
+
+    # def read_register(self, address, length, write_value=0):
+    #     """Write the contents of BUFFER and simultaneously read length amount of bytes from the specified address."""
+    # # BUFFER = bytearray(4)
+    # # for i in range(1, end):
+    # #    BUFFER[i] = write_value
+    # #BUFFER[0] = address and 0x7F
+    # #results = bytes((self.spi.xfer2(BUFFER[:length+1]))[1:])
+    # #return results
+
+
+    # end = length + 1
+    # for i in range(1, end):
+    #     self.BUFFER[i] = write_value  
+    # self.BUFFER[0] = address & 0x7F  # 7-bit length (7F = 127)
+
+    # results = bytes((self.spi.xfer2(self.BUFFER[:length+1]))[1:])
+    # return results
