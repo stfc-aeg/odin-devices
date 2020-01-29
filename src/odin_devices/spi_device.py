@@ -16,7 +16,7 @@ class SPIDevice():
     This class allows read and write functions for the SPI device for varying numbers of bytes.
     """
 
-    def __init__(self, bus, device, hz):  # port/bus, device, max_speed_hz?
+    def __init__(self, bus, device, hz=500000):  # port/bus, device, max_speed_hz?
         """Initialise SPI object."""
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
@@ -63,7 +63,8 @@ class SPIDevice():
 
     def transfer(self, data):  # call function transfer/transaction? It seems as though max has it as a read because it writes only zeroes.
         """Write the contents of data from the specified register (first byte in data) and simultaneously read a number of bytes equal to len(data) back from the MISO line."""
-        result = self.spi.xfer2(data)[1:]
+        result = self.spi.xfer2(data)
+        return result
         #The result of the transfer is an array equal in length to what was written. The second byte onwards will be in response to what was written.
 
 
