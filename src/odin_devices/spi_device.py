@@ -1,9 +1,11 @@
 """SPIDevice - SPI device access class.
 
-This class is a base class for SPI devices, partly derived from the Adafruit_GPIO/spi class available at:
+This class is a base access class for SPI devices, partly derived from the Adafruit_GPIO/spi class available at:
 https://github.com/adafruit/Adafruit_Python_GPIO/blob/master/Adafruit_GPIO/SPI.py
 
+Basic SPI functions are available, along with settings adjustment.
 
+Michael Shearwood, STFC Detector Systems Software Group.
 """
 
 import spidev
@@ -17,6 +19,7 @@ class SPIDevice():
     """
 
     def __init__(self, bus, device, hz=500000):  # port/bus, device, max_speed_hz?
+
         """Initialise SPI object."""
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
@@ -46,8 +49,8 @@ class SPIDevice():
         self.spi.mode = mode
 
 
-    def read_bytes(self, address, n):
-        """Read n number of bytes from an SPI device address and return them."""
+    def read_bytes(self, n):
+        """Read n number of bytes from an SPI device and return them."""
         results = self.spi.readbytes(n)
         return results
 
@@ -61,31 +64,28 @@ class SPIDevice():
         self.spi.writebytes2(values[start:end])
 
 
-    def transfer(self, data):  # call function transfer/transaction? It seems as though max has it as a read because it writes only zeroes.
+    def transfer(self, data):  
         """Write the contents of data from the specified register (first byte in data) and simultaneously read a number of bytes equal to len(data) back from the MISO line."""
         result = self.spi.xfer2(data)
         return result
         #The result of the transfer is an array equal in length to what was written. The second byte onwards will be in response to what was written.
 
+# # Example for what the buffer wrapping for transfer would look like
+# # Have the default transfer class
+#     def register_access(self, register, bytes_to_read, write_value=0):
+#         end = bytes_to_read + 1
+#         buffer = bytearray(end)
+#         buffer[0] = register
+#         for i in range(1, end):
+#             buffer[i] = write_value  # transfer 0 or optionally data
+
+#         result = self.spi.xfer2(buffer)
+#         return result[1:]  # First bit returned in a transfer will not be in response to the register write
+
+#     def read_24(self, bytes_to_read):
+#         pass  # for now
+
 
     def close():
         """Disconnect from the SPI device."""
         self.spi.close()
-
-    # def read_register(self, address, length, write_value=0):
-    #     """Write the contents of BUFFER and simultaneously read length amount of bytes from the specified address."""
-    # # BUFFER = bytearray(4)
-    # # for i in range(1, end):
-    # #    BUFFER[i] = write_value
-    # #BUFFER[0] = address and 0x7F
-    # #results = bytes((self.spi.xfer2(BUFFER[:length+1]))[1:])
-    # #return results
-
-
-    # end = length + 1
-    # for i in range(1, end):
-    #     self.BUFFER[i] = write_value  
-    # self.BUFFER[0] = address & 0x7F  # 7-bit length (7F = 127)
-
-    # results = bytes((self.spi.xfer2(self.BUFFER[:length+1]))[1:])
-    # return results
