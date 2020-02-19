@@ -103,7 +103,6 @@ class Max31856(SPIDevice):
         # Unpack the 3-byte temperature as 4 bytes
         raw_temp = unpack(">i", self.handle_transfer(self.LTCBH_REG, 3)+bytes([0]))[0]
 
-
         # Shift to remove extra byte from unpack needing 4 bytes
         raw_temp >>= 8
 
