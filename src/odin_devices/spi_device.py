@@ -15,20 +15,18 @@ import logging
 
 class SPIDevice():
     """SPIDevice class.
-    This class allows read and write functions for the SPI device for varying numbers of bytes.
+    This class allows settinds adjustment and read and write functions for the SPI device for varying numbers of bytes.
     """
 
-    def __init__(self, bus, device, hz=500000):  # port/bus, device, max_speed_hz?
-
+    def __init__(self, bus, device, bits_per_word=8, hz=500000):
         """Initialise SPI object."""
+        
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
-        
-        self.spi.max_speed_hz = hz
-        self.spi.bits_per_word = 8
-        self.spi.mode = 1
 
-        self.BUFFER = bytearray(4)
+        self.spi.max_speed_hz = hz
+        self.spi.bits_per_word = 8  # Can be 8 or 16
+        self.spi.mode = 1
 
 
     def set_clock_hz(self, hz):  # Not sure if necessary, written in anyway
@@ -42,7 +40,7 @@ class SPIDevice():
 
 
     def set_mode(self, mode):
-        """Set the SPI mode which dictates the clock polarity and phase. Should be 0, 1, 2 or 3. For the meaning: [https://en.wikipedia.org/wiki/Serial_Peripheral_Interface#Clock_polarity_and_phase]"""
+        """Set the SPI mode which dictates the clock polarity and phase. Must be 0, 1, 2 or 3. For the meaning: [https://en.wikipedia.org/wiki/Serial_Peripheral_Interface#Clock_polarity_and_phase]"""
         if mode < 0 or mode > 3:
             logging.debug("Mode must be between 0 and 3 inclusive.")
             return
@@ -56,7 +54,6 @@ class SPIDevice():
 
 
     def write_bytes(self, values, start=0, end=None):  
-        # Work out how to provide the values
         """Write a list of values to the SPI device.
         Optional start and end parameters to only write/avoid writing certain bytes."""
         if end is None:
@@ -70,22 +67,60 @@ class SPIDevice():
         return result
         #The result of the transfer is an array equal in length to what was written. The second byte onwards will be in response to what was written.
 
-# # Example for what the buffer wrapping for transfer would look like
-# # Have the default transfer class
-#     def register_access(self, register, bytes_to_read, write_value=0):
-#         end = bytes_to_read + 1
-#         buffer = bytearray(end)
-#         buffer[0] = register
-#         for i in range(1, end):
-#             buffer[i] = write_value  # transfer 0 or optionally data
-
-#         result = self.spi.xfer2(buffer)
-#         return result[1:]  # First bit returned in a transfer will not be in response to the register write
-
-#     def read_24(self, bytes_to_read):
-#         pass  # for now
-
 
     def close():
         """Disconnect from the SPI device."""
         self.spi.close()
+
+
+#######################################################################
+#  in construction  #
+#######################################################################
+
+    def create_buffer(self, length, address):
+        """A function which will create a BUFFER for the read/write functions to use.
+        The first byte is replaced with the address """
+        BUFFER = bytearray(length)
+        BUFFER[0] = address
+        return BUFFER
+
+
+    def write_8(self, data):
+        """Write one byte"""
+        BUFFER = create_buffer(1, data)  # The 'address' in create_bytes will be the data
+        self.spi.writebytes(BUFFER)
+
+
+    def write_16(self, address, data):
+        """Write two bytes: one address, one data. MSB. Handling of bytes should be done in the class for the device itself.
+        """
+        BUFFER = create_buffer(2, address)
+        BUFFER[1] = data
+
+        self.spi.writebytes2(BUFFER)
+
+
+    def write_24(self, address, data_1, data_2):
+        """Write three bytes: one address, two data. MSB. Handling of bytes should be done in the class for the device itself.
+        """
+        BUFFER = create_buffer(3, address)
+        BUFFER[1] = data_1
+        BUFFER[2] = data_2
+
+        self.spi.writebytes(BUFFER)
+
+
+    # Reading any number of bytes without needing to write should be done with read_bytes, which will read n number of bytes. e.g.: read_bytes(3)
+
+    # Reading while needing to provide an address (or writing to prompt a read from a previously given address) should be done with the transfer function...
+    # ...because readbytes() will not write.
+    # Buffered-transfer will provide a transfer of specified length, and otherwise function as the various writes will. One function or more?
+
+    def buffered_transfer(self, length, address=0, data_list=0):
+        """Write out the address and data bytes (defaults to zero if nothing needs to be written) using a buffer of given length.
+        """
+        BUFFER = create_buffer(length, address)
+        for i in range(1, len(data_list) + 1):
+            BUFFER[i] = data_list[i]
+
+        self.spi.xfer2(BUFFER)
