@@ -12,6 +12,18 @@ The first byte is a command and an address (4 bits each), the remaining two byte
 from odin_devices.spi_device import SPIDevice
 
 
+# Command bits for functions
+CMD_NO_OPERATION = 0x00
+CMD_INP_REG_WRITE = 0x10
+CMD_INP_TO_DAC = 0x20
+CMD_WRITE_TO_DAC = 0x30
+CMD_POWER_DOWN = 0x40
+CMD_LDAC_MASK_REG = 0x50
+CMD_SOFTWARE_RESET = 0x60
+CMD_REG_READBACK = 0x90
+CMD_UPDATE_ALL_INPUTS = 0xA0
+CMD_UPDATE_ALL_DAC_INPUTS = 0xB0
+
 class AD5676R(SPIDevice):
     """AD5676R class.
 
@@ -29,12 +41,9 @@ class AD5676R(SPIDevice):
         # This device is compatible with SPI modes 1 and 2
         # Data is sampled on the falling edge of the clock pulse
         self.set_mode(1)
-        # All reads/writes are 3-bytes
-        self.BUFFER = bytearray(3)
-        for i in range(3):
+        self.set_buffer_length(3)
 
-            self.BUFFER[i] = 0
-        self.Vref = 2.5  # 2.5V = 0xFFFF
+        self.Vref = 2.5  # 2.5V = 0xFFFF when writing bytes
 
     def input_register_write(self, register, voltage):
         """Write to the dedicated input register for each DAC individually.
@@ -43,24 +52,17 @@ class AD5676R(SPIDevice):
         Otherwise, controlled by the LDAC mask register.
 
         :param register: selected register to write to (0000 --> 0111)
-        :params byte1
-                byte2: bytes to be written, MSB
+        :param voltage: the provided voltage to be converted and written
         """
-        # Command for write_to_input is 0001 = 0x10 in the command byte
-        self.BUFFER[0] = 0x10 | register
-        # Presumably writing with voltages? Not anything else to write...
-        # ...unless specified in the function itself.
+        # Command for write_to_input is 0001 = 0x10 in the command byte.
+        # Voltage/Vref * max value
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
-        dac_msb = (dac_val >> 8) & 0XFF
-        dac_lsb = dac_val & 0XFF
 
-        self.BUFFER[1] = dac_msb
-        self.BUFFER[2] = dac_lsb
-        self.write_bytes(self.BUFFER)
+        self.buffer[0] = CMD_INP_REG_WRITE | register
+        self.buffer[1] = (dac_val >> 8) & 0XFF
+        self.buffer[2] = dac_val & 0XFF
 
-        #  # Keeping these here in case it is decided another method of data input is preferable
-        # self.BUFFER[1] = byte_1
-        # self.BUFFER[2] = byte_2
+        self.write_24(self.buffer)
 
     def input_into_dac(self, DAC_byte):
         """Load DAC registers and outputs with the contents of the input register.
@@ -71,12 +73,12 @@ class AD5676R(SPIDevice):
         :param register: Specified register
         :param DAC_byte: a user-provided byte with the DACs they want updated specified
         """
-        # Command for DAC input register load is 0010 = 0x20
-        self.BUFFER[0] = 0x20
-        # Is there another way to deliver the DAC-specifying byte?
-        self.BUFFER[2] = DAC_byte
+        # Command for DAC input register load is 0010 = 0x20.
+        self.buffer[0] = CMD_INP_TO_DAC
+        self.buffer[1] = 0x00
+        self.buffer[2] = DAC_byte
 
-        self.transfer(self.BUFFER)
+        self.transfer(self.buffer)
 
     def write_to_dac(self, channel, voltage):
         """Write to and update DAC Channel n.
@@ -90,21 +92,13 @@ class AD5676R(SPIDevice):
         :param voltage: the provided voltage
         """
         # Command for DAC register update is 0010 = 0x30.
-        self.BUFFER[0] = 0x30 | channel
-
-        # Voltage/Vref * max value
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
-        dac_msb = (dac_val >> 8) & 0xFF
-        dac_lsb = dac_val & 0xFF
 
-        # some modification may be needed to allow for 2*vref gain bit
-        self.BUFFER[1] = dac_msb
-        self.BUFFER[2] = dac_lsb
+        self.buffer[0] = CMD_WRITE_TO_DAC | channel
+        self.buffer[1] = (dac_val >> 8) & 0xFF
+        self.buffer[2] = dac_val & 0xFF
 
-        self.write_bytes(self.BUFFER)
-
-        # #### EXAMPLE ####
-        # self.write_24(0x30 | channel, dac_msb, dac_lsb)
+        self.write_24(self.buffer)
 
     def power_down(self, DAC_binary):
         """Power down the device or change its mode of operation.
@@ -118,16 +112,13 @@ class AD5676R(SPIDevice):
 
         :param DAC_binary: a binary string that specifies how each channel will operate.
         """
-        # The command for DAC power up/down is 0100 = 0x40
-        self.BUFFER[0] = 0x40
+        # The command for DAC power up/down is 0100 = 0x40.
 
-        power_msb = (DAC_binary >> 8) & 0xFF
-        power_lsb = DAC_binary & 0xFF
-        # How to take this data?
-        self.BUFFER[1] = power_msb
-        self.BUFFER[2] = power_lsb
+        self.buffer[0] = CMD_POWER_DOWN
+        self.buffer[1] = (DAC_binary >> 8) & 0xFF
+        self.buffer[2] = DAC_binary & 0xFF
 
-        self.write_bytes(self.BUFFER)
+        self.write_24(self.buffer)
 
     def LDAC_mask_register(self, DAC_byte):
         """When writing to the DAC, load the 8-bit LDAC register.
@@ -139,26 +130,22 @@ class AD5676R(SPIDevice):
 
         :param DAC_byte: D0 to D7 determine which DAC channels are adjusted.
         """
-        # The command for LDAC mask register is 0101 = 0x50
-        self.BUFFER[0] = 0x50
+        # The command for LDAC mask register is 0101 = 0x50.
+        self.buffer[0] = CMD_LDAC_MASK_REG
+        self.buffer[1] = 0x00
+        self.buffer[2] = DAC_byte
 
-        self.write_bytes(self.BUFFER)
+        self.write_24(self.buffer)
 
     def software_reset(self):
         """Reset DAC to power-on reset code."""
-        # The command for software reset is 0110 = 0x60
-        self.BUFFER[0] = 0x60
-        self.BUFFER[1] = 0x12
-        self.BUFFER[2] = 0x34
+        # The command for software reset is 0110 = 0x60.
+        # The bytes written after the command are 0x1234.
+        self.buffer[0] = CMD_SOFTWARE_RESET
+        self.buffer[1] = 0x12
+        self.buffer[2] = 0x34
 
-        self.write_bytes(self.BUFFER)
-
-    def internal_reference_setup(self):
-        """Set up the internal reference and gain setting on the AD5676R device.
-
-        :: bytes to be added
-        """
-        pass
+        self.write_24(self.buffer)
 
     def register_readback(self, register):
         """Select a register and then read from it.
@@ -166,15 +153,18 @@ class AD5676R(SPIDevice):
         This device does this over two separate but sequential writes.
 
         :param register: the register to read from.
-        :returns: results[1:], the contents of the register read from
+        :returns: results[1:], the contents of the register read from.
         """
-        # Command for readback register enable  is 1001 = 0x90
-        self.BUFFER[0] = 0x90 | register
-        self.write_bytes(self.BUFFER)
+        # Command for readback register enable is 1001 = 0x90.
+        self.buffer[0] = CMD_REG_READBACK | register
+        self.buffer[1] = 0x00
+        self.buffer[2] = 0x00
 
-        # A second write is needed to read back from the previous write
-        self.BUFFER[0] = 0x00
-        results = self.transfer(self.BUFFER)
+        self.write_24(self.buffer)
+
+        # A second write is needed to read back from the previous write.
+        self.buffer[0] = 0x00
+        results = self.transfer(self.buffer)
         return results[1:]
 
     def update_all_input_channels(self, voltage):
@@ -184,17 +174,14 @@ class AD5676R(SPIDevice):
 
         :param data: the data to be written
         """
-        # Function for updating all channels of an input register is 1010 = 0xA0
-        self.BUFFER[0] = 0xA0
-
+        # Function for updating all input register channels is 1010 = 0xA0.
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
-        dac_msb = (dac_val >> 8) & 0xFF
-        dac_lsb = dac_val & 0xFF
 
-        self.BUFFER[1] = dac_msb
-        self.BUFFER[2] = dac_lsb
+        self.buffer[0] = CMD_UPDATE_ALL_INPUTS
+        self.buffer[1] = (dac_val >> 8) & 0xFF
+        self.buffer[2] = dac_val & 0xFF
 
-        self.write_bytes(self.BUFFER)
+        self.write_24(self.buffer)
 
     def update_all_dac_input_channels(self, voltage):
         """Update all DAC register and input register channels simultaneously with the input data.
@@ -203,14 +190,14 @@ class AD5676R(SPIDevice):
 
         :param voltage: voltage to be converted to bytes and written
         """
-        # Function for updating all input/DAC register channels is 1011 = 0xB0
-        self.BUFFER[0] = 0xB0
+        # Function for updating all input/DAC register channels is 1011 = 0xB0.
+
 
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
-        dac_msb = (dac_val >> 8) & 0xFF
-        dac_lsb = dac_val & 0xFF
 
-        self.BUFFER[1] = dac_msb
-        self.BUFFER[2] = dac_lsb
+        self.buffer[0] = CMD_UPDATE_ALL_DAC_INPUTS
+        self.buffer[1] = (dac_val >> 8) & 0xFF
+        self.buffer[2] = dac_val & 0xFF
 
-        self.write_bytes(self.BUFFER)
+        self.write_24(self.buffer)
+        #OR self.write_24()
