@@ -34,6 +34,10 @@ class ThermocoupleType:  # pylint: disable=too-few-public-methods
     G32 = 0b1100
 
 class Max31856(SPIDevice):
+    """Max31856 device class.
+
+    This class implements support for the max31856 device.
+    """
     # Register constants
     CR0_REG = 0x00
     CR0_AUTOCONVERT = 0x80
@@ -70,16 +74,17 @@ class Max31856(SPIDevice):
     FAULT_OVUV = 0x02
     FAULT_OPEN = 0x01
 
-    _BUFFER = bytearray(4)
-
 
     def __init__(self, thermocouple_type=ThermocoupleType.K):
-
+        """Initialise the Max31856 device
+        """
         SPIDevice.__init__(self, 0, 0)
         # SPI device settings
         self.set_clock_hz(500000)
         self.set_mode(1)
         self.set_bits_per_word(8)
+        # All transfers are two bytes. Address, blank for read.
+        self.set_buffer_length(2)
 
         # Assert on any fault
         self.handle_write(self.MASK_REG, 0x0)
@@ -97,11 +102,12 @@ class Max31856(SPIDevice):
 
     @property
     def temperature(self):
-        """The temperature of the sensor and return its value in degrees celcius (read only)."""
+        """Read the temperature of the sensor and return its value in degrees celcius."""
         self._perform_one_shot_measurement()
 
         # Unpack the 3-byte temperature as 4 bytes
-        raw_temp = unpack(">i", self.handle_transfer(self.LTCBH_REG, 3)+bytes([0]))[0]
+        raw_temp = unpack(">i", self.transfer([self.LTCBH_REG, 0x00, 0x00, 0x00])+bytes([0]))[0]
+        # Using transfer() directly to bypass self.buffer
 
         # Shift to remove extra byte from unpack needing 4 bytes
         raw_temp >>= 8
@@ -113,6 +119,7 @@ class Max31856(SPIDevice):
 
 
     def _perform_one_shot_measurement(self):
+        """Perform a single measurement of temperature."""
         self.handle_write(self.CJTO_REG, 0x0)
         # Read the current value of the first config register
         conf_reg_0 = self.handle_transfer(self.CR0_REG, 1)[0]
@@ -127,21 +134,28 @@ class Max31856(SPIDevice):
 
 
     def handle_write(self, address, val):
+        """Set up the buffer for a write protocol.
+
+        :param address: the provided address to write to.
+        :param val: the value to be written.
+        """
         # Max device has specific handling for addresses and reads/writes
         # See https://datasheets.maximintegrated.com/en/ds/MAX31856.pdf, p15
-        self._BUFFER[0] = (address | 0x80) & 0xFF
-        self._BUFFER[1] = val & 0xFF
-        self.write_bytes(self._BUFFER, end=2)
+        self.buffer[0] = (address | 0x80) & 0xFF
+        self.buffer[1] = val & 0xFF
+        self.write_bytes(self.buffer, end=2)
 
 
-    def handle_transfer(self, address, length, write_value=0):
+    def handle_transfer(self, address):
+        """Set up the buffer for transfer protocol.
 
-        end = length + 1
-        for i in range(1, end):
-            self._BUFFER[i] = write_value
-        self._BUFFER[0] = address & 0x7F
-        # Only want second-returned byte and on, as these are the chip's response after it sees the first byte.
-        results = bytes(self.transfer(self._BUFFER)[1:])
+        Second byte is always blank because nothing is to be written after the address.
+
+        :param address: the provided address to read from.
+        """
+        self.buffer[0] = address & 0x7F
+        self.buffer[1] = 0
+        results = bytes(self.transfer(self.buffer)[1:])
         return results
 
 

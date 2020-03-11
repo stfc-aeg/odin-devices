@@ -84,23 +84,35 @@ _BME280_STANDBY_TCS = (STANDBY_TC_0_5, STANDBY_TC_10, STANDBY_TC_20,
                        STANDBY_TC_62_5, STANDBY_TC_125, STANDBY_TC_250,
                        STANDBY_TC_500, STANDBY_TC_1000)
 
+
 class BME280(SPIDevice):
+    """BME280 class.
+
+    This class implements support for the BME280 device.
+    """
 
     def __init__(self):
-        
+        """Initialise the BME280 device.
+
+        Any SPI settings can be adjusted with the functions in spi_device.
+        SPIDevice.__init__ is provided bus, device, bits_per_word (optional) and hz (optional).
+        """
         SPIDevice.__init__(self, 0, 0) # bus, device
 
-        # This device is compatible with SPI modes 0 and 3 (00,)
+        # This device is compatible with SPI modes 0 and 3 (00, 11).
         self.set_mode(0)
 
-        # Check device ID
+        # Longest transaction is 24 bytes read, one written.
+        self.set_buffer_length(25)
+
+        # Check device ID.
         chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
         print("Chip ID: 0x%x" % int(chip_id))
 
         if _BME280_CHIPID != chip_id:
             raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
 
-        # Reasonable defaults
+        # Reasonable defaults.
         self._iir_filter = IIR_FILTER_DISABLE
         self._overscan_humidity = OVERSCAN_X1
         self._overscan_temperature = OVERSCAN_X1
@@ -115,9 +127,8 @@ class BME280(SPIDevice):
         # Pressure in hPa at sea level. Used to calibrate altitude.
         self_t_fine = None
 
-
     def _read_temperature(self):
-        # Perform one measurement
+        """Perform one temperature measurement."""
         if self.mode != MODE_NORMAL:
             self.mode = MODE_FORCE
             
@@ -129,26 +140,22 @@ class BME280(SPIDevice):
         
         self._t_fine = int(var1 + var2)
 
-
     def _reset(self):
         """Soft reset the sensor"""
         self._write_register_byte(_BME280_REGISTER_SOFTRESET, 0xB6)
         sleep(0.004)  # Datasheet says 2ms, using 4ms to be safe
 
-
     def _write_ctrl_meas(self):
         """Write the values to ctrl_meas and ctrl_hum registers in the device.
-        ctrl_meas sets the pressure and temperature data acquisition options
-        ctrl_hum sets the humidity oversampling and must be written to first
+        ctrl_meas sets the pressure and temperature data acquisition options.
+        ctrl_hum sets the humidity oversampling and must be written to first.
         """
         self._write_register_byte(_BME280_REGISTER_STATUS, self._overscan_humidity)
         self._write_register_byte(_BME280_REGISTER_CTRL_MEAS, self._ctrl_meas)
 
-
     def _get_status(self):
         """Get the value from the status register in the device."""
         return self._read_byte(_BME280_REGISTER_STATUS)
-
 
     def _read_config(self):
         """Read the value from the config register in the device."""
@@ -239,7 +246,7 @@ class BME280(SPIDevice):
     @property
     def iir_filter(self):
         """Controls the time constant of the IIR filter.
-        ALlowed values are the constanst IIR_FILTER_*
+        ALlowed values are the constanst IIR_FILTER_*.
         """
         return self._iir_filter
 
@@ -304,7 +311,7 @@ class BME280(SPIDevice):
         """
         self._read_temperature()
 
-        # Algorithm from the BME280 driver
+        # Algorithm from the BME280 driver:
         # https://github.com/BoschSensortec/BME280_driver/blob/master/bme280.c
         adc = self._read24(_BME280_REGISTER_PRESSUREDATA) / 16  # lowest 4 bits get dropped
         var1 = float(self._t_fine) / 2.0 - 64000.0
@@ -336,7 +343,7 @@ reading the calibration registers")
         returns None if humidity measurement is disabled.
         """
         self._read_temperature()
-        hum = self._read_register(_BME280_REGISTER_HUMIDDATA, 2)
+        hum = self._read_register(_BME280_REGISTER_HUMIDDATA, end=3)
         #print("Humidity data: ", hum)
         adc = float(hum[0] << 8 | hum[1])
         #print("adc:", adc)
@@ -374,7 +381,7 @@ reading the calibration registers")
 
     def _read_coefficients(self):
         """Read & save the calibration coefficients"""
-        coeff = self._read_register(_BME280_REGISTER_DIG_T1, 24)
+        coeff = self._read_register(_BME280_REGISTER_DIG_T1, end=25)
         coeff = list(unpack('<HhhHhhhhhhhh', bytes(coeff)))
         coeff = [float(i) for i in coeff]
         self._temp_calib = coeff[:3]
@@ -382,7 +389,7 @@ reading the calibration registers")
 
         self._humidity_calib = [0]*6
         self._humidity_calib[0] = self._read_byte(_BME280_REGISTER_DIG_H1)
-        coeff = self._read_register(_BME280_REGISTER_DIG_H2, 7)
+        coeff = self._read_register(_BME280_REGISTER_DIG_H2, end=8)
         coeff = list(unpack('<hBbBbb', bytes(coeff)))
         self._humidity_calib[1] = float(coeff[0])
         self._humidity_calib[2] = float(coeff[1])
@@ -390,39 +397,49 @@ reading the calibration registers")
         self._humidity_calib[4] = float((coeff[4] << 4) | (coeff[3] >> 4))
         self._humidity_calib[5] = float(coeff[5])
 
-
     def _read_byte(self, register):
-        """Read a byte register value and return it."""
-        return self._read_register(register, 1)[0]
-
+        """Read a byte register value and return it.
+        
+        :param register: the register to be read from.
+        """
+        return self._read_register(register, end=2)[0]
 
     def _read24(self, register):
-        """Read an unsigned 24-bit value as a floating point and return it."""
+        """Read an unsigned 24-bit value as a floating point and return it.
+
+        self.buffer is set to four to allow for one register byte to be transferred too.
+        :param register: the register to read from.
+        :returns ret: the 24-bit value.
+        """
         ret = 0.0
-        for b in self._read_register(register, 3):
+        for b in self._read_register(register, end=4):
             ret *= 256.0
             ret += float(b & 0xFF)
         return ret
 
+    def _read_register(self, register, end=None, write_value=0):
+        """Read length number of bytes from a register on the SPI device.
 
-    def _read_register(self, register, length, write_value = 0):
+        Length defaults to the length of buffer. The read is done via an SPI transfer.
 
+        :param end: specifies where to write up to in buffer. To be passed to transfer().
+        :param write_value: value to fill the buffer with. Default: 0
+
+        :returns result: the MISO transfer response, an array of length equal to buffer.
+        """
         register = (register | 0x80) & 0xFF  # Read single, bit 7 high
-        buf_size = length + 1
-        buffer = bytearray(buf_size)
+        self.buffer[0] = register
 
-        buffer[0] = register
-        for i in range(1, buf_size):
-            buffer[i] = write_value
-
-        result = self.transfer(buffer)[1:]
-
+        result = self.transfer(self.buffer, end=end)[1:]
         return result
 
 
     def _write_register_byte(self, register, value):
+        """Write a byte to the specified register."""
         register &= 0x7F  # Write, bit 7 low.
-        self.write_bytes(bytes([register, value & 0xFF]))
+        self.buffer[0] = register
+        self.buffer[1] = value & 0xFF
+        self.write_bytes(bytes(self.buffer), end=2)
 
 
 def main():
