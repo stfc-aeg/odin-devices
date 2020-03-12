@@ -1,4 +1,4 @@
-"""BME280 - 
+"""BME280 - bme280 device access class.
 
 derived from Adafruit implementation for CircuitPython available at:
 https://github.com/adafruit/Adafruit_CircuitPython_BME280/blob/80757ff2146c62ac7192c94b060c67d4751868b4/adafruit_bme280.py
@@ -7,7 +7,7 @@ https://github.com/adafruit/Adafruit_CircuitPython_BME280/blob/80757ff2146c62ac7
 
 import math
 from time import sleep
-#from micropython import const
+# from micropython import const
 try:
     from struct import unpack
 except ImportError:
@@ -60,8 +60,8 @@ OVERSCAN_X4 = 0x03
 OVERSCAN_X8 = 0x04
 OVERSCAN_X16 = 0x05
 
-_BME280_OVERSCANS = {OVERSCAN_DISABLE:0, OVERSCAN_X1:1, OVERSCAN_X2:2,
-                     OVERSCAN_X4:4, OVERSCAN_X8:8, OVERSCAN_X16:16}
+_BME280_OVERSCANS = {OVERSCAN_DISABLE: 0, OVERSCAN_X1: 1, OVERSCAN_X2: 2,
+                     OVERSCAN_X4: 4, OVERSCAN_X8: 8, OVERSCAN_X16: 16}
 
 # mode values
 MODE_SLEEP = 0x00
@@ -71,14 +71,14 @@ _BME280_MODES = (MODE_SLEEP, MODE_FORCE, MODE_NORMAL)
 
 # Standby timeconstant values
 # TC_X[_Y] where X=milliseconds and Y=tenths of a millisecond
-STANDBY_TC_0_5 = 0x00    #0.5ms
-STANDBY_TC_10 = 0x06     #10ms
-STANDBY_TC_20 = 0x07     #20ms
-STANDBY_TC_62_5 = 0x01   #62.5ms
-STANDBY_TC_125 = 0x02    #125ms
-STANDBY_TC_250 = 0x03    #250ms
-STANDBY_TC_500 = 0x04    #500ms
-STANDBY_TC_1000 = 0x05   #1000ms
+STANDBY_TC_0_5 = 0x00    # 0.5ms
+STANDBY_TC_10 = 0x06     # 10ms
+STANDBY_TC_20 = 0x07     # 20ms
+STANDBY_TC_62_5 = 0x01   # 62.5ms
+STANDBY_TC_125 = 0x02    # 125ms
+STANDBY_TC_250 = 0x03    # 250ms
+STANDBY_TC_500 = 0x04    # 500ms
+STANDBY_TC_1000 = 0x05   # 1000ms
 
 _BME280_STANDBY_TCS = (STANDBY_TC_0_5, STANDBY_TC_10, STANDBY_TC_20,
                        STANDBY_TC_62_5, STANDBY_TC_125, STANDBY_TC_250,
@@ -97,7 +97,7 @@ class BME280(SPIDevice):
         Any SPI settings can be adjusted with the functions in spi_device.
         SPIDevice.__init__ is provided bus, device, bits_per_word (optional) and hz (optional).
         """
-        SPIDevice.__init__(self, 0, 0) # bus, device
+        SPIDevice.__init__(self, 0, 0)  # bus, device
 
         # This device is compatible with SPI modes 0 and 3 (00, 11).
         self.set_mode(0)
@@ -123,7 +123,7 @@ class BME280(SPIDevice):
         self._read_coefficients()
         self._write_ctrl_meas()
         self._write_config()
-        
+
         # Pressure in hPa at sea level. Used to calibrate altitude.
         self_t_fine = None
 
@@ -131,22 +131,23 @@ class BME280(SPIDevice):
         """Perform one temperature measurement."""
         if self.mode != MODE_NORMAL:
             self.mode = MODE_FORCE
-            
+
             while self._get_status() & 0x08:
                 sleep(0.002)
         raw_temperature = self._read24(_BME280_REGISTER_TEMPDATA) / 16  # Drop lowest 4 bits
-        var1 = (raw_temperature / 16384.0 - self._temp_calib[0] /1024.0) * self._temp_calib[1] 
-        var2 = ((raw_temperature / 131072.0 -self._temp_calib[0] / 8192) * (raw_temperature / 131072.0 -self._temp_calib[0] /8192.0)) * self._temp_calib[2]
-        
+        var1 = (raw_temperature / 16384.0 - self._temp_calib[0] / 1024.0) * self._temp_calib[1]
+        var2 = ((raw_temperature / 131072.0 - self._temp_calib[0] / 8192) * (raw_temperature / 131072.0 - self._temp_calib[0] / 8192.0)) * self._temp_calib[2]
+
         self._t_fine = int(var1 + var2)
 
     def _reset(self):
-        """Soft reset the sensor"""
+        """Soft reset the sensor."""
         self._write_register_byte(_BME280_REGISTER_SOFTRESET, 0xB6)
         sleep(0.004)  # Datasheet says 2ms, using 4ms to be safe
 
     def _write_ctrl_meas(self):
         """Write the values to ctrl_meas and ctrl_hum registers in the device.
+
         ctrl_meas sets the pressure and temperature data acquisition options.
         ctrl_hum sets the humidity oversampling and must be written to first.
         """
@@ -174,26 +175,27 @@ class BME280(SPIDevice):
 
     @property
     def mode(self):
-        """Operation mode. Allowed values are the constants MODE_* """
+        """Operation mode. Allowed values are the constants MODE_*."""
         return self._mode
 
     @mode.setter
     def mode(self, value):
-        if not value in _BME280_MODES:
+        if value not in _BME280_MODES:
             raise ValueError('Mode \'%s\' not supported' % (value))
         self._mode = value
         self._write_ctrl_meas()
 
     @property
     def standby_period(self):
-        """Control the inactive period when in Normal mode
+        """Control the inactive period when in Normal mode.
+
         Allowed standby periods are the constants STANDBY_TC_*
         """
         return self._t_standby
 
     @standby_period.setter
     def standby_period(self, value):
-        if not value in _BME280_STANDBY_TCS:
+        if value not in _BME280_STANDBY_TCS:
             raise ValueError('Standby Period \'%s\' not supported' % (value))
         if self._t_standby == value:
             return
@@ -203,56 +205,59 @@ class BME280(SPIDevice):
     @property
     def overscan_humidity(self):
         """Humidity oversampling.
+
         Allowed values are the constants OVERSCAN_*
         """
         return self._overscan_temperature
 
     @overscan_humidity.setter
     def overscan_humidity(self, value):
-        if not value in _BME280_OVERSCANS:
+        if value not in _BME280_OVERSCANS:
             raise ValueError('Overscan value \'%s\' not supported' % (value))
         self._overscan_temperature = value
         self._write_crtl_meas()
 
     @property
     def overscan_pressure(self):
-        """Pressure oversamplings
+        """Pressure oversamplings.
+
         Allowed value are the constants OVERSCAN_*
         """
         return self._overscan_pressure
 
     @overscan_pressure.setter
     def overscan_pressure(self, value):
-        if not value in _BME280_OVERSCANS:
+        if value not in _BME280_OVERSCANS:
             raise ValueError('Overscan value \'%s\' not supported' % (value))
         self._overscan_pressure = value
         self._write_ctrl_meas()
 
     @property
     def overscan_temperature(self):
-        """
-        Temperature Oversampling
+        """Temperature Oversampling.
+
         Allowed values are the constants OVERSCAN_*
         """
         return self._overscan_temperature
 
     @overscan_temperature.setter
     def overscan_temperature(self, value):
-        if not value in _BME280_OVERSCANS:
+        if value not in _BME280_OVERSCANS:
             raise ValueError('Overscan value \'%s\' not supported' % (value))
         self._overscan_temperature = value
         self._write_ctrl_meas()
 
     @property
     def iir_filter(self):
-        """Controls the time constant of the IIR filter.
+        """Control the time constant of the IIR filter.
+
         ALlowed values are the constanst IIR_FILTER_*.
         """
         return self._iir_filter
 
     @iir_filter.setter
     def iir_filter(self, value):
-        if not value in _BME280_IIR_FILTERS:
+        if value not in _BME280_IIR_FILTERS:
             raise ValueError('IIR Filter \'%s\' not supported' % (value))
         self._iir_filter = value
         self._write_config()
@@ -282,9 +287,9 @@ class BME280(SPIDevice):
         if self.overscan_temperature != OVERSCAN_DISABLE:
             meas_time_ms += (2 * _BME280_OVERSCANS.get(self.overscan_temperature))
         if self.overscan_pressure != OVERSCAN_DISABLE:
-            meas_time_ms += (2 * _BME280_OVERSCANS.get(self.overscan_pressure) +0.5)
+            meas_time_ms += (2 * _BME280_OVERSCANS.get(self.overscan_pressure) + 0.5)
         if self.overscan_humidity != OVERSCAN_DISABLE:
-            meas_time_ms += (2 * _BME280_OVERSCANS.get(self.overscan_humidity) +0.5)
+            meas_time_ms += (2 * _BME280_OVERSCANS.get(self.overscan_humidity) + 0.5)
         return meas_time_ms
 
     @property
@@ -293,20 +298,21 @@ class BME280(SPIDevice):
         if self._overscan_temperature != OVERSCAN_DISABLE:
             meas_time_ms ++ (2.3 * _BME280_OVERSCANS.get(self._overscan_temperature))
         if self.overscan_pressure != OVERSCAN_DISABLE:
-            meas_time_ms += (2.3 * _BME280_OVERSCANS.get(self.overscan_pressure) +0.575)
+            meas_time_ms += (2.3 * _BME280_OVERSCANS.get(self.overscan_pressure) + 0.575)
         if self.overscan_humidity != OVERSCAN_DISABLE:
             meas_time_ms += (2.3 * _BME280_OVERSCANS.get(self.overscan_humidity) + 0.575)
         return meas_time_ms
 
     @property
     def temperature(self):
-        """The compensated temperature in degrees celcius."""
+        """Get the compensated temperature in degrees celcius."""
         self._read_temperature()
         return self._t_fine / 5120.0
 
     @property
     def pressure(self):
-        """The compensated pressure in hPa.
+        """Calculate the compensated pressure in hPa.
+
         Returns None if pressure measurement is disabled.
         """
         self._read_temperature()
@@ -321,7 +327,7 @@ class BME280(SPIDevice):
         var3 = self._pressure_calib[2] * var1 * var1 / 524288.0
         var1 = (var3 + self._pressure_calib[1] * var1) / 524288.0
         var1 = (1.0 + var1 / 32768.0) * self._pressure_calib[0]
-        if not var1: # avoid exception caused by division by zero
+        if not var1:  # avoid exception caused by division by zero
             raise ArithmeticError("Invalid result possibly related to error while \
 reading the calibration registers")
         pressure = 1048576.0 - adc
@@ -339,29 +345,30 @@ reading the calibration registers")
 
     @property
     def humidity(self):
-        """The relative humidity in RH %.
+        """Calculate the relative humidity in RH %.
+
         returns None if humidity measurement is disabled.
         """
         self._read_temperature()
         hum = self._read_register(_BME280_REGISTER_HUMIDDATA, end=3)
-        #print("Humidity data: ", hum)
+        # print("Humidity data: ", hum)
         adc = float(hum[0] << 8 | hum[1])
-        #print("adc:", adc)
+        # print("adc:", adc)
 
         # Algorithm from the BME280 driver
         # https://github.com/BoschSensortec/BME280_driver/blob/master/bme280.c
         var1 = float(self._t_fine) - 76800.0
-        #print("var1 ", var1)
+        # print("var1 ", var1)
         var2 = (self._humidity_calib[3] * 64.0 + (self._humidity_calib[4] / 16384.0) * var1)
-        #print("var2 ",var2)
+        # print("var2 ",var2)
         var3 = adc - var2
-        #print("var3 ",var3)
+        # print("var3 ",var3)
         var4 = self._humidity_calib[1] / 65536.0
-        #print("var4 ",var4)
+        # print("var4 ",var4)
         var5 = (1.0 + (self._humidity_calib[2] / 67108864.0) * var1)
-        #print("var5 ",var5)
+        # print("var5 ",var5)
         var6 = 1.0 + (self._humidity_calib[5] / 67108864.0) * var1 * var5
-        #print("var6 ",var6)
+        # print("var6 ",var6)
         var6 = var3 * var4 * (var5 * var6)
         humidity = var6 * (1.0 - self._humidity_calib[0] * var6 / 524288.0)
 
@@ -374,13 +381,15 @@ reading the calibration registers")
 
     @property
     def altitude(self):
-        """The altitude based on current ``pressure`` versus the sea level pressure
-           (``sea_level_pressure``) - which you must enter ahead of time)"""
-        pressure = self.pressure # in Si units for hPascal
+        """Calculate the altitude based on current ``pressure`` versus the sea level pressure.
+
+        (``sea_level_pressure``) - which you must enter ahead of time).
+        """
+        pressure = self.pressure  # in Si units for hPascal
         return 44330 * (1.0 - math.pow(pressure / self.sea_level_pressure, 0.1903))
 
     def _read_coefficients(self):
-        """Read & save the calibration coefficients"""
+        """Read & save the calibration coefficients."""
         coeff = self._read_register(_BME280_REGISTER_DIG_T1, end=25)
         coeff = list(unpack('<HhhHhhhhhhhh', bytes(coeff)))
         coeff = [float(i) for i in coeff]
@@ -393,13 +402,13 @@ reading the calibration registers")
         coeff = list(unpack('<hBbBbb', bytes(coeff)))
         self._humidity_calib[1] = float(coeff[0])
         self._humidity_calib[2] = float(coeff[1])
-        self._humidity_calib[3] = float((coeff[2] << 4) |  (coeff[3] & 0xF))
+        self._humidity_calib[3] = float((coeff[2] << 4) | (coeff[3] & 0xF))
         self._humidity_calib[4] = float((coeff[4] << 4) | (coeff[3] >> 4))
         self._humidity_calib[5] = float(coeff[5])
 
     def _read_byte(self, register):
         """Read a byte register value and return it.
-        
+
         :param register: the register to be read from.
         """
         return self._read_register(register, end=2)[0]
@@ -433,7 +442,6 @@ reading the calibration registers")
         result = self.transfer(self.buffer, end=end)[1:]
         return result
 
-
     def _write_register_byte(self, register, value):
         """Write a byte to the specified register."""
         register &= 0x7F  # Write, bit 7 low.
@@ -443,7 +451,10 @@ reading the calibration registers")
 
 
 def main():
+    """Create an instance of and launch the BME280.
 
+    Will print the temperature, humidity and pressure around the sensor evenly every one second.
+    """
     bme = BME280()
     print("launching test BME280")
 
@@ -457,6 +468,7 @@ def main():
             sleep(0.33)
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == '__main__':
     main()

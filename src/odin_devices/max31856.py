@@ -1,3 +1,13 @@
+"""Max31856 device class.
+
+This class implements support for the Max31856 thermocouple device.
+
+For device information, see datasheet pdf available at:
+https://datasheets.maximintegrated.com/en/ds/MAX31856.pdf
+
+This enables the device to read a temperature and then output it.
+"""
+
 import time
 from odin_devices.spi_device import SPIDevice
 try:
@@ -7,8 +17,9 @@ except ImportError:
 
 
 class ThermocoupleType:  # pylint: disable=too-few-public-methods
-    """An enum-like class representing the different types of thermocouples that the MAX31856 can
-    use. The values can be referenced like ``ThermocoupleType.K`` or ``ThermocoupleType.S``
+    """An enum-like class representing the types of thermocouples that the MAX31856 can use.
+
+    The values can be referenced like ``ThermocoupleType.K`` or ``ThermocoupleType.S``
     Possible values are
 
     - ``ThermocoupleType.B``
@@ -19,8 +30,8 @@ class ThermocoupleType:  # pylint: disable=too-few-public-methods
     - ``ThermocoupleType.R``
     - ``ThermocoupleType.S``
     - ``ThermocoupleType.T``
-
     """
+
     # pylint: disable=invalid-name
     B = 0b0000
     E = 0b0001
@@ -33,11 +44,13 @@ class ThermocoupleType:  # pylint: disable=too-few-public-methods
     G8 = 0b1000
     G32 = 0b1100
 
+
 class Max31856(SPIDevice):
     """Max31856 device class.
 
     This class implements support for the max31856 device.
     """
+
     # Register constants
     CR0_REG = 0x00
     CR0_AUTOCONVERT = 0x80
@@ -74,10 +87,8 @@ class Max31856(SPIDevice):
     FAULT_OVUV = 0x02
     FAULT_OPEN = 0x01
 
-
     def __init__(self, thermocouple_type=ThermocoupleType.K):
-        """Initialise the Max31856 device
-        """
+        """Initialise the Max31856 device."""
         SPIDevice.__init__(self, 0, 0)
         # SPI device settings
         self.set_clock_hz(500000)
@@ -99,7 +110,6 @@ class Max31856(SPIDevice):
         conf_reg_1 |= int(thermocouple_type) & 0xF
         self.handle_write(self.CR1_REG, conf_reg_1)
 
-
     @property
     def temperature(self):
         """Read the temperature of the sensor and return its value in degrees celcius."""
@@ -117,7 +127,6 @@ class Max31856(SPIDevice):
 
         return temp_float
 
-
     def _perform_one_shot_measurement(self):
         """Perform a single measurement of temperature."""
         self.handle_write(self.CJTO_REG, 0x0)
@@ -132,7 +141,6 @@ class Max31856(SPIDevice):
         # Write it back with the new values, prompting the sensor to perform a measurement
         self.handle_write(self.CR0_REG, conf_reg_0)
 
-
     def handle_write(self, address, val):
         """Set up the buffer for a write protocol.
 
@@ -144,7 +152,6 @@ class Max31856(SPIDevice):
         self.buffer[0] = (address | 0x80) & 0xFF
         self.buffer[1] = val & 0xFF
         self.write_bytes(self.buffer, end=2)
-
 
     def handle_transfer(self, address):
         """Set up the buffer for transfer protocol.
@@ -160,7 +167,10 @@ class Max31856(SPIDevice):
 
 
 def main():
+    """Create an instance of the max31856 class.
 
+    Read and print the temperature around the device once per second until interrupted.
+    """
     max = Max31856()
     print("launching test max")
 
@@ -170,6 +180,7 @@ def main():
             time.sleep(1.0)
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == '__main__':
     main()
