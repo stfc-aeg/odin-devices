@@ -5,7 +5,7 @@ This class implements support for the AD5676R DAC.
 For device information, see datasheet pdf available at:
 https://www.analog.com/media/en/technical-documentation/data-sheets/ad5672r_5676r.pdf
 
-Core knowledge is that the device writes and reads 3 bytes at a time.
+Most important is that the device writes and reads 3 bytes at a time.
 The first byte is a command and an address (4 bits each), the remaining two bytes are data.
 """
 
@@ -24,6 +24,7 @@ CMD_REG_READBACK = 0x90
 CMD_UPDATE_ALL_INPUTS = 0xA0
 CMD_UPDATE_ALL_DAC_INPUTS = 0xB0
 
+
 class AD5676R(SPIDevice):
     """AD5676R class.
 
@@ -38,9 +39,10 @@ class AD5676R(SPIDevice):
         """
         SPIDevice.__init__(self, 0, 0)
 
-        # This device is compatible with SPI modes 1 and 2
-        # Data is sampled on the falling edge of the clock pulse
+        # This device is compatible with SPI modes 1 and 2.
+        # Data is sampled on the falling edge of the clock pulse.
         self.set_mode(1)
+        # All writes and reads with the AD5676R are three bytes long.
         self.set_buffer_length(3)
 
         self.Vref = 2.5  # 2.5V = 0xFFFF when writing bytes
@@ -89,7 +91,7 @@ class AD5676R(SPIDevice):
 
         :param channel: the provided DAC channel,
                         must be between 0000 and 0111 inclusive.
-        :param voltage: the provided voltage
+        :param voltage: the provided voltage.
         """
         # Command for DAC register update is 0010 = 0x30.
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
@@ -110,7 +112,7 @@ class AD5676R(SPIDevice):
         01 connects the output internally to GND through a 1kΩ resistor,
         11 leaves it open-circuited (tristate).
 
-        :param DAC_binary: a binary string that specifies how each channel will operate.
+        :param DAC_binary: a binary value that specifies how each channel will operate.
         """
         # The command for DAC power up/down is 0100 = 0x40.
 
@@ -126,7 +128,7 @@ class AD5676R(SPIDevice):
         Default: 0: the LDAC pin works normally.
         Option: 1: force DAC channel to ignore transitions on LDAC pin, regardless of pin's state.
         This allows you to select which channels respond to the LDAC pin.
-        Address bits are ignored.
+        Address bits are ignored. D8 to D15 are zeroes.
 
         :param DAC_byte: D0 to D7 determine which DAC channels are adjusted.
         """
@@ -192,7 +194,6 @@ class AD5676R(SPIDevice):
         """
         # Function for updating all input/DAC register channels is 1011 = 0xB0.
 
-
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
 
         self.buffer[0] = CMD_UPDATE_ALL_DAC_INPUTS
@@ -200,4 +201,4 @@ class AD5676R(SPIDevice):
         self.buffer[2] = dac_val & 0xFF
 
         self.write_24(self.buffer)
-        #OR self.write_24()
+        # OR self.write_24(), buffer is assumed if set and no data provided
