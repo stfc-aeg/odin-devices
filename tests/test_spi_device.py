@@ -31,8 +31,9 @@ class SPIDeviceTestFixture(object):
         self.buffer = None
         self.mode = 1
 
-    def set_transfer_return_value(self, value):
+    def set_transfer_read_return_value(self, value):
         self.device.spi.xfer2.return_value = value
+        self.device.spi.readbytes.return_value = value
 
 
 @pytest.fixture(scope="class")
@@ -44,6 +45,10 @@ def test_spi_device():
 
 
 class TestSPIDevice(object):
+
+    EXC_MODE_NONE, EXC_MODE_TRAP, EXC_MODE_RAISE = range(3)
+    EXC_MODES = [EXC_MODE_NONE, EXC_MODE_TRAP, EXC_MODE_RAISE]
+    EXC_MODE_NAME = ['exception_mode_none', 'exception_mode_trap', 'exception_mode_raise']
 
     def test_enable_exceptions(self, test_spi_device):
         test_spi_device.device.enable_exceptions()
@@ -113,12 +118,10 @@ class TestSPIDevice(object):
         test_spi_device.device.read_bytes(4)
         test_spi_device.device.spi.readbytes.assert_called_with(4)
 
-    def test_write_bytes(self, test_spi_device):
-        test_spi_device.device.write_bytes([0x01, 0x23, 0x34])
-        test_spi_device.device.spi.writebytes2.assert_called_with([0x01, 0x23, 0x34])
+
 
     def test_transfer(self, test_spi_device):
-        test_spi_device.set_transfer_return_value([0x56, 0x78, 0x90])
+        test_spi_device.set_transfer_read_return_value([0x56, 0x78, 0x90])
 
         val = test_spi_device.device.transfer([0x01, 0x23, 0x34])
 
@@ -136,3 +139,48 @@ class TestSPIDevice(object):
 
         test_spi_device.device.write_24(data)
         test_spi_device.device.spi.writebytes2.assert_called_with([0x01, 0x23, 0x45])
+
+    @pytest.mark.parametrize("exc_mode", EXC_MODES)
+    @pytest.mark.parametrize(
+        "method, spidev_method, args, exp_rc",
+        [
+            ('write_bytes', 'writebytes2', ([0x01, 0x23, 0x34]), None),
+            ('transfer', 'xfer2', ([0x01, 0x23, 0x34]), [0x01, 0x23, 0x34]),
+            ('read_bytes', 'readbytes', (3), [0x01, 0x23, 0x34]),
+        ]
+    )
+    def test_device_access(self, method, spidev_method, exc_mode, args, exp_rc, test_spi_device):
+
+        cached_side_effect = getattr(test_spi_device.device.spi, spidev_method).side_effect
+
+        if exc_mode == self.EXC_MODE_NONE:
+            side_effect = None
+            exc_enable = False
+            getattr(test_spi_device.device.spi, spidev_method).return_value = exp_rc
+        elif exc_mode == self.EXC_MODE_TRAP:
+            side_effect = IOError('mocked error')
+            exc_enable = False
+            exp_rc = SPIDevice.ERROR
+        elif exc_mode == self.EXC_MODE_RAISE:
+            side_effect = IOError('mocked error')
+            exc_enable = True
+        else:
+            raise Exception('Invalid exception test mode {}'.format(exc_mode))
+
+        getattr(test_spi_device.device.spi, spidev_method).side_effect = side_effect
+        test_spi_device.device.enable_exceptions() if exc_enable else test_spi_device.device.disable_exceptions()
+
+        rc = None
+        exception_message = 'error from device'
+
+        if exc_enable:
+            with pytest.raises(SPIException) as excinfo:
+                rc = getattr(test_spi_device.device, method)(args)
+                assert rc == exp_rc
+                assert exception_message in excinfo.value
+        else:
+            rc = getattr(test_spi_device.device, method)(args)
+            assert rc == exp_rc
+
+        getattr(test_spi_device.device.spi, spidev_method).side_effect = cached_side_effect
+
