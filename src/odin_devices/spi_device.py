@@ -146,8 +146,11 @@ class SPIDevice():
 
         :param n: the number of bytes to be read.
         """
-        results = self.spi.readbytes(n)
-        return results
+        try:
+            results = self.spi.readbytes(n)
+            return results
+        except IOError as err:
+            return self.handle_error('read', None, err)
 
     def write_bytes(self, data=None, start=0, end=None):
         """Write a list of values to the SPI device.
