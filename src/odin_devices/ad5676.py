@@ -80,7 +80,7 @@ class AD5676R(SPIDevice):
         self.buffer[1] = 0x00
         self.buffer[2] = DAC_byte
 
-        self.transfer(self.buffer)
+        self.write_24(self.buffer)
 
     def write_to_dac(self, channel, voltage):
         """Write to and update DAC Channel n.
