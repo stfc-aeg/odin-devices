@@ -10,10 +10,9 @@ This enables the device to read a temperature and then output it.
 
 import time
 from odin_devices.spi_device import SPIDevice
-try:
-    from struct import unpack
-except ImportError:
-    from ustruct import unpack
+
+from struct import unpack
+
 
 
 class ThermocoupleType:  # pylint: disable=too-few-public-methods
@@ -105,7 +104,7 @@ class Max31856(SPIDevice):
 
         # Set thermocouple type
         # Get current value of CR1 reg
-        conf_reg_1 = self.handle_transfer(self.CR1_REG, 1)[0]
+        conf_reg_1 = self.handle_transfer(self.CR1_REG)[0]
         conf_reg_1 &= 0xF0  # Mask off bottom 4 bits
         conf_reg_1 |= int(thermocouple_type) & 0xF
         self.handle_write(self.CR1_REG, conf_reg_1)
@@ -131,7 +130,7 @@ class Max31856(SPIDevice):
         """Perform a single measurement of temperature."""
         self.handle_write(self.CJTO_REG, 0x0)
         # Read the current value of the first config register
-        conf_reg_0 = self.handle_transfer(self.CR0_REG, 1)[0]
+        conf_reg_0 = self.handle_transfer(self.CR0_REG)[0]
 
         # And the complement to guarantee the autoconvert bit is unset
         conf_reg_0 &= ~self.CR0_AUTOCONVERT
@@ -151,7 +150,7 @@ class Max31856(SPIDevice):
         # See https://datasheets.maximintegrated.com/en/ds/MAX31856.pdf, p15
         self.buffer[0] = (address | 0x80) & 0xFF
         self.buffer[1] = val & 0xFF
-        self.write_bytes(self.buffer, end=2)
+        self.write_16(self.buffer)
 
     def handle_transfer(self, address):
         """Set up the buffer for transfer protocol.
@@ -164,23 +163,3 @@ class Max31856(SPIDevice):
         self.buffer[1] = 0
         results = bytes(self.transfer(self.buffer)[1:])
         return results
-
-
-def main():
-    """Create an instance of the max31856 class.
-
-    Read and print the temperature around the device once per second until interrupted.
-    """
-    max = Max31856()
-    print("launching test max")
-
-    try:
-        while True:
-            print("Thermocouple temperature is {:.1f} C".format(max.temperature))
-            time.sleep(1.0)
-    except KeyboardInterrupt:
-        pass
-
-
-if __name__ == '__main__':
-    main()
