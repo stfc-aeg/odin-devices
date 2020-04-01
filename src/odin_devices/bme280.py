@@ -7,11 +7,9 @@ https://github.com/adafruit/Adafruit_CircuitPython_BME280/blob/80757ff2146c62ac7
 
 import math
 from time import sleep
-# from micropython import const
-try:
-    from struct import unpack
-except ImportError:
-    from ustruct import unpack
+
+from struct import unpack
+
 from odin_devices.spi_device import SPIDevice
 
 
@@ -106,11 +104,12 @@ class BME280(SPIDevice):
         self.set_buffer_length(25)
 
         # Check device ID.
-        chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
-        print("Chip ID: 0x%x" % int(chip_id))
+        # chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
+        # print("Chip ID: 0x%x" % int(chip_id))
 
-        if _BME280_CHIPID != chip_id:
-            raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
+        # if _BME280_CHIPID != chip_id:
+        #     raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
+        print(id(self.spi))
 
         # Reasonable defaults.
         self._iir_filter = IIR_FILTER_DISABLE
@@ -448,27 +447,3 @@ reading the calibration registers")
         self.buffer[0] = register
         self.buffer[1] = value & 0xFF
         self.write_bytes(bytes(self.buffer), end=2)
-
-
-def main():
-    """Create an instance of and launch the BME280.
-
-    Will print the temperature, humidity and pressure around the sensor evenly every one second.
-    """
-    bme = BME280()
-    print("launching test BME280")
-
-    try:
-        while True:
-            print("Temperature:  {:.2f} C".format(bme.temperature))
-            sleep(0.33)
-            print("Humidity:     {:.2f} %RH".format(bme.humidity))
-            sleep(0.33)
-            print("Pressure:   {:.2f} hPa".format(bme.pressure))
-            sleep(0.33)
-    except KeyboardInterrupt:
-        pass
-
-
-if __name__ == '__main__':
-    main()
