@@ -32,7 +32,7 @@ class SPIDeviceTestFixture(object):
         self.mode = 1
 
     def set_transfer_read_return_value(self, value):
-        self.device.spi.xfer2.return_value = values
+        self.device.spi.xfer2.return_value = value
         self.device.spi.readbytes.return_value = value
 
 
