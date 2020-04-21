@@ -104,11 +104,11 @@ class BME280(SPIDevice):
         self.set_buffer_length(25)
 
         # Check device ID.
-        # chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
-        # print("Chip ID: 0x%x" % int(chip_id))
+        chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
+        print("Chip ID: 0x%x" % int(chip_id))
 
-        # if _BME280_CHIPID != chip_id:
-        #     raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
+        if _BME280_CHIPID != chip_id:
+            raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
         print(id(self.spi))
 
         # Reasonable defaults.
@@ -207,14 +207,14 @@ class BME280(SPIDevice):
 
         Allowed values are the constants OVERSCAN_*
         """
-        return self._overscan_temperature
+        return self._overscan_humidity
 
     @overscan_humidity.setter
     def overscan_humidity(self, value):
         if value not in _BME280_OVERSCANS:
             raise ValueError('Overscan value \'%s\' not supported' % (value))
-        self._overscan_temperature = value
-        self._write_crtl_meas()
+        self._overscan_humidity = value
+        self._write_ctrl_meas()
 
     @property
     def overscan_pressure(self):
@@ -294,8 +294,9 @@ class BME280(SPIDevice):
     @property
     def measurement_time_max(self):
         """Maximum time in milliseconds required to complete a measurement in normal mode."""
+        meas_time_ms = 1.25
         if self._overscan_temperature != OVERSCAN_DISABLE:
-            meas_time_ms ++ (2.3 * _BME280_OVERSCANS.get(self._overscan_temperature))
+            meas_time_ms += (2.3 * _BME280_OVERSCANS.get(self._overscan_temperature))
         if self.overscan_pressure != OVERSCAN_DISABLE:
             meas_time_ms += (2.3 * _BME280_OVERSCANS.get(self.overscan_pressure) + 0.575)
         if self.overscan_humidity != OVERSCAN_DISABLE:
@@ -435,6 +436,9 @@ reading the calibration registers")
 
         :returns result: the MISO transfer response, an array of length equal to buffer.
         """
+        for i in range(len(self.buffer)):
+            self.buffer[i] = write_value
+
         register = (register | 0x80) & 0xFF  # Read single, bit 7 high
         self.buffer[0] = register
 
