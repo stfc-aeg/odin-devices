@@ -1,4 +1,6 @@
-
+"""Test cases for the Max31856 device from odin_devices.
+Michael Shearwood, STFC Detector Systems Software Group Apprentice.
+"""
 
 import sys
 

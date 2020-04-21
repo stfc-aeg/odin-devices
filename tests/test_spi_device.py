@@ -1,7 +1,10 @@
 """Test cases for spi_device from odin_devices.
 
 Due to the optional buffer functionality not having a disable feature,
-the tests are made over two classes, where the second has all None writes."""
+the tests are made over two classes, where the second has all None writes.
+
+Michael Shearwood, STFC Detector Systems Software Group Apprentice.
+"""
 
 import sys
 
