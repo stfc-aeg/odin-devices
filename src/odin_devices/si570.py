@@ -143,15 +143,3 @@ class SI570(I2CDevice):
         self.write8(137, self.readU8(137) & 0xEF)
         self.write8(135, 0x40)
         self.__fout = (self.__fxtal * self.__rfreq) / (self.__n1 * self.__hs_div)
-
-# #Basic test for the device. Allows controlling of the output frequency
-# if __name__ == "__main__":
-#     si570 = SI570(address=0x5d, busnum=1, model=SI570_C)
-#     print(si570)
-
-#     freq = 100
-#     if len(sys.argv) > 1:
-#         freq = float(sys.argv[1])
-#     si570.set_frequency(freq)
-
-#     print(si570)
