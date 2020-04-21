@@ -109,7 +109,6 @@ class BME280(SPIDevice):
 
         if _BME280_CHIPID != chip_id:
             raise RuntimeError('Failed to find BME280! Chip ID 0x%x' % chip_id)
-        print(id(self.spi))
 
         # Reasonable defaults.
         self._iir_filter = IIR_FILTER_DISABLE
