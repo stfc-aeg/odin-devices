@@ -285,7 +285,7 @@ class SI5324(I2CDevice):
     """
     Device Action Commands
     """
-    def _run_ical (self):
+    def _run_ical (self, timeout_ms=20000):
         """
         Runs the ICAL calibration. This should be performed before any usage, since
         accuracy is not guaranteed until it is complete.
@@ -305,12 +305,25 @@ class SI5324(I2CDevice):
         # Lock time (tLOCKMP) is:
         #       SI5324E*        Typ:1.0s    Max:1.5s
         #       SI5324A/B/C/D*  Typ:0.8s    Max:1.0s
+
+        start_time = time.time()
+        latest_time = time.time()
         time.sleep(1.000)
         while self.get_register_field(SI5324._FIELD_LOL_INT):
             time.sleep(0.100)
             logger.debug("iCAL waiting...")
 
-        logger.info("iCAL done")
+            # Check for LOL timeout (not necessarily fatal, since the input
+            # could just be inactive when selected. However, iCAL should be
+            # performed after the input is provided, or the output will be
+            # unstable).
+            latest_time = time.time()
+            if ((latest_time - start_time)*1000) > timeout_ms:
+                logger.warning(
+                        "iCAL timed out after {}s. Check if selected clock has Loss Of Signal:\n{}\nNOTE: iCAL should be performed on desired source before use.".format(latest_time-start_time, self.get_alarm_states()))
+                return
+
+        logger.info("iCAL done in {}s".format(latest_time-start_time))
 
         self.iCAL_required = False
 
