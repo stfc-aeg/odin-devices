@@ -29,6 +29,41 @@ class _Field:
     def get_endbit (self):
         return (self.startbit - (self.length-1))
 
+class Alarms:
+    """
+    Alarms Class:
+    Holds a collection of alarms states for the class, including both the INT
+    (interrupt) current states and FLG flags that need manual resetting.
+
+    The console output when this class is returned is a table of states.
+    Otherwise, individual alarms can be accessed directly.
+    """
+    Loss_Of_Lock_INT = False
+    Loss_Of_Lock_FLG = False
+
+    Loss_Of_Signal_1_INT = False
+    Loss_Of_Signal_1_FLG = False
+    Loss_Of_Signal_2_INT = False
+    Loss_Of_Signal_2_FLG = False
+    Loss_Of_Signal_X_INT = False
+    Loss_Of_Signal_X_FLG = False
+
+    Freq_Offset_1_INT = False
+    Freq_Offset_1_FLG = False
+    Freq_Offset_2_INT = False
+    Freq_Offset_2_FLG = False
+
+    def __repr__(self):
+        return ("\nAlm:\t\tInt:\t\tFlg:\n" \
+            + "-------------------------------------\n" \
+            + "{}\t\t{}\t\t{}\n".format("LOL", self.Loss_Of_Lock_INT, self.Loss_Of_Lock_FLG) \
+            + "{}\t\t{}\t\t{}\n".format("LOS1", self.Loss_Of_Signal_1_INT, self.Loss_Of_Signal_1_FLG) \
+            + "{}\t\t{}\t\t{}\n".format("LOS2", self.Loss_Of_Signal_2_INT, self.Loss_Of_Signal_2_FLG) \
+            + "{}\t\t{}\t\t{}\n".format("LOSX", self.Loss_Of_Signal_X_INT, self.Loss_Of_Signal_X_FLG) \
+            + "{}\t\t{}\t\t{}\n".format("FO1", self.Freq_Offset_1_INT, self.Freq_Offset_1_FLG) \
+            + "{}\t\t{}\t\t{}\n".format("FO2", self.Freq_Offset_2_INT, self.Freq_Offset_2_FLG) \
+            )
+
 class SI5324(I2CDevice):
     """
     SI4324 Class:
@@ -48,6 +83,16 @@ class SI5324(I2CDevice):
             142,143,
             136]                        # Register 136 is here by convention (iCAL trigger)
 
+    # Clock IDs
+    CLOCK_1     = 1
+    CLOCK_2     = 2
+    CLOCK_X     = 0
+
+    # Autoselection Options:
+    AUTOMODE_Manual             = 0b00
+    AUTOMODE_Auto_Non_Revertive = 0b01
+    AUTOMODE_Auto_Revertive     = 0b10
+
     def __init__(self, address=0x68, **kwargs):
         """
         Initialise the SI5324 device.
@@ -57,8 +102,11 @@ class SI5324(I2CDevice):
 
         # Define control fields within I2C registers
         SI5324._FIELD_Free_Run_Mode = _Field(0,6,1)     #FREE_RUN Free Run Mode Enable
+
         SI5324._FIELD_Clock_1_Priority = _Field(1,1,2)  #CK_PRIOR2 Clock with 2nd priority
         SI5324._FIELD_Clock_2_Priority = _Field(1,3,2)  #CK_PRIOR1 Clock with 1st priority
+
+        SI5324._FIELD_Clock_Select = _Field(3,7,2)      #CLKSEL_REG Manual clock selection
 
         SI5324._FIELD_Autoselection = _Field(4,7,2)     #AUTOSEL_REG Autoselection mode
 
@@ -71,7 +119,7 @@ class SI5324(I2CDevice):
         SI5324._FIELD_LOL_INT = _Field(130,0,1)         #LOL_INT Loss of Lock alarm
 
         SI5324._FIELD_ICAL_TRG = _Field(136,6,1)        #ICAL Internal Calibration Trigger
-        SI5324._FIELD_RST_TRG = _Field(137,7,1)          #RST_REG Internal Reset Trigger
+        SI5324._FIELD_RST_TRG = _Field(136,7,1)          #RST_REG Internal Reset Trigger
 
         # NOTE: FLGs need manual clearing, for live alarm status, use corresponding INT signals...
         SI5324._FIELD_FOSC1_FLG = _Field(132,2,1)       #FOSC1_FLG Frequency Offset Flag for CLKIN_1
@@ -186,7 +234,7 @@ class SI5324(I2CDevice):
 
                 # Write register value
                 logger.info("Writing register {} with value {:02X}".format(register,value))
-                self.write8(register, value) 
+                self.write8(register, value)
 
                 if verify:
                     verify_value = self.readU8(register)
@@ -229,11 +277,11 @@ class SI5324(I2CDevice):
 
 
     """
-    Calibration
+    Device Action Commands
     """
     def run_ical (self):
         """
-        Runs the ICAL calibration. This should be peformed before any usage, since
+        Runs the ICAL calibration. This should be performed before any usage, since
         accuracy is not guaranteed until it is complete.
 
         By default, output will be disabled before calibration has been completed, but
@@ -243,7 +291,7 @@ class SI5324(I2CDevice):
         The ICAL will typically take around 1s, and will hold LOL_INT high during.
         """
         # Write register 136 bit 6 high (self-resetting)
-        self.set_register_field(SI5324._FIELD_ICAL_TRG, 1);
+        self.set_register_field(SI5324._FIELD_ICAL_TRG, 1)
 
         logger.info("iCAL initiated")
 
@@ -258,6 +306,13 @@ class SI5324(I2CDevice):
 
         logger.info("iCAL done")
 
+    def reset (self):
+        """
+        Resets the current device.
+        """
+        self.set_register_field(SI5324._FIELD_RST_TRG, 1)
+        time.sleep(0.010) # Control interface up after 10ms
+
 
     """
     Manual Access Functions:
@@ -269,9 +324,57 @@ class SI5324(I2CDevice):
         :param mode: Boolean. If True, Free Run mode is enabled.
         """
         if (mode):
-            self.set_register_field(SI5324._FIELD_Free_Run_Mode, 1, False)
+            self.set_register_field(SI5324._FIELD_Free_Run_Mode, 1)
         else :
-            self.set_register_field(SI5324._FIELD_Free_Run_Mode, 0, False)
+            self.set_register_field(SI5324._FIELD_Free_Run_Mode, 0)
+
+    def set_clock_select(self, clock_name, check_auto_en = True):
+        """
+        Select the clock that will be used to drive PLL input in Manual mode.
+        This function will handle freerun mode to choose between which input drives
+        clock 2 (the true clock 2 or external oscillator).
+
+        :param clock_name: Selected input clock: CLOCK_1, CLOCK_2 or CLOCK_X (for external Xtal)
+        :param check_auto_en: Set False to disable checking if auto-selection is disabled
+        """
+
+        # Check Manual selection mode is active.
+        if (self.get_register_field(SI5324._FIELD_Autoselection) != SI5324.AUTOMODE_Manual) and check_auto_en == True:
+            logger.warning(
+                    "Warning: clock selection made with auto-selection enabled. This setting will not take effect.")
+
+        # Set correct clock selection in CLKSEL, and set freerun mode accordingly for clock 2
+        if clock_name == SI5324.CLOCK_1:
+            self.set_register_field(SI5324._FIELD_Clock_Select, 0b00, True)
+            logger.info("Clock 1 selected")
+        elif clock_name == SI5324.CLOCK_2:
+            self.set_register_field(SI5324._FIELD_Clock_Select, 0b01, True, False)  # iCAL disabled due to call in freerun set
+            self.set_freerun_mode(False)
+            logger.info("Clock 2 selected, Free Run mode disabled (external oscillator NOT overriding)")
+        elif clock_name == SI5324.CLOCK_X:
+            self.set_register_field(SI5324._FIELD_Clock_Select, 0b01, True, False)  # iCAL disabled due to call in freerun set
+            self.set_freerun_mode(True)
+            logger.info("Clock 2 selected, Free Run mode enabled (external oscillator overriding)")
+        else:
+            raise I2CException(
+                    "Incorrect clock specified. Choose from CLOCK_1, CLOCK_2, or CLOCK_X.")
+
+
+    def set_autoselection_mode(self, auto_mode):
+        """
+        Set the channel auto selection mode.
+        In Manual, the channel select will be honored.
+        In Auto-revertive, the highest priority will always be chosen.
+        In Auto-non-revertive, the highest priority will be chosen if the current channel
+        has an alarm.
+
+        :param auto_mode: Mode selection: AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive, or AUTOMODE_Auto_Revertive.
+        """
+        if auto_mode in [SI5324.AUTOMODE_Manual, SI5324.AUTOMODE_Auto_Revertive, SI5324.AUTOMODE_Auto_Revertive]:
+            self.set_register_field(SI5324._FIELD_Autoselection, auto_mode)
+        else:
+            raise I2CException(
+                    "Incorrect Auto Selection mode specified. Choose from AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive, or AUTOMODE_Auto_Revertive.")
 
     def set_clock_priority(self, top_priority_clock, check_auto_en = True):
         """
@@ -280,9 +383,9 @@ class SI5324(I2CDevice):
         :param top_priority_clock: 1 or 2, indicating which clock has higher priority
         :param check_auto_en: Set False to disable checking if clock auto-selection is enabled
         """
-        if self.get_register_field(SI5324._FIELD_Autoselection) or check_auto_en == False:
-            raise I2CException(
-                    "Warning: setting priority clock without enabling auto-selection. Enable this first, or disable this warning with 'check_auto_en=False'")
+        if (self.get_register_field(SI5324._FIELD_Autoselection) == SI5324.AUTOMODE_Manual) and check_auto_en == True:
+            logger.warning(
+                    "Setting priority clock without enabling auto-selection. Enable autoselection for this setting to take effect.")
 
         if top_priority_clock == 1:
             self.set_register_field(SI5324._FIELD_Clock_1_Priority, 0b00, True, True)
@@ -296,4 +399,43 @@ class SI5324(I2CDevice):
 
         # Clock priority is ICAL-sensitive, but cal was held off, so it must be called manually.
         self.run_ical()
+
+    def get_alarm_states(self):
+        """
+        This function provides a more efficient way to read the alarm states by
+        reading them all at once (assuming that most often, groups of flags will
+        be of interest rather than one when called externally).
+
+        Registers where alarm flags and interrupts are grouped are read once and
+        extracted rather than reading individual fields so that the same
+        registers are not read multiple times.
+
+        :return: Alarm instance that includes current states (INT) and flags for each alarm.
+        """
+        alarms = Alarms()
+
+        # Loss of Signal Alarms
+        combined_LOS_states = self.readU8(129)
+        alarms.Loss_Of_Signal_1_INT = bool(combined_LOS_states & 0b010)
+        alarms.Loss_Of_Signal_2_INT = bool(combined_LOS_states & 0b100)
+        alarms.Loss_Of_Signal_X_INT = bool(combined_LOS_states & 0b001)
+
+        combined_LOS_flags = self.readU8(131)
+        alarms.Loss_Of_Signal_1_FLG = bool(combined_LOS_flags & 0b010)
+        alarms.Loss_Of_Signal_2_FLG = bool(combined_LOS_flags & 0b100)
+        alarms.Loss_Of_Signal_X_FLG = bool(combined_LOS_flags & 0b001)
+
+        # Frequency Offset and Loss of Lock Alarms
+        combined_FOLOL_states = self.readU8(130)
+        alarms.Freq_Offset_1_INT = bool(combined_FOLOL_states & 0b010)
+        alarms.Freq_Offset_2_INT = bool(combined_FOLOL_states & 0b100)
+        alarms.Loss_Of_Lock_INT = bool(combined_FOLOL_states & 0b001)
+
+        combined_FOLOL_flags = self.readU8(132)
+        alarms.Freq_Offset_1_FLG = bool(combined_FOLOL_flags & 0b0100)
+        alarms.Freq_Offset_2_FLG = bool(combined_FOLOL_flags& 0b1000)
+        alarms.Loss_Of_Lock_FLG - bool(combined_FOLOL_flags & 0b0010)
+
+        return alarms
+
 
