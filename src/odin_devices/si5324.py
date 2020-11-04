@@ -1,9 +1,16 @@
 """
 SI5324 - device access class for the SI5324 Clock Multiplier
 
-Provides access to control settings registers for the SI5234 device both
-individually through access functions as well as using settings generated
-using a register map generated with DSPLLsim software.
+Class to drive the SI5324 Clock Multiplier IC. Settings should primarily
+be created using the DSPLLsim software for PC, which can be uploaded using
+the apply_register_map() function. From there, some settings can be tweaked
+and the input clock can be switched (see Manual Access Functions). Be sure
+to run calibrate() after settings are changed.
+
+Once the settings are as desired, a register map can be exported with
+export_register_map() for later use.
+
+Joseph Nobes, STFC Detector Systems Software Group
 """
 
 from odin_devices.i2c_device import I2CDevice, I2CException
@@ -66,8 +73,7 @@ class Alarms:
 
 class SI5324(I2CDevice):
     """
-    SI4324 Class:
-    TODO add description
+    SI4324 Clock Multiplier Class:
     """
 
     # Registers that will require an iCAL calibration after modification
@@ -94,44 +100,43 @@ class SI5324(I2CDevice):
     AUTOMODE_Auto_Non_Revertive = 0b01
     AUTOMODE_Auto_Revertive     = 0b10
 
+    # Define control fields within I2C registers
+    _FIELD_Free_Run_Mode = _Field(0,6,1)     #FREE_RUN Free Run Mode Enable
+
+    _FIELD_Clock_1_Priority = _Field(1,1,2)  #CK_PRIOR2 Clock with 2nd priority
+    _FIELD_Clock_2_Priority = _Field(1,3,2)  #CK_PRIOR1 Clock with 1st priority
+
+    _FIELD_Clock_Select = _Field(3,7,2)      #CLKSEL_REG Manual clock selection
+
+    _FIELD_Autoselection = _Field(4,7,2)     #AUTOSEL_REG Autoselection mode
+
+    _FIELD_Clock_Active = _Field(128,1,2)    #CKx_ACTV_REG for clocks 1 and 2
+
+    _FIELD_LOS1_INT = _Field(129,1,1)        #LOS1_INT Loss of Signal alarm for CLKIN_1
+    _FIELD_LOS2_INT = _Field(129,2,1)        #LOS2_INT Loss of Signal alarm for CLKIN_2
+    _FIELD_LOSX_INT = _Field(129,0,1)        #LOSX_INT Loss of Signal alarm for XA/XB
+
+    _FIELD_FOSC1_INT = _Field(130,1,1)       #FOSC1_INT Frequency Offset alarm for CLKIN_1
+    _FIELD_FOSC2_INT = _Field(130,2,1)       #FOSC2_INT Frequency Offset alarm for CLKIN_2
+    _FIELD_LOL_INT = _Field(130,0,1)         #LOL_INT Loss of Lock alarm
+
+    _FIELD_ICAL_TRG = _Field(136,6,1)        #ICAL Internal Calibration Trigger
+    _FIELD_RST_TRG = _Field(136,7,1)          #RST_REG Internal Reset Trigger
+
+    # NOTE: FLGs need manual clearing, for live alarm status, use corresponding INT signals...
+    _FIELD_FOSC1_FLG = _Field(132,2,1)       #FOSC1_FLG Frequency Offset Flag for CLKIN_1
+    _FIELD_FOSC2_FLG = _Field(132,3,1)       #FOSC2_FLG Frequency Offset Flag for CLKIN_2
+    _FIELD_LOL_FLG = _Field(132,1,1)         #LOL_FLG Loss of Lock Flag
+    # TODO define remaining relevant registers
+
     def __init__(self, address=0x68, **kwargs):
         """
         Initialise the SI5324 device.
 
         :param address: The address of the SI5324 is determined by pins A[2:0] as follows: 0b1101[A2][A1][A0].
         """
-
-        # Define control fields within I2C registers
-        SI5324._FIELD_Free_Run_Mode = _Field(0,6,1)     #FREE_RUN Free Run Mode Enable
-
-        SI5324._FIELD_Clock_1_Priority = _Field(1,1,2)  #CK_PRIOR2 Clock with 2nd priority
-        SI5324._FIELD_Clock_2_Priority = _Field(1,3,2)  #CK_PRIOR1 Clock with 1st priority
-
-        SI5324._FIELD_Clock_Select = _Field(3,7,2)      #CLKSEL_REG Manual clock selection
-
-        SI5324._FIELD_Autoselection = _Field(4,7,2)     #AUTOSEL_REG Autoselection mode
-
-        SI5324._FIELD_Clock_Active = _Field(128,1,2)    #CKx_ACTV_REG for clocks 1 and 2
-
-        SI5324._FIELD_LOS1_INT = _Field(129,1,1)        #LOS1_INT Loss of Signal alarm for CLKIN_1
-        SI5324._FIELD_LOS2_INT = _Field(129,2,1)        #LOS2_INT Loss of Signal alarm for CLKIN_2
-        SI5324._FIELD_LOSX_INT = _Field(129,0,1)        #LOSX_INT Loss of Signal alarm for XA/XB
-
-        SI5324._FIELD_FOSC1_INT = _Field(130,1,1)       #FOSC1_INT Frequency Offset alarm for CLKIN_1
-        SI5324._FIELD_FOSC2_INT = _Field(130,2,1)       #FOSC2_INT Frequency Offset alarm for CLKIN_2
-        SI5324._FIELD_LOL_INT = _Field(130,0,1)         #LOL_INT Loss of Lock alarm
-
-        SI5324._FIELD_ICAL_TRG = _Field(136,6,1)        #ICAL Internal Calibration Trigger
-        SI5324._FIELD_RST_TRG = _Field(136,7,1)          #RST_REG Internal Reset Trigger
-
-        # NOTE: FLGs need manual clearing, for live alarm status, use corresponding INT signals...
-        SI5324._FIELD_FOSC1_FLG = _Field(132,2,1)       #FOSC1_FLG Frequency Offset Flag for CLKIN_1
-        SI5324._FIELD_FOSC2_FLG = _Field(132,3,1)       #FOSC2_FLG Frequency Offset Flag for CLKIN_2
-        SI5324._FIELD_LOL_FLG = _Field(132,1,1)         #LOL_FLG Loss of Lock Flag
-
-        # TODO define remaining relevant registers
-
         I2CDevice.__init__(self, address, **kwargs)
+        logger.info("Created new si5324 instance with address 0x{:02X}.".format(address))
         self.iCAL_required = True           # An iCAL is required at least once before run
 
 
