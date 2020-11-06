@@ -1,9 +1,8 @@
 """Test cases for the Max31856 device from odin_devices.
-Michael Shearwood, STFC Detector Systems Software Group Apprentice.
+Mika Shearwood, STFC Detector Systems Software Group Apprentice.
 """
 
 import sys
-
 import pytest
 
 if sys.version_info[0] == 3:
@@ -15,7 +14,6 @@ spidev_mock = MagicMock()
 sys.modules['spidev'] = spidev_mock
 
 from odin_devices.max31856 import Max31856
-
 
 class Max31856DeviceTestFixture(object):
     """Container class used in fixtures for testing driver behaviour."""
@@ -55,8 +53,9 @@ class TestMax31856Device(object):
 
         # Temperatures are stored in three-byte sequences and fetched with
         # the 'raw_temp =' transfer in temperature().
-        # In order shown here, the bytes represent 256, 16, 1, 1/16, 1/256, 1/4096 °C.
-        test_max31856_device.set_transfer_return_value(bytes([0x01, 0x60, 0x00]))
+        # In order shown here, the bytes represent 256, 16, 1, 1/16, 1/256, 1/4096 degreesC.
+        test_max31856_device.set_transfer_return_value(
+            bytearray([0x01, 0x60, 0x00]))
         assert test_max31856_device.device.temperature == 22
 
         assert test_max31856_device.device.spi.writebytes2.call_count == 2
