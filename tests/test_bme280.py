@@ -1,4 +1,10 @@
+"""Test cases for the bme280 from odin_devices.
 
+Sample register values, as seen in any given set_transfer_return_values call, were used for predictable outputs, lifted from the following page:
+https://learn.sparkfun.com/tutorials/sparkfun-bme280-breakout-hookup-guide/all#example-sketches. See ReadAllRegisters.ino for the specific screenshot.
+
+Mika Shearwood, STFC Detector Systems Software Group Apprentice.
+"""
 
 import sys
 
@@ -51,7 +57,7 @@ def test_bme280_device():
 class TestBME280Device(object):
 
     def test_bad_chip_id(self):
-        # A test to catch the RuntimeError in the device init
+        # A test to check the RuntimeError in the device init is raised
         # A new device is created with a bad chip ID, the error is caught
         # and error message checked
         with patch('odin_devices.spi_device.spidev.SpiDev') as MockSpiDev:

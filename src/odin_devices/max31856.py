@@ -7,13 +7,10 @@ https://datasheets.maximintegrated.com/en/ds/MAX31856.pdf
 
 This enables the device to read a temperature and then output it.
 """
-
 import time
-from odin_devices.spi_device import SPIDevice
-
 from struct import unpack
 
-
+from odin_devices.spi_device import SPIDevice
 
 class ThermocoupleType:  # pylint: disable=too-few-public-methods
     """An enum-like class representing the types of thermocouples that the MAX31856 can use.
@@ -30,7 +27,6 @@ class ThermocoupleType:  # pylint: disable=too-few-public-methods
     - ``ThermocoupleType.S``
     - ``ThermocoupleType.T``
     """
-
     # pylint: disable=invalid-name
     B = 0b0000
     E = 0b0001
@@ -115,12 +111,10 @@ class Max31856(SPIDevice):
         self._perform_one_shot_measurement()
 
         # Unpack the 3-byte temperature as 4 bytes
-        raw_temp = unpack(">i", self.transfer([self.LTCBH_REG, 0x00, 0x00, 0x00])+bytes([0]))[0]
-        # Using transfer() directly to bypass self.buffer
-
+        raw_temp = unpack(">i", self.transfer([self.LTCBH_REG, 0x00, 0x00, 0x00])+bytearray([0]))[0]
+        # Giving data to transfer() to bypass self.buffer
         # Shift to remove extra byte from unpack needing 4 bytes
         raw_temp >>= 8
-
         # Effectively shift raw_read >> 12 to convert pseudo-float
         temp_float = (raw_temp / 4096.0)
 
@@ -161,5 +155,5 @@ class Max31856(SPIDevice):
         """
         self.buffer[0] = address & 0x7F
         self.buffer[1] = 0
-        results = bytes(self.transfer(self.buffer)[1:])
+        results = self.transfer(self.buffer)[1:]
         return results

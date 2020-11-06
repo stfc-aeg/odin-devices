@@ -6,7 +6,7 @@ https://github.com/adafruit/Adafruit_Python_GPIO/blob/master/Adafruit_GPIO/SPI.p
 
 Basic SPI functions are available, along with settings adjustment.
 
-Michael Shearwood, STFC Detector Systems Software Group.
+Mika Shearwood, STFC Detector Systems Software Group.
 """
 
 import spidev
@@ -19,8 +19,9 @@ class SPIException(Exception):
     pass
 
 
-class SPIDevice():
-    """SPIDevice class.
+class SPIDevice(object):  # Explicitly making this new-style class
+                          # to ensure @property, .setter works with Py2
+    """SPIDevice class. 
 
     This class allows settings adjustment and read and write functions for the SPI device.
     """
@@ -113,7 +114,7 @@ class SPIDevice():
         :param mode: the SPI mode. Must be 0, 1, 2 or 3.
         """
         if mode < 0 or mode > 3:
-            logging.debug("Mode must be between 0 and 3 inclusive.")
+            logging.debug("Mode must be 0, 1, 2 or 3.")
             return
         self.spi.mode = mode
 
@@ -221,7 +222,6 @@ class SPIDevice():
         """Write only three bytes to the device.
 
         If the list is greater than three bytes, only the first three bytes will be written.
-
         Handling of bytes should be done in the class for the device itself.
 
         :param data: A list of data to be written to the device.

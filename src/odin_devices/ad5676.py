@@ -11,7 +11,6 @@ The first byte is a command and an address (4 bits each), the remaining two byte
 
 from odin_devices.spi_device import SPIDevice
 
-
 # Command bits for functions
 CMD_NO_OPERATION = 0x00
 CMD_INP_REG_WRITE = 0x10
@@ -24,13 +23,11 @@ CMD_REG_READBACK = 0x90
 CMD_UPDATE_ALL_INPUTS = 0xA0
 CMD_UPDATE_ALL_DAC_INPUTS = 0xB0
 
-
 class AD5676R(SPIDevice):
     """AD5676R class.
 
     This class implements support for the AD5676R device.
     """
-
     def __init__(self):
         """Initialise the AD5676R device. Many of the settings are set in spi_device.
 
@@ -109,13 +106,12 @@ class AD5676R(SPIDevice):
         Two bits refer to each DAC, where DB0, DB1 refer to DAC channel 0.
         DB2, DB3 refer to DAC channel 2, etc..
         00 is normal operation. The two power-down options are as follows:
-        01 connects the output internally to GND through a 1kΩ resistor,
+        01 connects the output internally to GND through a 1kOhm resistor,
         11 leaves it open-circuited (tristate).
 
         :param DAC_binary: a binary value that specifies how each channel will operate.
         """
         # The command for DAC power up/down is 0100 = 0x40.
-
         self.buffer[0] = CMD_POWER_DOWN
         self.buffer[1] = (DAC_binary >> 8) & 0xFF
         self.buffer[2] = DAC_binary & 0xFF
@@ -193,7 +189,6 @@ class AD5676R(SPIDevice):
         :param voltage: voltage to be converted to bytes and written
         """
         # Function for updating all input/DAC register channels is 1011 = 0xB0.
-
         dac_val = int(float(voltage)/2.5 * 0xFFFF)
 
         self.buffer[0] = CMD_UPDATE_ALL_DAC_INPUTS

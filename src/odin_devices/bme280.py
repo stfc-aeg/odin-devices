@@ -1,17 +1,14 @@
 """BME280 - bme280 device access class.
 
-derived from Adafruit implementation for CircuitPython available at:
+Derived from Adafruit implementation for CircuitPython available at:
 https://github.com/adafruit/Adafruit_CircuitPython_BME280/blob/80757ff2146c62ac7192c94b060c67d4751868b4/adafruit_bme280.py
 
 """
-
 import math
 from time import sleep
-
 from struct import unpack
 
 from odin_devices.spi_device import SPIDevice
-
 
 #    I2C ADDRESS/BITS/SETTINGS
 _BME280_ADDRESS = 0x77
@@ -82,13 +79,11 @@ _BME280_STANDBY_TCS = (STANDBY_TC_0_5, STANDBY_TC_10, STANDBY_TC_20,
                        STANDBY_TC_62_5, STANDBY_TC_125, STANDBY_TC_250,
                        STANDBY_TC_500, STANDBY_TC_1000)
 
-
 class BME280(SPIDevice):
     """BME280 class.
 
     This class implements support for the BME280 device.
     """
-
     def __init__(self):
         """Initialise the BME280 device.
 
@@ -249,7 +244,7 @@ class BME280(SPIDevice):
     def iir_filter(self):
         """Control the time constant of the IIR filter.
 
-        ALlowed values are the constanst IIR_FILTER_*.
+        ALlowed values are the constants IIR_FILTER_*.
         """
         return self._iir_filter
 
@@ -329,12 +324,12 @@ class BME280(SPIDevice):
         if not var1:  # avoid exception caused by division by zero
             raise ArithmeticError("Invalid result possibly related to error while \
 reading the calibration registers")
+
         pressure = 1048576.0 - adc
         pressure = ((pressure - var2 / 4096.0) * 6250.0) / var1
         var1 = self._pressure_calib[8] * pressure * pressure / 2147483648.0
         var2 = pressure * self._pressure_calib[7] / 32768.0
         pressure = pressure + (var1 + var2 + self._pressure_calib[6]) / 16.0
-
         pressure /= 100
         if pressure < _BME280_PRESSURE_MIN_HPA:
             return _BME280_PRESSURE_MIN_HPA
@@ -350,9 +345,7 @@ reading the calibration registers")
         """
         self._read_temperature()
         hum = self._read_register(_BME280_REGISTER_HUMIDDATA, end=3)
-        # print("Humidity data: ", hum)
         adc = float(hum[0] << 8 | hum[1])
-        # print("adc:", adc)
 
         # Algorithm from the BME280 driver
         # https://github.com/BoschSensortec/BME280_driver/blob/master/bme280.c
@@ -390,7 +383,7 @@ reading the calibration registers")
     def _read_coefficients(self):
         """Read & save the calibration coefficients."""
         coeff = self._read_register(_BME280_REGISTER_DIG_T1, end=25)
-        coeff = list(unpack('<HhhHhhhhhhhh', bytes(coeff)))
+        coeff = list(unpack('<HhhHhhhhhhhh', bytearray(coeff)))
         coeff = [float(i) for i in coeff]
         self._temp_calib = coeff[:3]
         self._pressure_calib = coeff[3:]
@@ -398,7 +391,7 @@ reading the calibration registers")
         self._humidity_calib = [0]*6
         self._humidity_calib[0] = self._read_byte(_BME280_REGISTER_DIG_H1)
         coeff = self._read_register(_BME280_REGISTER_DIG_H2, end=8)
-        coeff = list(unpack('<hBbBbb', bytes(coeff)))
+        coeff = list(unpack('<hBbBbb', bytearray(coeff)))
         self._humidity_calib[1] = float(coeff[0])
         self._humidity_calib[2] = float(coeff[1])
         self._humidity_calib[3] = float((coeff[2] << 4) | (coeff[3] & 0xF))
@@ -432,7 +425,6 @@ reading the calibration registers")
 
         :param end: specifies where to write up to in buffer. To be passed to transfer().
         :param write_value: value to fill the buffer with. Default: 0
-
         :returns result: the MISO transfer response, an array of length equal to buffer.
         """
         for i in range(len(self.buffer)):
@@ -449,4 +441,4 @@ reading the calibration registers")
         register &= 0x7F  # Write, bit 7 low.
         self.buffer[0] = register
         self.buffer[1] = value & 0xFF
-        self.write_bytes(bytes(self.buffer), end=2)
+        self.write_bytes(bytearray(self.buffer), end=2)
