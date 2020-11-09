@@ -144,6 +144,7 @@ class SI5324(I2CDevice):
     Utility Functions:
     """
 
+    @staticmethod
     def pins_to_address(A2,A1,A0):
         """
         Return value of address that self.will be used by the device based on the

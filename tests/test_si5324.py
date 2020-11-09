@@ -5,13 +5,13 @@ Joseph Nobes, STFC Detector Systems Software Group
 
 import sys
 import pytest
-#import builtins
-#import tempfile.NamedTemporaryFile as TmpFile
 
 if sys.version_info[0] == 3:    # pragma: no cover
     from unittest.mock import Mock, mock_open, patch
+    BUILTINS_NAME = 'builtins'
 else:                           # pramga: no cover
     from mock import Mock, mock_open, patch
+    BUILTINS_NAME = '__builtin__'
 
 sys.modules['smbus'] = Mock()
 sys.modules['logging'] = Mock() # Track calls to logger.warning
@@ -217,7 +217,7 @@ class TestSI5324():
 
         # Mock export to imaginary file
         mock_file_open = mock_open()
-        with patch('builtins.open', mock_file_open):
+        with patch(BUILTINS_NAME + '.open', mock_file_open):
             # Write temporary memory-based file
             test_si5324_driver.si5324.export_register_map('nofile.txt')
             mock_file_open.assert_called()
@@ -236,7 +236,7 @@ class TestSI5324():
         # Write registers from 'saved' register map file
         mock_file_open = mock_open(read_data=tmp_file_str)
         test_si5324_driver.registers[130] = 0b0 # Preset LOL low to end CAL
-        with patch('builtins.open', mock_file_open):
+        with patch(BUILTINS_NAME + '.open', mock_file_open):
             test_si5324_driver.si5324.apply_register_map('nofile.txt')
 
         # Now all special export registers should have values matching
