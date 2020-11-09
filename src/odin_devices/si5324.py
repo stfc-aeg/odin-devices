@@ -253,16 +253,18 @@ class SI5324(I2CDevice):
                        raise I2CException(
                                "Write of byte to register {} failed.".format(register))
 
+        f.close()
+
         # ICAL-sensitive registers will have been modified during this process
         self.iCAL_required = True
         self.calibrate()
 
-    def extract_register_map (self, mapfile_location):
+    def export_register_map (self, mapfile_location):
         """
         Generate a register map file using the current settings in device control
         registers. This file can then be loaded using apply_register_map(filename).
 
-        :param mapfile_location@ location of register map file that will be written to.
+        :param mapfile_location: location of register map file that will be written to.
         """
         f = open(mapfile_location, 'w')
         f.write("# This register map has been generated for the odin-devices SI5324 driver.\n")
@@ -300,6 +302,9 @@ class SI5324(I2CDevice):
         with CKOUT_ALWAYS_ON controlling for former, and SQ_ICAL the latter.
 
         The ICAL will typically take around 1s, and will hold LOL_INT high during.
+
+        :param timeout_ms: Time to wait for LOL flag to go low in ms.
+        :return: 0 for success, 1 for failure
         """
         # Write register 136 bit 6 high (self-resetting)
         self.set_register_field(SI5324._FIELD_ICAL_TRG, 1)
@@ -313,7 +318,6 @@ class SI5324(I2CDevice):
 
         start_time = time.time()
         latest_time = time.time()
-        time.sleep(1.000)
         while self.get_register_field(SI5324._FIELD_LOL_INT):
             time.sleep(0.100)
             logger.debug("iCAL waiting...")
@@ -326,23 +330,27 @@ class SI5324(I2CDevice):
             if ((latest_time - start_time)*1000) > timeout_ms:
                 logger.warning(
                         "iCAL timed out after {}s. Check if selected clock has Loss Of Signal:\n{}\nNOTE: iCAL should be performed on desired source before use.".format(latest_time-start_time, self.get_alarm_states()))
-                return
+                return 1
 
         logger.info("iCAL done in {}s".format(latest_time-start_time))
 
         self.iCAL_required = False
+        return 0
 
     def calibrate (self):
         """
         Wrapper function for the above internal iCAL function above. It will only execute
         the iCAL if it has been set as required (by writing to a register that has been
         designated as iCAL sensitive). This should save on onwanted delays.
+
+        :return: 0 for success, 1 for failure in iCAL
         """
         if self.iCAL_required:
             logger.info("iCAL-sensitive registers were modified, performing calibration...")
-            self._run_ical()
+            return self._run_ical()
         else:
             logger.info("iCAL-sensitive registers were not modified, skipping calibration...")
+            return 0    # Still success
 
     def reset (self):
         """
@@ -523,7 +531,7 @@ class SI5324(I2CDevice):
         combined_FOLOL_flags = self.readU8(132)
         alarms.Freq_Offset_1_FLG = bool(combined_FOLOL_flags & 0b0100)
         alarms.Freq_Offset_2_FLG = bool(combined_FOLOL_flags& 0b1000)
-        alarms.Loss_Of_Lock_FLG - bool(combined_FOLOL_flags & 0b0010)
+        alarms.Loss_Of_Lock_FLG = bool(combined_FOLOL_flags & 0b0010)
 
         return alarms
 
