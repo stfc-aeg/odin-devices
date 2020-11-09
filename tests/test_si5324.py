@@ -47,7 +47,6 @@ class si5324TestFixture(object):
         return self.registers[register]
 
     def write_virtual_regmap(self, address, register, value):
-        print ("Writing virtual register {} with 0x{:02X}".format(register, value))
         self.registers[register] = value
 
 @pytest.fixture(scope="class")
