@@ -182,7 +182,7 @@ class TestSI5324():
         # Test for autoselect warning
         test_si5324_driver.registers[4] = 0b10000000    # Enable revertive autoselection
         test_si5324_driver.si5324.set_clock_select(SI5324.CLOCK_1, True)
-        test_si5324_driver.si5324.bus.read_byte_data.assert_any_call(   # Autosel reg read
+        test_si5324_driver.si5324.bus.read_byte_data.assert_any_call(   # Autoselect reg read
                 test_si5324_driver.si5324.address, 4)
         arg = logger.warning.call_args()
         assert arg.contains("auto-selection enabled")   # Warning correct
