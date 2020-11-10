@@ -67,6 +67,14 @@ class TestSI5324():
         assert SI5324.pins_to_address(0,1,0) == (0x68 + 0b010)
         assert SI5324.pins_to_address(0,0,1) == (0x68 + 0b001)
 
+        # Test incorrect values cause exceptions
+        with pytest.raises(I2CException, match="Pins should be specified as 1 or 0"):
+            SI5324.pins_to_address(5,0,0)
+        with pytest.raises(I2CException, match="Pins should be specified as 1 or 0"):
+            SI5324.pins_to_address(0,"test",0)
+
+
+
     def test_calibration_routine(self, test_si5324_driver):
         test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
 
@@ -102,7 +110,7 @@ class TestSI5324():
 
         # Test editing a field within an iCAL sensitive register flags iCAL as required
         test_si5324_driver.si5324.iCAL_required = False
-        test_si5324_driver.si5324.set_register_field(SI5324._FIELD_Free_Run_Mode,1)
+        test_si5324_driver.si5324._set_register_field(SI5324._FIELD_Free_Run_Mode,1)
         assert test_si5324_driver.si5324.iCAL_required == True
 
         test_si5324_driver.virtual_registers_en(False)  # smbus read reset
@@ -113,7 +121,7 @@ class TestSI5324():
         # Field Writing:
         # Set two bits within a defined field (register 4, bits 7&6) low
         test_si5324_driver.registers[4] = 0xff      # Init register before modification
-        test_si5324_driver.si5324.set_register_field(SI5324._FIELD_Autoselection, 0b00)
+        test_si5324_driver.si5324._set_register_field(SI5324._FIELD_Autoselection, 0b00)
 
         # Check initial value was read from register
         test_si5324_driver.si5324.bus.read_byte_data.assert_any_call(
@@ -126,7 +134,7 @@ class TestSI5324():
         # Check verification failure if readback has not changed
         test_si5324_driver.si5324.bus.read_byte_data.side_effect = [0xFF,0xFF] # Force smbus read to always return 0xFF
         with pytest.raises(I2CException, match=".*not successfully written.*"): # Check for exception
-            test_si5324_driver.si5324.set_register_field(
+            test_si5324_driver.si5324._set_register_field(
                     SI5324._FIELD_Autoselection, 0b00, True)   # Run with verify
         test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
 
@@ -134,7 +142,7 @@ class TestSI5324():
         # Field Reading:
         # Read two bits within a defined field (register 1, bits 3@2)
         test_si5324_driver.registers[1] = 0b00001100    # Init field to 0b11
-        output_value = test_si5324_driver.si5324.get_register_field(
+        output_value = test_si5324_driver.si5324._get_register_field(
                 SI5324._FIELD_Clock_2_Priority)
 
         # Check smbus read function is called as expected, return will be 0b00001000
@@ -179,9 +187,67 @@ class TestSI5324():
         arg = logger.warning.call_args()
         assert arg.contains("auto-selection enabled")   # Warning correct
 
-        # Test for invalid input
-        with pytest.raises(I2CException, match="Incorrect clock.*"):
+        # Test for invalid input and read exceptions
+        with pytest.raises(I2CException, match="Incorrect clock.*"):    # Impossible clock select
             test_si5324_driver.si5324.set_clock_select(0xFF)
+        with pytest.raises(I2CException, match=".*invalid CLKSEL.*"):   # CLKSEL read failure
+            test_si5324_driver.registers[3] = 0b11000000    # Reserved value, not correct
+            test_si5324_driver.si5324.get_clock_select()
+
+        test_si5324_driver.virtual_registers_en(False)  # smbus read reset
+
+    def test_autoselect(self, test_si5324_driver):
+        test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
+
+        # Check correct auto-selection modes read and write correctly
+        for automode in [
+                SI5324.AUTOMODE_Manual,
+                SI5324.AUTOMODE_Auto_Revertive,
+                SI5324.AUTOMODE_Auto_Non_Revertive]:
+            test_si5324_driver.registers[4] = 0b11000000    # Invalid init value
+            test_si5324_driver.si5324.set_autoselection_mode(automode)
+
+            assert (test_si5324_driver.registers[4] & 0b11000000) == automode << 6  # Correctly set
+
+            assert test_si5324_driver.si5324.get_autoselection_mode() == automode   # Correctly read
+
+        # Check supplying incorrect mode triggers exception
+        with pytest.raises(I2CException, match=".*Incorrect Auto Selection mode.*"):
+            test_si5324_driver.si5324.set_autoselection_mode(0xFF)
+
+        test_si5324_driver.virtual_registers_en(False)  # smbus read reset
+
+    def test_clock_priority(self, test_si5324_driver):
+        test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
+        logger.reset_mock()
+
+        test_si5324_driver.registers[4] = 0b10000000    # Autosel revertive enabled
+
+        # Test setting clock 1 top priority
+        test_si5324_driver.registers[1] = 0xFF      # Preset register to an invalid value
+        test_si5324_driver.si5324.set_clock_priority(SI5324.CLOCK_1)
+        assert test_si5324_driver.registers[1] & 0x0F == 0b0100     # CK2 2nd, CK1 1st
+
+        # Test setting clock 2 and X top priority (both should set clock 2 as 1st)
+        for clock in [SI5324.CLOCK_2, SI5324.CLOCK_X]:
+            test_si5324_driver.registers[1] = 0xFF      # Preset register to an invalid value
+            test_si5324_driver.si5324.set_clock_priority(clock)
+            assert test_si5324_driver.registers[1] & 0x0F == 0b0001     # CK2 1st, CK1 2nd
+
+        # Test autoselection check is functional and can be disabled
+        logger.warning.assert_not_called()              # Check previous calls with autosel enabled
+
+        test_si5324_driver.registers[4] = 0b00000000    # Manual selection mode enabled
+        test_si5324_driver.si5324.set_clock_priority(SI5324.CLOCK_1, False)     # Disable check
+        logger.warning.asser_not_called()
+
+        test_si5324_driver.si5324.set_clock_priority(SI5324.CLOCK_1)    # Run normally
+        arg = logger.warning.call_args()
+        assert arg.contains("Enable autoselection")     # Check correct warning issued
+
+        # Test exception trigger on invalid clock
+        with pytest.raises(I2CException, match=".*Incorrect clock specification..*"):
+            test_si5324_driver.si5324.set_clock_priority(0xFF)
 
         test_si5324_driver.virtual_registers_en(False)  # smbus read reset
 
@@ -204,6 +270,11 @@ class TestSI5324():
         test_si5324_driver.registers[128] = 0b00    # Set no clock active
         for test_si5324_driver.registers[0] in [0b01000000, 0b0]:   # Freerun on and off
             assert test_si5324_driver.si5324.get_active_clock() == SI5324.CLOCK_NONE
+
+        # Check invalid read triggers exception
+        with pytest.raises(I2CException, match=".*invalid ACTV_REG.*"):     # ACTV_REG read failure
+            test_si5324_driver.registers[128] = 0b11    # Invalid reserved value
+            test_si5324_driver.si5324.get_active_clock()
 
         test_si5324_driver.virtual_registers_en(False)  # smbus read reset
 
