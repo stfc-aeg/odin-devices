@@ -17,9 +17,9 @@ from odin_devices.i2c_device import I2CDevice, I2CException
 import time
 import logging
 
-#logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('si5324')
+
 
 class _Field:
     """
@@ -33,8 +33,9 @@ class _Field:
         self.startbit = startbit
         self.length = length
 
-    def get_endbit (self):
-        return (self.startbit - (self.length-1))
+    def get_endbit(self):
+        return (self.startbit - (self.length - 1))
+
 
 class Alarms:
     """
@@ -61,15 +62,22 @@ class Alarms:
     Freq_Offset_2_FLG = False
 
     def __repr__(self):
-        return ("\nAlm:\t\tInt:\t\tFlg:\n" \
-            + "-------------------------------------\n" \
-            + "{}\t\t{}\t\t{}\n".format("LOL", self.Loss_Of_Lock_INT, self.Loss_Of_Lock_FLG) \
-            + "{}\t\t{}\t\t{}\n".format("LOS1", self.Loss_Of_Signal_1_INT, self.Loss_Of_Signal_1_FLG) \
-            + "{}\t\t{}\t\t{}\n".format("LOS2", self.Loss_Of_Signal_2_INT, self.Loss_Of_Signal_2_FLG) \
-            + "{}\t\t{}\t\t{}\n".format("LOSX", self.Loss_Of_Signal_X_INT, self.Loss_Of_Signal_X_FLG) \
-            + "{}\t\t{}\t\t{}\n".format("FO1", self.Freq_Offset_1_INT, self.Freq_Offset_1_FLG) \
-            + "{}\t\t{}\t\t{}\n".format("FO2", self.Freq_Offset_2_INT, self.Freq_Offset_2_FLG) \
-            )
+        return ("\nAlm:\t\tInt:\t\tFlg:\n"
+                + "-------------------------------------\n"
+                + "{}\t\t{}\t\t{}\n".format("LOL",
+                                            self.Loss_Of_Lock_INT, self.Loss_Of_Lock_FLG)
+                + "{}\t\t{}\t\t{}\n".format("LOS1",
+                                            self.Loss_Of_Signal_1_INT, self.Loss_Of_Signal_1_FLG)
+                + "{}\t\t{}\t\t{}\n".format("LOS2",
+                                            self.Loss_Of_Signal_2_INT, self.Loss_Of_Signal_2_FLG)
+                + "{}\t\t{}\t\t{}\n".format("LOSX",
+                                            self.Loss_Of_Signal_X_INT, self.Loss_Of_Signal_X_FLG)
+                + "{}\t\t{}\t\t{}\n".format("FO1",
+                                            self.Freq_Offset_1_INT, self.Freq_Offset_1_FLG)
+                + "{}\t\t{}\t\t{}\n".format("FO2",
+                                            self.Freq_Offset_2_INT, self.Freq_Offset_2_FLG)
+                )
+
 
 class SI5324(I2CDevice):
     """
@@ -79,7 +87,8 @@ class SI5324(I2CDevice):
     # Registers that will require an iCAL calibration after modification
     _ICAL_sensitive_registers = [0,1,2,4,5,7,7,9,10,11,19,25,31,34,40,43,46,55]
     # Registers that should be included in the extracted register mapfile
-    _regmap_registers = [0,1,2,3,4,5,6,7,8,9,
+    _regmap_registers = [
+            0,1,2,3,4,5,6,7,8,9,
             10,11,19,
             20,21,22,23,24,25,
             31,32,33,34,35,36,
@@ -87,7 +96,7 @@ class SI5324(I2CDevice):
             55,
             131,132,137,138,139,
             142,143,
-            136]                        # Register 136 is here by convention (iCAL trigger)
+            136]           # Register 136 is here by convention (iCAL trigger)
 
     # Clock IDs
     CLOCK_NONE  = 0
@@ -101,44 +110,44 @@ class SI5324(I2CDevice):
     AUTOMODE_Auto_Revertive     = 0b10
 
     # Define control fields within I2C registers
-    _FIELD_Free_Run_Mode = _Field(0,6,1)     #FREE_RUN Free Run Mode Enable
+    _FIELD_Free_Run_Mode = _Field(0,6,1)        # FREE_RUN Free Run Mode Enable
 
-    _FIELD_Clock_1_Priority = _Field(1,1,2)  #CK_PRIOR2 Clock with 2nd priority
-    _FIELD_Clock_2_Priority = _Field(1,3,2)  #CK_PRIOR1 Clock with 1st priority
+    _FIELD_Clock_1_Priority = _Field(1,1,2)     # CK_PRIOR2 Clock with 2nd priority
+    _FIELD_Clock_2_Priority = _Field(1,3,2)     # CK_PRIOR1 Clock with 1st priority
 
-    _FIELD_Clock_Select = _Field(3,7,2)      #CLKSEL_REG Manual clock selection
+    _FIELD_Clock_Select = _Field(3,7,2)         # CLKSEL_REG Manual clock selection
 
-    _FIELD_Autoselection = _Field(4,7,2)     #AUTOSEL_REG Autoselection mode
+    _FIELD_Autoselection = _Field(4,7,2)        # AUTOSEL_REG Autoselection mode
 
-    _FIELD_Clock_Active = _Field(128,1,2)    #CKx_ACTV_REG for clocks 1 and 2
+    _FIELD_Clock_Active = _Field(128,1,2)       # CKx_ACTV_REG for clocks 1 and 2
 
-    _FIELD_LOS1_INT = _Field(129,1,1)        #LOS1_INT Loss of Signal alarm for CLKIN_1
-    _FIELD_LOS2_INT = _Field(129,2,1)        #LOS2_INT Loss of Signal alarm for CLKIN_2
-    _FIELD_LOSX_INT = _Field(129,0,1)        #LOSX_INT Loss of Signal alarm for XA/XB
+    _FIELD_LOS1_INT = _Field(129,1,1)           # LOS1_INT Loss of Signal alarm for CLKIN_1
+    _FIELD_LOS2_INT = _Field(129,2,1)           # LOS2_INT Loss of Signal alarm for CLKIN_2
+    _FIELD_LOSX_INT = _Field(129,0,1)           # LOSX_INT Loss of Signal alarm for XA/XB
 
-    _FIELD_FOSC1_INT = _Field(130,1,1)       #FOSC1_INT Frequency Offset alarm for CLKIN_1
-    _FIELD_FOSC2_INT = _Field(130,2,1)       #FOSC2_INT Frequency Offset alarm for CLKIN_2
-    _FIELD_LOL_INT = _Field(130,0,1)         #LOL_INT Loss of Lock alarm
+    _FIELD_FOSC1_INT = _Field(130,1,1)          # FOSC1_INT Frequency Offset alarm for CLKIN_1
+    _FIELD_FOSC2_INT = _Field(130,2,1)          # FOSC2_INT Frequency Offset alarm for CLKIN_2
+    _FIELD_LOL_INT = _Field(130,0,1)            # LOL_INT Loss of Lock alarm
 
-    _FIELD_ICAL_TRG = _Field(136,6,1)        #ICAL Internal Calibration Trigger
-    _FIELD_RST_TRG = _Field(136,7,1)          #RST_REG Internal Reset Trigger
+    _FIELD_ICAL_TRG = _Field(136,6,1)           # ICAL Internal Calibration Trigger
+    _FIELD_RST_TRG = _Field(136,7,1)            # RST_REG Internal Reset Trigger
 
     # NOTE: FLGs need manual clearing, for live alarm status, use corresponding INT signals...
-    _FIELD_FOSC1_FLG = _Field(132,2,1)       #FOSC1_FLG Frequency Offset Flag for CLKIN_1
-    _FIELD_FOSC2_FLG = _Field(132,3,1)       #FOSC2_FLG Frequency Offset Flag for CLKIN_2
-    _FIELD_LOL_FLG = _Field(132,1,1)         #LOL_FLG Loss of Lock Flag
+    _FIELD_FOSC1_FLG = _Field(132,2,1)          # FOSC1_FLG Frequency Offset Flag for CLKIN_1
+    _FIELD_FOSC2_FLG = _Field(132,3,1)          # FOSC2_FLG Frequency Offset Flag for CLKIN_2
+    _FIELD_LOL_FLG = _Field(132,1,1)            # LOL_FLG Loss of Lock Flag
     # TODO define remaining relevant registers
 
     def __init__(self, address=0x68, **kwargs):
         """
         Initialise the SI5324 device.
 
-        :param address: The address of the SI5324 is determined by pins A[2:0] as follows: 0b1101[A2][A1][A0].
+        :param address: The address of the SI5324 is determined by pins A[2:0] as follows:
+                        0b1101[A2][A1][A0].
         """
         I2CDevice.__init__(self, address, **kwargs)
         logger.info("Created new si5324 instance with address 0x{:02X}.".format(address))
         self.iCAL_required = True           # An iCAL is required at least once before run
-
 
     """
     Utility Functions:
@@ -152,11 +161,11 @@ class SI5324(I2CDevice):
         """
         return (0b1101000 | (A2 << 2) | (A1 << 1) | A0)
 
-
     """
     Direct Control Field Functions
     """
-    def set_register_field(self, field, value, verify = False):
+
+    def set_register_field(self, field, value, verify=False):
         """
         Write a field of <=8 bits into an 8-bit register.
         Field bits are masked to preserve other settings held within the same register.
@@ -169,32 +178,36 @@ class SI5324(I2CDevice):
         :param value: Unsigned byte holding unshifted value to be written to the field
         :param verify: Boolean. If true, read values back to verify correct writing.
         """
-        logger.debug("Writing value {} to field {}-{} in register {}".format(value,field.startbit,field.get_endbit(),field.register))
+        logger.debug("Writing value {} to field {}-{} in register {}".format(
+            value,field.startbit,field.get_endbit(),field.register))
 
         # check input fits in specified field
         if (1 << (field.length + 1)) <= value:
             raise I2CException(
-                    "Value {} does not fit in specified field of length {}.".format(value, field.length))
+                    "Value {} does not fit in specified field of length {}.".format(
+                        value, field.length))
 
         old_value = self.readU8(field.register)
-        new_msk = (0xff >> (8-field.length))<< field.get_endbit()
-        logger.debug("Register {}: field start: {}, field end: {} -> mask {:b}".format(field.register,field.startbit,field.get_endbit(), new_msk))
-        new_value = (old_value & ~new_msk)| (value << field.get_endbit())
+        new_msk = (0xff >> (8-field.length)) << field.get_endbit()
+        logger.debug("Register {}: field start: {}, field end: {} -> mask {:b}".format(
+            field.register,field.startbit,field.get_endbit(), new_msk))
+        new_value = (old_value & ~new_msk) | (value << field.get_endbit())
         logger.debug("Register {}: {:b} -> {:b}".format(field.register, old_value, new_value))
         if new_value != old_value:
             self.write8(field.register, new_value)
 
         if verify:
             verify_value = self.get_register_field(field)
-            logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(value,verify_value))
+            logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(
+                value,verify_value))
             if verify_value != value:
                 raise I2CException(
-                        "Value {} was not successfully written to Field {}".format(value, field))
+                        "Value {} was not successfully written to Field {}".format(
+                            value, field))
 
         if (field.register in SI5324._ICAL_sensitive_registers):
             logger.info("Register {} requires iCAL run".format(field.register))
             self.iCAL_required = True
-
 
     def get_register_field(self, field):
         """
@@ -202,7 +215,8 @@ class SI5324(I2CDevice):
 
         :param field: _Field instance holding relevant register and location of field bits
         """
-        logger.debug("Getting field starting at bit {}, length {} from register {}".format(field.startbit,field.length,field.register))
+        logger.debug("Getting field starting at bit {}, length {} from register {}".format(
+            field.startbit,field.length,field.register))
 
         raw_register_value = self.readU8(field.register)
         logger.debug("Raw value: {0:b}".format(raw_register_value))
@@ -216,11 +230,10 @@ class SI5324(I2CDevice):
         logger.debug("Low bits removed: {0:b}".format(value))
         return value
 
-
     """
     Register Map File Functions
     """
-    def apply_register_map (self, mapfile_location, verify = True):
+    def apply_register_map(self, mapfile_location, verify=True):
         """
         Write configuration from a register map generated with DSPLLsim.
         Since the map is register rather than value-based, there is no need to make use
@@ -237,7 +250,7 @@ class SI5324(I2CDevice):
                 # Extract register-value pairing from register map
                 register, value = line.split(',')
                 register = int(register)
-                value = int(value[1:3],16) # Value is in hex
+                value = int(value[1:3],16)      # Value is in hex
 
                 if register == 136 and (value & 0x40):
                     logger.info("Ignoring write to iCAL, will be applied next")
@@ -249,10 +262,11 @@ class SI5324(I2CDevice):
 
                 if verify:
                     verify_value = self.readU8(register)
-                    logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(value,verify_value))
+                    logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(
+                        value,verify_value))
                     if verify_value != value:
-                       raise I2CException(
-                               "Write of byte to register {} failed.".format(register))
+                        raise I2CException(
+                                "Write of byte to register {} failed.".format(register))
 
         f.close()
 
@@ -260,7 +274,7 @@ class SI5324(I2CDevice):
         self.iCAL_required = True
         self.calibrate()
 
-    def export_register_map (self, mapfile_location):
+    def export_register_map(self, mapfile_location):
         """
         Generate a register map file using the current settings in device control
         registers. This file can then be loaded using apply_register_map(filename).
@@ -289,11 +303,10 @@ class SI5324(I2CDevice):
         f.truncate()
         f.close()
 
-
     """
     Device Action Commands
     """
-    def _run_ical (self, timeout_ms=20000):
+    def _run_ical(self, timeout_ms=20000):
         """
         Runs the ICAL calibration. This should be performed before any usage, since
         accuracy is not guaranteed until it is complete.
@@ -329,8 +342,12 @@ class SI5324(I2CDevice):
             # unstable).
             latest_time = time.time()
             if ((latest_time - start_time)*1000) > timeout_ms:
-                logger.warning(
-                        "iCAL timed out after {}s. Check if selected clock has Loss Of Signal:\n{}\nNOTE: iCAL should be performed on desired source before use.".format(latest_time-start_time, self.get_alarm_states()))
+                logger.warning((
+                        "iCAL timed out after {}s.".format(latest_time-start_time)
+                        + " Check if selected clock has Loss Of Signal:"
+                        + "\n{}".format(self.get_alarm_states())
+                        + "\nNOTE: iCAL should be performed on desired source before use."
+                        ))
                 return 1
 
         logger.info("iCAL done in {}s".format(latest_time-start_time))
@@ -338,7 +355,7 @@ class SI5324(I2CDevice):
         self.iCAL_required = False
         return 0
 
-    def calibrate (self):
+    def calibrate(self):
         """
         Wrapper function for the above internal iCAL function above. It will only execute
         the iCAL if it has been set as required (by writing to a register that has been
@@ -353,13 +370,12 @@ class SI5324(I2CDevice):
             logger.info("iCAL-sensitive registers were not modified, skipping calibration...")
             return 0    # Still success
 
-    def reset (self):
+    def reset(self):
         """
         Resets the current device.
         """
         self.set_register_field(SI5324._FIELD_RST_TRG, 1)
-        time.sleep(0.010) # Control interface up after 10ms
-
+        time.sleep(0.010)   # Control interface up after 10ms
 
     """
     Manual Access Functions:
@@ -375,10 +391,10 @@ class SI5324(I2CDevice):
         """
         if (mode):
             self.set_register_field(SI5324._FIELD_Free_Run_Mode, 1)
-        else :
+        else:
             self.set_register_field(SI5324._FIELD_Free_Run_Mode, 0)
 
-    def set_clock_select(self, clock_name, check_auto_en = True):
+    def set_clock_select(self, clock_name, check_auto_en=True):
         """
         Select the clock that will be used to drive PLL input in Manual mode.
         This function will handle freerun mode to choose between which input drives
@@ -389,9 +405,11 @@ class SI5324(I2CDevice):
         """
 
         # Check Manual selection mode is active.
-        if (self.get_register_field(SI5324._FIELD_Autoselection) != SI5324.AUTOMODE_Manual) and check_auto_en == True:
+        if ((self.get_register_field(SI5324._FIELD_Autoselection) != SI5324.AUTOMODE_Manual)
+                and check_auto_en):
             logger.warning(
-                    "Warning: clock selection made with auto-selection enabled. This setting will not take effect.")
+                    "Warning: clock selection made with auto-selection enabled."
+                    " This setting will not take effect.")
 
         # Set correct clock selection in CLKSEL, and set freerun mode accordingly for clock 2
         if clock_name == SI5324.CLOCK_1:
@@ -400,7 +418,8 @@ class SI5324(I2CDevice):
         elif clock_name == SI5324.CLOCK_2:
             self.set_register_field(SI5324._FIELD_Clock_Select, 0b01, True)
             self.set_freerun_mode(False)
-            logger.info("Clock 2 selected, Free Run mode disabled (external oscillator NOT overriding)")
+            logger.info(
+                    "Clock 2 selected, Free Run mode disabled (external oscillator NOT overriding)")
         elif clock_name == SI5324.CLOCK_X:
             self.set_register_field(SI5324._FIELD_Clock_Select, 0b01, True)
             self.set_freerun_mode(True)
@@ -422,13 +441,13 @@ class SI5324(I2CDevice):
         raw_clksel = self.get_register_field(SI5324._FIELD_Clock_Select)
         freerun_mode = self.get_register_field(SI5324._FIELD_Free_Run_Mode)
 
-        if (raw_clksel == 0b00):    #CLKSEL Clock 1
+        if (raw_clksel == 0b00):    # CLKSEL Clock 1
             return SI5324.CLOCK_1
-        elif (raw_clksel == 0b01):  #CLKSEL Clock 2
+        elif (raw_clksel == 0b01):  # CLKSEL Clock 2
             if (freerun_mode):
-                return SI5324.CLOCK_X          #Clock 2 overridden by external oscillator
+                return SI5324.CLOCK_X          # Clock 2 overridden by external oscillator
             else:
-                return SI5324.CLOCK_2          #Clock 2 not overridden
+                return SI5324.CLOCK_2          # Clock 2 not overridden
         else:
             raise I2CException(
                     "Device returned invalid CLKSEL register reponse: 0x{:02X}".format(raw_clksel))
@@ -445,18 +464,19 @@ class SI5324(I2CDevice):
         raw_activeclk = self.get_register_field(SI5324._FIELD_Clock_Active)
         freerun_mode = self.get_register_field(SI5324._FIELD_Free_Run_Mode)
 
-        if (raw_activeclk == 0b01):    #ACTV_REG Clock 1
+        if (raw_activeclk == 0b01):    # ACTV_REG Clock 1
             return SI5324.CLOCK_1
-        elif (raw_activeclk == 0b10):  #ACTV_REG Clock 2
+        elif (raw_activeclk == 0b10):  # ACTV_REG Clock 2
             if (freerun_mode):
-                return SI5324.CLOCK_X          #Clock 2 overridden by external oscillator
+                return SI5324.CLOCK_X          # Clock 2 overridden by external oscillator
             else:
-                return SI5324.CLOCK_2          #Clock 2 not overridden
-        elif (raw_activeclk == 0b00):   #ACTV_REG No clock
+                return SI5324.CLOCK_2          # Clock 2 not overridden
+        elif (raw_activeclk == 0b00):   # ACTV_REG No clock
             return SI5324.CLOCK_NONE
         else:
             raise I2CException(
-                    "Device returned invalid ACTV_REG register reponse: 0x{:02X}".format(raw_activeclk))
+                    "Device returned invalid ACTV_REG register reponse: 0x{:02X}".format(
+                        raw_activeclk))
 
     def set_autoselection_mode(self, auto_mode):
         """
@@ -466,27 +486,35 @@ class SI5324(I2CDevice):
         In Auto-non-revertive, the highest priority will be chosen if the current channel
         has an alarm.
 
-        :param auto_mode: Mode selection: AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive, or AUTOMODE_Auto_Revertive.
+        :param auto_mode: Mode selection: AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive,
+                            or AUTOMODE_Auto_Revertive.
         """
-        if auto_mode in [SI5324.AUTOMODE_Manual, SI5324.AUTOMODE_Auto_Revertive, SI5324.AUTOMODE_Auto_Revertive]:
+        if auto_mode in [
+                SI5324.AUTOMODE_Manual,
+                SI5324.AUTOMODE_Auto_Revertive,
+                SI5324.AUTOMODE_Auto_Revertive]:
             self.set_register_field(SI5324._FIELD_Autoselection, auto_mode)
         else:
             raise I2CException(
-                    "Incorrect Auto Selection mode specified. Choose from AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive, or AUTOMODE_Auto_Revertive.")
+                    "Incorrect Auto Selection mode specified."
+                    " Choose from AUTOMODE_Manual, AUTOMODE_Auto_Non_Revertive,"
+                    " or AUTOMODE_Auto_Revertive.")
 
     def get_autoselection_mode(self):
         return self.get_register_field(SI5324._FIELD_Autoselection)
 
-    def set_clock_priority(self, top_priority_clock, check_auto_en = True):
+    def set_clock_priority(self, top_priority_clock, check_auto_en=True):
         """
         Set the clock that takes priority if clock autoselection is enabled.
 
         :param top_priority_clock: 1 or 2, indicating which clock has higher priority
         :param check_auto_en: Set False to disable checking if clock auto-selection is enabled
         """
-        if (self.get_register_field(SI5324._FIELD_Autoselection) == SI5324.AUTOMODE_Manual) and check_auto_en == True:
+        if ((self.get_register_field(SI5324._FIELD_Autoselection) == SI5324.AUTOMODE_Manual)
+                and check_auto_en):
             logger.warning(
-                    "Setting priority clock without enabling auto-selection. Enable autoselection for this setting to take effect.")
+                    "Setting priority clock without enabling auto-selection."
+                    " Enable autoselection for this setting to take effect.")
 
         if top_priority_clock == 1:
             self.set_register_field(SI5324._FIELD_Clock_1_Priority, 0b00, True)
@@ -531,9 +559,7 @@ class SI5324(I2CDevice):
 
         combined_FOLOL_flags = self.readU8(132)
         alarms.Freq_Offset_1_FLG = bool(combined_FOLOL_flags & 0b0100)
-        alarms.Freq_Offset_2_FLG = bool(combined_FOLOL_flags& 0b1000)
+        alarms.Freq_Offset_2_FLG = bool(combined_FOLOL_flags & 0b1000)
         alarms.Loss_Of_Lock_FLG = bool(combined_FOLOL_flags & 0b0010)
 
         return alarms
-
-
