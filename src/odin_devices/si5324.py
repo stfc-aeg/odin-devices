@@ -183,7 +183,7 @@ class SI5324(I2CDevice):
             value,field.startbit,field.get_endbit(),field.register))
 
         # check input fits in specified field
-        if (1 << (field.length + 1)) <= value:
+        if (1 << (field.length)) <= value:
             raise I2CException(
                     "Value {} does not fit in specified field of length {}.".format(
                         value, field.length))

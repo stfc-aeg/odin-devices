@@ -108,10 +108,24 @@ class TestSI5324():
         test_si5324_driver.si5324.calibrate()
         assert test_si5324_driver.si5324.iCAL_required == False
 
+        # Test running another calibrate does not actually perform the calibration
+        test_si5324_driver.registers[136] = 0           # Set iCAL trigger low
+        test_si5324_driver.si5324.calibrate()
+        assert test_si5324_driver.registers[136] == 0   # Make sure iCAL was not triggered
+
         # Test editing a field within an iCAL sensitive register flags iCAL as required
         test_si5324_driver.si5324.iCAL_required = False
         test_si5324_driver.si5324._set_register_field(SI5324._FIELD_Free_Run_Mode,1)
         assert test_si5324_driver.si5324.iCAL_required == True
+
+        test_si5324_driver.virtual_registers_en(False)  # smbus read reset
+
+    def test_reset(self, test_si5324_driver):
+        test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
+
+        test_si5324_driver.registers[136]               # Init RST trigger low
+        test_si5324_driver.si5324.reset()
+        assert test_si5324_driver.registers[136] & 0b10000000   # Make sure RST trigger was set
 
         test_si5324_driver.virtual_registers_en(False)  # smbus read reset
 
@@ -138,6 +152,10 @@ class TestSI5324():
                     SI5324._FIELD_Autoselection, 0b00, True)   # Run with verify
         test_si5324_driver.virtual_registers_en(True)   # smbus read virtual registers
 
+        # Check writing value too large throws exception
+        with pytest.raises(I2CException, match=".*does not fit.*"):
+            test_si5324_driver.si5324._set_register_field(
+                    SI5324._FIELD_Autoselection, 0b111)
 
         # Field Reading:
         # Read two bits within a defined field (register 1, bits 3@2)
@@ -326,6 +344,15 @@ class TestSI5324():
                 assert register == value
             else:
                 assert value == 0xff
+
+        # Test that verify will raise exception if there is a failure
+        test_si5324_driver.si5324.bus.read_byte_data.side_effect = [
+                0xFF,0xFF]                              # Force smbus read to always return 0xFF
+        mock_file_open = mock_open(read_data=tmp_file_str)
+        with patch(BUILTINS_NAME + '.open', mock_file_open):
+            with pytest.raises(I2CException, match=".*Write of byte to register.*"): # Check for exception
+                test_si5324_driver.si5324.apply_register_map('nofile.txt')
+        test_si5324_driver.virtual_registers_en(True)   # reset smbus to read virtual registers
 
         test_si5324_driver.virtual_registers_en(False)  # smbus read reset
 
