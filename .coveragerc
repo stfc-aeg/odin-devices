@@ -10,3 +10,4 @@ source=
 
 [report]
 omit = *_version*
+show_missing = True
