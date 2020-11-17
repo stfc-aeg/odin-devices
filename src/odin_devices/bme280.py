@@ -3,14 +3,17 @@
 Derived from Adafruit implementation for CircuitPython available at:
 https://github.com/adafruit/Adafruit_CircuitPython_BME280/blob/80757ff2146c62ac7192c94b060c67d4751868b4/adafruit_bme280.py
 
+Mika Shearwood, STFC Detector Systems Software Group Apprentice.
 """
+
 import math
 from time import sleep
 from struct import unpack
 
 from odin_devices.spi_device import SPIDevice
+from odin_devices.i2c_device import I2CDevice
 
-#    I2C ADDRESS/BITS/SETTINGS
+# I2C ADDRESS/BITS/SETTINGS
 _BME280_ADDRESS = 0x77
 _BME280_CHIPID = 0x60
 
@@ -47,7 +50,7 @@ IIR_FILTER_X16 = 0x04
 _BME280_IIR_FILTERS = (IIR_FILTER_DISABLE, IIR_FILTER_X2,
                        IIR_FILTER_X4, IIR_FILTER_X8, IIR_FILTER_X16)
 
-# overscan values for pressure, temperature and humidity
+# Overscan values for pressure, temperature and humidity
 OVERSCAN_DISABLE = 0x00
 OVERSCAN_X1 = 0x01
 OVERSCAN_X2 = 0x02
@@ -58,7 +61,7 @@ OVERSCAN_X16 = 0x05
 _BME280_OVERSCANS = {OVERSCAN_DISABLE: 0, OVERSCAN_X1: 1, OVERSCAN_X2: 2,
                      OVERSCAN_X4: 4, OVERSCAN_X8: 8, OVERSCAN_X16: 16}
 
-# mode values
+# Mode values
 MODE_SLEEP = 0x00
 MODE_FORCE = 0x01
 MODE_NORMAL = 0x03
@@ -79,24 +82,32 @@ _BME280_STANDBY_TCS = (STANDBY_TC_0_5, STANDBY_TC_10, STANDBY_TC_20,
                        STANDBY_TC_62_5, STANDBY_TC_125, STANDBY_TC_250,
                        STANDBY_TC_500, STANDBY_TC_1000)
 
-class BME280(SPIDevice):
+class BME280():
     """BME280 class.
 
-    This class implements support for the BME280 device.
+    This class implements support for the BME280 device, for SPI and I2C.
     """
-    def __init__(self):
+    def __init__(self, use_spi=True, i2c_busnum=0):
         """Initialise the BME280 device.
 
-        Any SPI settings can be adjusted with the functions in spi_device.
-        SPIDevice.__init__ is provided bus, device, bits_per_word (optional) and hz (optional).
+        :param use_spi: bool to specify device type for bme to use. 
+        Default True = SPI will be used, False = I2C.
+        :param i2c_busnum: bus number for i2c device. only used when use_spi is false. Default: 0
+
+        Device settings can be adjusted with the functions in the respective device class.
         """
-        SPIDevice.__init__(self, 0, 0)  # bus, device
+        self.use_spi = use_spi
 
-        # This device is compatible with SPI modes 0 and 3 (00, 11).
-        self.set_mode(0)
-
-        # Longest transaction is 24 bytes read, one written.
-        self.set_buffer_length(25)
+        if self.use_spi:  # using SPI
+            self.device = SPIDevice(bus=0, device=0)
+            # This device is compatible with SPI modes 0 and 2 (00, 11).
+            self.device.set_mode(0)
+            # Longest transaction is 24 bytes read, one written.
+            self.device.set_buffer_length(25)
+        else:
+            self.device = I2CDevice(
+                address=_BME280_ADDRESS, busnum=i2c_busnum
+            )
 
         # Check device ID.
         chip_id = self._read_byte(_BME280_REGISTER_CHIPID)
@@ -344,7 +355,7 @@ reading the calibration registers")
         returns None if humidity measurement is disabled.
         """
         self._read_temperature()
-        hum = self._read_register(_BME280_REGISTER_HUMIDDATA, end=3)
+        hum = self._read_register(_BME280_REGISTER_HUMIDDATA, end=2)
         adc = float(hum[0] << 8 | hum[1])
 
         # Algorithm from the BME280 driver
@@ -382,7 +393,7 @@ reading the calibration registers")
 
     def _read_coefficients(self):
         """Read & save the calibration coefficients."""
-        coeff = self._read_register(_BME280_REGISTER_DIG_T1, end=25)
+        coeff = self._read_register(_BME280_REGISTER_DIG_T1, end=24)
         coeff = list(unpack('<HhhHhhhhhhhh', bytearray(coeff)))
         coeff = [float(i) for i in coeff]
         self._temp_calib = coeff[:3]
@@ -390,7 +401,7 @@ reading the calibration registers")
 
         self._humidity_calib = [0]*6
         self._humidity_calib[0] = self._read_byte(_BME280_REGISTER_DIG_H1)
-        coeff = self._read_register(_BME280_REGISTER_DIG_H2, end=8)
+        coeff = self._read_register(_BME280_REGISTER_DIG_H2, end=7)
         coeff = list(unpack('<hBbBbb', bytearray(coeff)))
         self._humidity_calib[1] = float(coeff[0])
         self._humidity_calib[2] = float(coeff[1])
@@ -403,42 +414,50 @@ reading the calibration registers")
 
         :param register: the register to be read from.
         """
-        return self._read_register(register, end=2)[0]
+        return self._read_register(register, end=1)[0]
 
     def _read24(self, register):
         """Read an unsigned 24-bit value as a floating point and return it.
 
-        self.buffer is set to four to allow for one register byte to be transferred too.
         :param register: the register to read from.
         :returns ret: the 24-bit value.
         """
         ret = 0.0
-        for b in self._read_register(register, end=4):
+        for b in self._read_register(register, end=3):
             ret *= 256.0
             ret += float(b & 0xFF)
         return ret
 
     def _read_register(self, register, end=None, write_value=0):
-        """Read length number of bytes from a register on the SPI device.
+        """Read length number of bytes from a register on the device.
 
-        Length defaults to the length of buffer. The read is done via an SPI transfer.
+        I2C: read a list of bytes
+        SPI: end defaults to length of buffer
 
-        :param end: specifies where to write up to in buffer. To be passed to transfer().
+        :param end: specifies how many bytes to read
         :param write_value: value to fill the buffer with. Default: 0
-        :returns result: the MISO transfer response, an array of length equal to buffer.
+        :returns result: list of bytes
         """
-        for i in range(len(self.buffer)):
-            self.buffer[i] = write_value
+        if self.use_spi == True:
+            end += 1  # Transfer of register byte, then desired length
+            for i in range(len(self.device.buffer)):
+                self.device.buffer[i] = write_value
+            register = (register | 0x80) & 0xFF  # Read single, bit 7 high
+            self.device.buffer[0] = register
 
-        register = (register | 0x80) & 0xFF  # Read single, bit 7 high
-        self.buffer[0] = register
+            result = self.device.transfer(self.device.buffer, end=end)[1:]
+            return result
 
-        result = self.transfer(self.buffer, end=end)[1:]
-        return result
+        else:  # I2C
+            result = self.device.readList(reg=register, length=end)
+            return result
 
     def _write_register_byte(self, register, value):
         """Write a byte to the specified register."""
-        register &= 0x7F  # Write, bit 7 low.
-        self.buffer[0] = register
-        self.buffer[1] = value & 0xFF
-        self.write_bytes(bytearray(self.buffer), end=2)
+        if self.use_spi == True:
+            register &= 0x7F  # Write, bit 7 low.
+            self.device.buffer[0] = register
+            self.device.buffer[1] = value & 0xFF
+            self.device.write_bytes(bytearray(self.device.buffer), end=2)
+        else:  # I2C
+            self.device.write8(reg=register, value=value)
