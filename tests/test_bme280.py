@@ -18,6 +18,9 @@ else:
 spidev_mock = MagicMock()
 sys.modules['spidev'] = spidev_mock
 
+smbus_mock = MagicMock()
+sys.modules['smbus'] = smbus_mock
+
 from odin_devices.bme280 import BME280
 
 
@@ -43,7 +46,6 @@ class BME280TestFixture(object):
     def assert_transfer_any_call(self, value):
         self.mock_spi_dev.xfer2.assert_any_call(bytearray(value))
 
-
 @pytest.fixture(scope="class")
 def test_bme280_device():
     """Fixture used in device test cases."""
@@ -52,6 +54,37 @@ def test_bme280_device():
         mock_spi_dev = MockSpiDev.return_value
         test_bme_fixture = BME280TestFixture(mock_spi_dev)
         yield test_bme_fixture
+
+
+class BME280TextFixtureI2C(object):
+    """Container class used in fixtures for testing driver behaviour."""
+
+    def __init__(self, mock_smbus, chip_id=0x60):
+        self.mock_smbus = mock_smbus
+        self.set_read_return_values([  # Needed to stop chipID runtime err
+            [chip_id],  # chip ID register
+            [0x46, 0x6D, 0xE2, 0x67, 0x32, 0x00,  # T:P, 6:18 bytes
+            0x3F, 0x95, 0x32, 0xD6, 0xD0, 0x0B, 0xED, 0x1E, 0x8A, 0xFF, 0xF9, 0xFF, 0xAC, 0x26, 0x0A, 0xD8, 0xBD, 0x10],  # T,P coeffs
+            [0x4B],  # H1 coeff
+            [0x66, 0x01, 0x00, 0x14, 0x08, 0x00, 0x1E],  # H2 coeffs
+        ])
+        self.address = 0x77
+        self.busnumber = 2
+        self.device = BME280(use_spi=False, i2c_busnum=self.busnumber)
+
+    def set_read_return_values(self, value):
+        self.mock_smbus.read_i2c_block_data.side_effect = value
+
+    def assert_read_any_call(self, reg, length):
+        self.mock_smbus.read_i2c_block_data.assert_any_call(self.address, reg, length)
+
+@pytest.fixture(scope="class")
+def test_bme280_device_i2c():
+    """Fixture used in device test cases."""
+    with patch('odin_devices.i2c_device.smbus.SMBus') as MockSMBus:
+        mock_smbus = MockSMBus.return_value
+        test_i2c_fixture = BME280TextFixtureI2C(mock_smbus)
+        yield test_i2c_fixture
 
 
 class TestBME280Device(object):
@@ -76,8 +109,21 @@ class TestBME280Device(object):
         test_bme280_device.assert_transfer_any_call(
             [0xe1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
 
-        assert test_bme280_device.device.spi.mode == 0
-        assert len(test_bme280_device.device.buffer) == 25
+        assert test_bme280_device.device.device.spi.mode == 0
+        assert len(test_bme280_device.device.device.buffer) == 25
+
+    def test_device_init_i2c(self, test_bme280_device_i2c):
+
+        test_bme280_device_i2c.device.device.address == 0x77
+        test_bme280_device_i2c.device.device.busnum == 2
+
+        test_bme280_device_i2c.assert_read_any_call(0xd0, 1)  # chip_reg
+        test_bme280_device_i2c.assert_read_any_call(0x88, 24)
+        test_bme280_device_i2c.assert_read_any_call(0xa1, 1)
+        test_bme280_device_i2c.assert_read_any_call(0xe1, 7)
+
+        # If device has read and instantiated without error
+        # then all i2c-specific code has been checked as with spi
 
     def test_temperature(self, test_bme280_device):
         test_bme280_device.set_transfer_return_values([
@@ -146,7 +192,7 @@ class TestBME280Device(object):
         test_bme280_device.set_transfer_return_values([[0x00, 0x00]])
         # This function is not presently used in the device
         read_config_value = test_bme280_device.device._read_config()
-        test_bme280_device.device.spi.xfer2.assert_called_with(
+        test_bme280_device.device.device.spi.xfer2.assert_called_with(
             bytearray([0xF5, 0x00])
         )
         # 0xF5 is _BME280_REGISTER_CONFIG
