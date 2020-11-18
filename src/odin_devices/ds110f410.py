@@ -48,12 +48,40 @@ class DS110F410(I2CDevice):
     _CHANNEL_3      = 3
     _CHANNEL_All    = 4         # Applies to write only
 
+    # Encoding for output driver de-emphasis values
+    _De_Emphasis_Value_Map = {0.0   :   0b0000,
+                              -0.9  :   0b0011,
+                              -1.5  :   0b0010,
+                              -2.0  :   0b0101,
+                              -2.8  :   0b0100,
+                              -3.3  :   0b0111,
+                              -3.5  :   0b0110,
+                              -3.9  :   0b1001,
+                              -4.5  :   0b1000,
+                              -5.0  :   0b1011,
+                              -6.0  :   0b1101,
+                              -7.5  :   0b1100,
+                              -9.0  :   0b1111,
+                              -12.0 :   0b1110}
+
     # System reset signals
     RST_CORE    = 0b1000
     RST_REGS    = 0b0100
     RST_REFCLK  = 0b0010
     RST_VCO     = 0b0001
     RST_ALL     = 0b1111
+
+    # MUX Output selection (production modes only)
+    MUX_OUTPUT_default  = 0b111     # Will not take effect unless 0x09[5] set or no lock
+    MUX_OUTPUT_raw      = 0b000
+    MUX_OUTPUT_retimed  = 0b001     # 'force' output even with no lock
+    MUX_OUTPUT_prbs     = 0b100
+
+    # Adaptation setting
+    ADAPT_Mode0_None                = 0b00
+    ADAPT_Mode1_CTLE_Only           = 0b01
+    ADAPT_Mode2_Both_CTLE_Optimal   = 0b10
+    ADAPT_Mode3_Both_DFE_Emphasis   = 0b11
 
     # Register Fields (Channel)
     _FIELD_Chn_Reset = _Field(0x00, _REG_GRP_Channel, 3, 4)         # Combined channel reset bits
@@ -63,8 +91,15 @@ class DS110F410(I2CDevice):
 
     _FIELD_Chn_Status = _Field(0x02, _REG_GRP_Channel, 7, 8)        # Channel status full byte
 
+    _FIELD_Chn_Driver_VOD = _Field(0x2D, _REG_GRP_Channel, 2, 3)    # Output Differential Voltage
+    _FIELD_Chn_Driver_DEM = _Field(0x15, _REG_GRP_Channel, 2, 3)    # Output De-emphasis
+    _FIELD_Chn_Driver_SLOW = _Field(0x18, _REG_GRP_Channel, 2, 1)   # Output Slow Rise/Fall enable
+    _FIELD_Chn_Driver_POL = _Field(0x1F, _REG_GRP_Channel, 7, 1)    # Output Polarity Inversion
+
     _FIELD_Chn_EOM_VR_Lim_Err = _Field(0x30, _REG_GRP_Channel, 5, 1)
     _FIELD_Chn_HEO_VEO_INT = _Field(0x30, _REG_GRP_Channel, 4, 1)       # Cleared on read
+
+    _FIELD_Chn_Adapt_Mode = +_Field(0x31, _REG_GRP_Channel, 6, 2)   # Adaptation / Lock mode
 
     # Register Fields (Shared / Control)
     _FIELD_Shr_Reset = _Field(0x04, _REG_GRP_Shared, 6, 1)
@@ -308,6 +343,104 @@ class DS110F410(I2CDevice):
             veo = self.ds110._read_field(_FIELD_Chn_VEO_Val, seld.CID)
             print 'HEO ' + str(heo)
             print 'VEO ' + str(veo)
+
+        def select_output(self, mux_output):
+            """
+            Selects a particular MUX output.
+
+            :param mux_output:  Output selection, from MUX_OUTPUT_x
+            """
+            if (mux_output == MUX_OUTPUT_default):
+                self.ds110._write_field(DS110F410._FIELD_Chn_PFD_MUX,
+                                        self.CID, MUX_OUTPUT_default)       # Set MUX to mute
+                self.ds110._write_field(DS110F410._FIELD_Chn_Bypass_PFD_0V,
+                                        self.CID, 0b0)                      # Disable PFD bypass
+            elif (mux_output == MUX_OUTPUT_raw):
+                self.ds110._write_field(DS110F410._FIELD_Chn_PFD_MUX,
+                                        self.CID, MUX_OUTPUT_raw)           # Set MUX to raw
+                self.ds110._write_field(DS110F410._FIELD_Chn_Bypass_PFD_0V,
+                                        self.CID, 0b1)                      # Enable PFD bypass
+                self.ds110._write_field(DS110F410._FIELD_Chn_PRBS_CLK_EN,
+                                        self.CID, 0b0)                      # Disable PRBS clock
+            elif (mux_output == MUX_OUTPUT_retimed):    # 'Forced'
+                self.ds110._write_field(DS110F410._FIELD_Chn_PFD_MUX,
+                                        self.CID, MUX_OUTPUT_retimed)       # Set MUX to raw
+                self.ds110._write_field(DS110F410._FIELD_Chn_Bypass_PFD_0V,
+                                        self.CID, 0b1)                      # Enable PFD bypass
+                self.ds110._write_field(DS110F410._FIELD_Chn_PRBS_CLK_EN,
+                                        self.CID, 0b0)                      # Disable PRBS clock
+            elif (mux_output == MUX_OUTPUT_prbs):
+                self.ds110._write_field(DS110F410._FIELD_Chn_PFD_MUX,
+                                        self.CID, MUX_OUTPUT_prbs)          # Set MUX to raw
+                self.ds110._write_field(DS110F410._FIELD_Chn_Bypass_PFD_0V,
+                                        self.CID, 0b1)                      # Enable PFD bypass
+                self.ds110._write_field(DS110F410._FIELD_Chn_PRBS_EN,
+                                        self.CID, 0b1)                      # Enable PRBS clock
+                self.ds110._write_field(DS110F410._FIELD_Chn_PRBS_CLK_EN,
+                                        self.CID, 0b1)                      # Enable PRBS
+
+        def set_adaptation_mode(self, adaptation_mode):
+            """
+            Simple wrapper to set adaptation mode bits, which could be done in isolation from other
+            settings. See DS110F410 datasheet section 8.5.19 (Rev D Apr 2015) for guide.
+
+            :param adaptation_mode: Mode to select from the following:
+                                    ADAPT_Mode0_None, ADAPT_Mode1_CTLE_Only,
+                                    ADAPT_Mode2_Both_CTLE_Optimal, ADAPT_Mode3_Both_DFE_Emphasis
+            """
+            if adaptation_mode in [ADAPT_Mode0_None,
+                                   ADAPT_Mode1_CTLE_Only,
+                                   ADAPT_Mode2_Both_CTLE_Optimal,
+                                   ADAPT_Mode3_Both_DFE_Emphasis]:
+                self.ds110._write_field(DS110F410._FIELD_Chn_Adapt_Mode,
+                                        self.CID, adaptation_mode)
+            else:
+                raise I2CException(
+                        "Incorrect Adaptation Mode specified. "
+                        "Use ADAPT_Modex_x.")
+
+        def configure_output_driver(self, diff_voltage=0.6, de_emphasis_db=0.0,
+                                    slow_rise_fall_time=False, invert_output=False):
+            """
+            Configures various aspects of the channel-specific output drivers.
+            Inputs for differential voltage and de-emphasis are in numerical form, and are
+            converted to the binary representations before writing.
+
+            :param diff_voltage:    Differential output voltage. Should be a float between 0.6-1.3.
+                                    Has a resolution of 0.1.
+            :param de_emphasis_db:  The De-emphasis setting in dB. Must match exactly a supported
+                                    value. See DS110F410 datasheet for table.
+            :param slow_rise_fall_time: By default, minimum possible rise and fall times will be
+                                        used. Set True to approximately double rise/fall times.
+            :param invert_output:   Set True to invert channel output polarity (8.5.16)
+            """
+
+            # Differential Voltage Output
+            if (diff_voltage < 0.6) or (diff_voltage > 1.3):
+                raise I2CException(
+                        "Differential voltage in incorrect range. "
+                        "Enter a voltage between 0.6 and 1.3 inclusive")
+            if (round(diff_voltage,1) != diff_voltage):
+                diff_voltage = round(diff_voltage, 1)
+                logger.warning(
+                        "Differential voltage can only be set in increments of 0.1, "
+                        "Rounding to {}".format(diff_voltage))
+            field_value = (int) ((diff_voltage - 0.6) * 10)
+            self.ds110._write_field(_FIELD_Chn_Driver_VOD, self.CID, field_value)
+
+            # De-emphasis
+            if not (de_emphasis_db in DS110F410._De_Emphasis_Value_Map.keys()):
+                raise I2CException(
+                        "De-emphasis setting must be one of the following values: "
+                        "{}".format(list(DS110F410._De_Emphasis_Value_Map.keys())))
+            self.ds110._write_field(_FIELD_Chn_Driver_DEM, self.CID,
+                                    DS110F410._De_Emphasis_Value_Map[de_emphasis_db])
+
+            # Slow Rise / Fall Time
+            self.ds110._write_field(_FIELD_Chn_Driver_SLOW, self.CID, 0b1 & slow_rise_fall_time)
+
+            # Output Polarity Inversion
+            self.ds110._write_field(_FIELD_Chn_Driver_POL, self.CID, 0b1 & invert_output)
 
         def reset(self, selection=[RST_ALL]):
             """
