@@ -38,7 +38,7 @@ class BME280TestFixture(object):
             [0x00, 0x66, 0x01, 0x00, 0x14, 0x08, 0x00, 0x1E],      # Read H2 coefficients
         ])
 
-        self.device = BME280()
+        self.device = BME280()  # default values
 
     def set_transfer_return_values(self, value):
         self.mock_spi_dev.xfer2.side_effect = value
@@ -70,7 +70,7 @@ class BME280TextFixtureI2C(object):
         ])
         self.address = 0x77
         self.busnumber = 2
-        self.device = BME280(use_spi=False, i2c_busnum=self.busnumber)
+        self.device = BME280(use_spi=False, bus=self.busnumber)
 
     def set_read_return_values(self, value):
         self.mock_smbus.read_i2c_block_data.side_effect = value

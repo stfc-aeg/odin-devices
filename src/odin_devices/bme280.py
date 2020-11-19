@@ -82,31 +82,34 @@ _BME280_STANDBY_TCS = (STANDBY_TC_0_5, STANDBY_TC_10, STANDBY_TC_20,
                        STANDBY_TC_62_5, STANDBY_TC_125, STANDBY_TC_250,
                        STANDBY_TC_500, STANDBY_TC_1000)
 
-class BME280():
+class BME280(object):  # Explicit new-style class for @property with py2
     """BME280 class.
 
     This class implements support for the BME280 device, for SPI and I2C.
     """
-    def __init__(self, use_spi=True, i2c_busnum=0):
+    def __init__(self, use_spi=True, bus=0, device=0):
         """Initialise the BME280 device.
 
         :param use_spi: bool to specify device type for bme to use. 
         Default True = SPI will be used, False = I2C.
-        :param i2c_busnum: bus number for i2c device. only used when use_spi is false. Default: 0
+        :param bus: bus number for SPI/I2C device. Default: 0
+        :param device: device number for SPI device. Default: 0
 
         Device settings can be adjusted with the functions in the respective device class.
         """
         self.use_spi = use_spi
 
         if self.use_spi:  # using SPI
-            self.device = SPIDevice(bus=0, device=0)
+            self.device = SPIDevice(
+                bus=bus, device=device
+            )
             # This device is compatible with SPI modes 0 and 2 (00, 11).
             self.device.set_mode(0)
             # Longest transaction is 24 bytes read, one written.
             self.device.set_buffer_length(25)
         else:
             self.device = I2CDevice(
-                address=_BME280_ADDRESS, busnum=i2c_busnum
+                address=_BME280_ADDRESS, busnum=bus
             )
 
         # Check device ID.
