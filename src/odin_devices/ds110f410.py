@@ -105,8 +105,13 @@ class DS110F410(I2CDevice):
     SUBRATE_DIV_Grp0_2_4__Grp1_2_4          = 0b0100
     SUBRATE_DIV_Grp0_1_4__Grp1_1_4          = 0b0101
     SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8  = 0b0110
-    SUBRATE_DIV_Grp0_1__Grp1_1              = 0b0111    # Or duplicate settings 0b1000, 0b1100, 0b1101
+    SUBRATE_DIV_Grp0_1__Grp1_1              = 0b0111    # Or 0b1000, 0b1100, 0b1101
     SUBRATE_DIV_Grp0_2__Grp1_2              = 0b1010
+    _SUBRATE_DIV_STATIC = [SUBRATE_DIV_Grp0_8__Grp1_1, SUBRATE_DIV_Grp0_1__Grp1_1,
+                           SUBRATE_DIV_Grp0_2__Grp1_2]
+    _SUBRATE_DIV_VARIABLE = [SUBRATE_DIV_Grp0_1_2_4__Grp1_1, SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4,
+                             SUBRATE_DIV_Grp0_2_4__Grp1_2_4, SUBRATE_DIV_Grp0_1_4__Grp1_1_4,
+                             SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8]
 
     # Reference clock mode (rarely not 0b11)
     REF_CLK_Mode_3                      = 0b11
@@ -233,7 +238,7 @@ class DS110F410(I2CDevice):
             raise I2CExcecption("Invalid register group."
                                 " Select _REG_GRP_Channel or _REG_GRP_Shared.")
 
-    def _write_register(register_group, register_channel=self._CHANNEL_All, register, value):
+    def _write_register(register_group, register_channel, register, value):
         """
         Wrapper for the I2CDevice write8 function.
         Ensures that the correct register group is specified for writes, and avoids unnecessary
@@ -271,7 +276,7 @@ class DS110F410(I2CDevice):
             _reg_ch_sel(register_group, register_channel)
         return self.readU8(register)
 
-    def _write_field(field, channel=self._CHANNEL_All, value, verify=False):
+    def _write_field(field, channel, value, verify=False):
         """
         Write a field of <=8 bits into an 8-bit register.
         Field bits are masked to preserve other settings held within the same register.
@@ -375,33 +380,33 @@ class DS110F410(I2CDevice):
 
         def get_status(self):
             # Taken from Thomas' version and adapted
-            print ' Reset Reg: ' + hex(self._read_field(DS110F410._FIELD_Chn_Reset, self.CID))
+            print(' Reset Reg: ' + hex(self._read_field(DS110F410._FIELD_Chn_Reset, self.CID)))
 
             tmp = self.ds110._read_field(DS110F410._FIELD_Chn_CDR_LL_INT, self.CID)
-            print 'CDR LOCK LOSS INT: ' + str(tmp)
+            print('CDR LOCK LOSS INT: ' + str(tmp))
             tmp = self.ds110._read_field(DS110F410._FIELD_Chn_SIG_DET_LOSS_INT, self.CID)
-            print 'CDR LOCK LOSS INT: ' + str(tmp)
+            print('CDR LOCK LOSS INT: ' + str(tmp))
 
             tmp = self.ds110._read_field(_FIELD_Chn_EOM_VR_Lim_Err, self.CID)
-            print 'EOM VRANGE LIMIT ERROR: ' + str(tmp)
+            print('EOM VRANGE LIMIT ERROR: ' + str(tmp))
             tmp = self.ds110._read_field(_FIELD_Chn_HEO_VEO_INT, self.CID)
-            print 'HEO VEO INT: ' + str(tmp)
+            print('HEO VEO INT: ' + str(tmp))
 
             tmp = self.ds110._read_field(_FIELD_Chn_Status, self.CID)
-            print hex(tmp)
-            if (tmp & 0b10000000): print 'Comp LPF Low'
-            if (tmp & 0b01000000): print 'Comp LPF High'
-            if (tmp & 0b00100000): print 'Single Bit Limit Reached'
-            if (tmp & 0b00010000): print 'CDR Lock'
-            if (tmp & 0b00001000): print 'LOCK'
-            if (tmp & 0b00000100): print 'Fail Lock Check'
-            if (tmp & 0b00000010): print 'Auto Adapt Complete'
-            if (tmp & 0b00000011): print 'PPM Count Met'
+            print (hex(tmp))
+            if (tmp & 0b10000000): print('Comp LPF Low')
+            if (tmp & 0b01000000): print('Comp LPF High')
+            if (tmp & 0b00100000): print('Single Bit Limit Reached')
+            if (tmp & 0b00010000): print('CDR Lock')
+            if (tmp & 0b00001000): print('LOCK')
+            if (tmp & 0b00000100): print('Fail Lock Check')
+            if (tmp & 0b00000010): print('Auto Adapt Complete')
+            if (tmp & 0b00000011): print('PPM Count Met')
 
             heo = self.ds110._read_field(DS110F410._FIELD_Chn_HEO_Val, self.CID)
             veo = self.ds110._read_field(DS110F410._FIELD_Chn_VEO_Val, seld.CID)
-            print 'HEO ' + str(heo)
-            print 'VEO ' + str(veo)
+            print('HEO ' + str(heo))
+            print('VEO ' + str(veo))
 
         """
         CDR (Clock Data Recovery) Settings:
@@ -467,59 +472,7 @@ class DS110F410(I2CDevice):
             the table. The retimer cannot automatically switch between these two standards.
             """
 
-        def configure_cdr_manual_rate(data_rate_group0, data_rate_group1,
-                                      divider_ratio=SUBRATE_DIV_Grp0_1__Grp1_1):
-            """
-            If a standard rate cannot be found to match requirements, custom rate/subrate settings
-            can be used. PPM count targets can be set to allocate the correct VCO frequency for a
-            required data rate.
-
-            This also takes into account a custom divider ratio, which is otherwise nominally 1 for
-            both groups of the channel (meaning VCO frequency = data rate). When a divider ratio
-            that has been specified lists more than one ratio, they will be switched between
-            automatically, as long as Clock Reference Mode 3 is active.
-
-            :param data_rate_group0:    Raw data rate for group 0, in Gbps
-            :param data_rate_group1:    Raw data rate for group 1, in Gbps
-            :param divider_ratio:       Divider ratio for VCO frequency to use for each group, in a
-                                        combined setting (see above). Set to (1, 1) if unspecified.
-                                        Choose from SUBRATE_DIV_Grp0_x__Grp1_x settings
-            """
-            #TODO check input ranges
-
-            # VCO divider is typically 1 for manual mode, meaning the PPM count alone sets the frequency
-            self.ds110._write_field(DS110F410._FIELD_Chn_CDR_Subrate_Div,
-                                    self.CID, divider_ratio)
-
-            # Interpret selected divider rations for use in determining frequency settings
-            #TODO actually get this from the divider_ratio supplied (where there are multiple
-            # ratios chosen, the device will choose the best one automatically)
-            if divider_ratio == SUBRATE_DIV_Grp0_1__Grp1_1:
-                divider_group0 = 1
-                divider_group1 = 1
-            elif divider_ratio == SUBRATE_DIV_Grp0_2__Grp1_2:
-                divider_group0 = 2
-                divider_group1 = 2
-            elif divider_ratio == SUBRATE_DIV_Grp0_8__Grp1_1:
-                divider_group0 = 8
-                divider_group1 = 1
-            else:
-                raise I2CException("Divider ratio not currently supported")
-
-            # Calcualte PPM count settings for given data rate, taking account of the selected divider subrate.
-            # Make sure 'manual' is also enabled in MSB bit 7 for each group
-            data_rate_group0_scaled = data_rate_group0 * divider_group0
-            int_Nppm_group0 = (int) (1280 * data_rate_group0_scaled)
-            data_rate_group1_scaled = data_rate_group1 * divider_group1
-            int_Nppm_group1 = (int) (1280 * data_rate_group1_scaled)
-
-            # Ensure calculated values are possible in 15 bits
-            if ((int_Nppm_group0 > 0x7FFF) or
-                (int_Nppm_group1 > 0x7FFF)):
-                raise I2CException(
-                        "Failed to calculate valid Nppm value with current divider ratio (0x2F[7:4]"
-                        "=0b{:04b}). Try specifying a different ratio.".format(divider_ratio))
-
+        def set_cdr_ppm_count(int_Nppm_group0, int_Nppm_group1):
             # Write Nppm values for each group, and enable manual rate selection
             self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G0_LSB,
                                     self.CID, int_Nppm_group0 & 0xFF)           # Count Group 0 LSB
@@ -534,10 +487,199 @@ class DS110F410(I2CDevice):
             self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G1_EN,
                                     self.CID, 0b1)                      # Group 0 Enable manual rate
 
+        def _get_dividers_from_fld(dividers_setting):
+            """
+            Return the true divider value(s) associated with a the subrate divider field in 0x2F
+            when used in manual mode.
+
+            Because there can either be static divider settings with only one value for each group
+            as well as variable ones (several values for one or both of the groups), function output
+            is a tuple of two lists of group values, which in the case of a static setting will only
+            contain one element.
+
+            :pararm dividers_setting:   0x2F[7:4] field value, SUBRATE_DIV_Gro0_x__Grp1_x value
+            :return:                    Tuple of divider value lists for each group:
+                                            (Group 0 div list, Group 1 div list)
+            """
+            if dividers_setting == SUBRATE_DIV_Grp0_1__Grp1_1:
+                divider_group0 = [1];           divider_group1 = [1]
+            elif dividers_setting == SUBRATE_DIV_Grp0_2__Grp1_2:
+                divider_group0 = [2];           divider_group1 = [2]
+            elif dividers_setting == SUBRATE_DIV_Grp0_8__Grp1_1:
+                divider_group0 = [8];           divider_group1 = [1]
+            elif dividers_setting == SUBRATE_DIV_Grp0_1_2_4__Grp1_1:
+                divider_group0 = [1,2,4];       divider_group1 = [1]
+            elif dividers_setting == SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4:
+                divider_group0 = [1,2,4];       divider_group1 = [1,2,4]
+            elif divider_setting == SUBRATE_DIV_Grp0_2_4__Grp1_2_4:
+                divider_group0 = [2,4];         divider_group1 = [2,4]
+            elif divider_setting == SUBRATE_DIV_Grp0_1_4__Grp1_1_4:
+                divider_group0 = [1,4];         divider_group1 = [1,4]
+            elif divider_setting == SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8:
+                divider_group0 = [1,2,4,8];     divider_group1 = [1,2,4,8]
+            else:
+                raise I2CException("Divider ratio invalid")
+
+            return (divider_group0, divider_group1)
+
+        def autoconfigure_cdr_manual_rate(data_rate_group0, data_rate_group1,
+                                      divider_ratio=None,
+                                      desired_VCO_freq=None):
+            """
+            If a standard rate cannot be found to match requirements, custom rate/subrate settings
+            can be used. PPM count targets and dividers can be set to allocate the correct VCO
+            frequency for target required data rates for each channel group0/1.
+
+            This function can be used in two ways:
+                1) Call with desired frequency specified to calculate or verify divider ratios that
+                    can provide the specified data rates.
+                2) Call with only divider ratio specified to calculate a VCO frequency (and PPM
+                    values) to use given the specified data rates. If impossible, the user will
+                    be warned.
+
+            If neither are specified, will default to 'frequency calculation', with an assumed
+            nominal divider ratio of 1 for both groups 0 and 1.
+
+            :param data_rate_group0:    Raw data rate for group 0, in Gbps
+            :param data_rate_group1:    Raw data rate for group 1, in Gbps
+            :param divider_ratio:       Divider ratio for VCO frequency to use for each group, in a
+                                        combined bitfield. Choose from SUBRATE_DIV_Grp0_x__Grp1_x.
+                                        (optional)
+            :param desired_VCO_freq:    Shared VCO frequency used by both groups for the channel
+                                        that will be divided down by the group dividers to generate
+                                        the target data rates.
+            """
+            recalc_warn = 1         # Percentage to warn about recalculation percentage change
+
+            # Check valid VCO frequency ranges
+            if ((not (8.5 <= desired_VCO_freq <= 11.3)) and
+                (desired_VCO_freq is not None)):    # If not used, range doesn't matter
+                raise I2CException("VCO frequency for DS110F410 must be between 8.5-11.3")
+
+            # Check valid divider ratio has been specified
+            if ((divider_ratio is not None) and
+                (divider_ratio in (_SUBRATE_DIV_STATIC+_SUBRATE_DIV_VARIABLE))):
+                raise I2CException("Unsupported divider ratio specified. "
+                                   "See SUBRATE_DIV_Grp0_x__Grp1_x vaiants.")
+
+            # Determine if auto frequency or auto divider is being used, react accordingly
+            if desired_VCO_freq is None:        # Automatic frequency mode, requires static dividers
+                logger.info("VCO Frequency will be determined automatically.")
+                if divider_ratio is None:
+                    logger.info("No divider ratios supplied, assuming 1,1.")
+                    divider_ratio = SUBRATE_DIV_Grp0_1__Grp1_1
+                if divider_ratio not in _SUBRATE_DIV_STATIC:
+                    raise I2CException(
+                            "Cannot choose a variable divider ratio with automatic frequency. "
+                            "Please use a different divider, or specify desired_VCO_freq.")
+
+                logger.info("Subrate divider selection using static dividers")
+                dividers = get_dividers_from_fld(divider_ratio)
+                divider_group0 = dividers[0][0]
+                divider_group1 = dividers[1][0]
+
+                desired_VCO_freq = divider_group0 * data_rate_group0    # Calculate for group0
+                logger.info("VCO frequency for group0 calculated as {}".format(desired_VCO_freq))
+
+                #VCO freq is shared, so data rate group1 is re-calculated from the new VCO frequency
+                # using the chosen divider.
+                data_rate_group1_supplied = data_rate_group1
+                data_rate_group1 = desired_VCO_freq / float(divider_group1)
+                logger.info("Data rate for group1 re-calculated: "
+                            "{} -> {}".format(data_rate_group1_supplied, data_rate_group1))
+
+                if (abs((data_rate_group1 - data_rate_group1_supplied)
+                    / data_rate_group1_supplied) > recalc_warn):
+                    logger.warning("Recalculated data rate over {}% different".format(recalc_warn))
+
+            else:                           # Manual frequency mode, can determine variable dividers
+                logger.info(
+                        "VCO Frequency set to {}Gbps.".format(desired_VCO_freq))
+
+                if divider_ratio in _SUBRATE_DIV_STATIC:            # Using a static divider ratio
+                    logger.info(
+                        "Using static divider values, checking against frequency and data rates...")
+
+                    divider_group0, divider_group1 = get_dividers_from_fld(divider_ratio)
+                    if (((desired_VCO_freq / float(divider_group0)) != data_rate_group0) or
+                        ((desired_VCO_freq / float(divider_group1)) != data_rate_group1)):
+                        raise I2CException(
+                            "Supplied divider ratio was not valid for given frequency, data rate. ")
+                    else:
+                        logger.info("Divider values checked successfully.")
+
+                elif divider_ratio in _SUBRATE_DIV_VARIABLE:        # Using a variable divider ratio
+                    logger.info("Using variable divider values, checking for valid combination...")
+                    divider_lists = get_dividers_from_fld(divider_ratio)
+                    groups_found = [False, False]
+                    for current_group in [0,1]:
+                        for divider_group_tmp in divider_lists[current_group]:
+                            if (desired_VCO_freq / float(divider_group_tmp)):
+                                logger.info("Found valid divider for group"
+                                            "{}: {}".format(current_group, divider_group_tmp))
+                                if current_group == 0:
+                                    divider_group0 = divider_group_tmp
+                                else:
+                                    divider_group1 = divider_group_tmp
+                                groups_found[current_group] = True
+                                break
+                    if False in groups_found:
+                        raise I2CException("Failed to find valid combination for both groups")
+                    else:
+                        logger.info("Successfully found combination of dividers: "
+                                    "{}, {}".format(divider_group0, dividers_group1))
+
+                else:                                               # Unspecified, try all
+                    logger.info("Unspecified divider values, trying all combinations...")
+                    for current_div in (_SUBRATE_DIV_STATIC, _SUBRATE_DIV_VARIABLE):
+
+                        divider_lists = get_dividers_from_fld(divider_ratio)
+                        groups_found = [False, False]
+                        for current_group in [0,1]:
+                            for divider_group_tmp in divider_lists[current_group]:
+                                if (desired_VCO_freq / float(divider_group_tmp)):
+                                    logger.info("Found valid divider for group"
+                                                "{}: {}".format(current_group, divider_group_tmp))
+                                    if current_group == 0:
+                                        divider_group0 = divider_group_tmp
+                                    else:
+                                        divider_group1 = divider_group_tmp
+                                    groups_found[current_group] = True
+                                    break
+
+                        if all(groups_found):
+                            logger.info("Found good combination "
+                                        "({}, {}) with setting {}".format(divider_group0,
+                                                                          divider_group1,
+                                                                          current_div))
+                            divider_ratio = current_div
+                            break
+
+            # Set selected VCO divider setting
+            self.ds110._write_field(DS110F410._FIELD_Chn_CDR_Subrate_Div,
+                                    self.CID, divider_ratio)
+
+            # Calcualte PPM count settings for given data rate, taking account of the selected divider subrate.
+            data_rate_group0_scaled = data_rate_group0 * divider_group0
+            int_Nppm_group0 = (int) (1280 * data_rate_group0_scaled)
+            data_rate_group1_scaled = data_rate_group1 * divider_group1
+            int_Nppm_group1 = (int) (1280 * data_rate_group1_scaled)
+
+            # Ensure calculated values are possible in 15 bits
+            if ((int_Nppm_group0 > 0x7FFF) or
+                (int_Nppm_group1 > 0x7FFF)):
+                raise I2CException(
+                        "Failed to calculate valid Nppm value with current divider ratio (0x2F[7:4]"
+                        "=0b{:04b}). Try specifying a different ratio.".format(divider_ratio))
+            logger.info("Writing calculated CDR PPM counts: "
+                        "{}, {}".format(int_Nppm_group0. int_Nppm_group1))
+
+            # Write calculated PPM values to registers
+            set_cdr_ppm_count(int_Nppm_group0, int_Nppm_group1)
+
             # Set PPM tolerance to 0xFF default (0xF for both channels)
             configure_cdr_ppm_tolerance(0xF, PPM_GROUP_ALL)
 
-#TODO Set CAP DAC / ref mode thing, see 8.5.9
         def set_reference_clock_mode(ref_clk_mode):
             """
             Set the CAP DAC reference mode. In the default mode (Ref mode 3), VCO divider ratios
