@@ -83,6 +83,43 @@ class DS110F410(I2CDevice):
     ADAPT_Mode2_Both_CTLE_Optimal   = 0b10
     ADAPT_Mode3_Both_DFE_Emphasis   = 0b11
 
+    # PPM Groups, 0 and 1 exist for each channel
+    PPM_GROUP_0         = 0
+    PPM_GROUP_1         = 1
+    PPM_GROUP_Both      = 2     # For code convenience use only
+
+    # Standard-based rate settings for auto mode register 0x2F
+    CDR_STANDARD_Ethernet           = 0x06
+    CDR_STANDARD_Fibre_Channel      = 0x16
+    CDR_STANDARD_Infiniband         = 0x26
+    CDR_STANDARD_SDH_SONET          = 0x56
+    CDR_STANDARD_PROP1a             = 0x76
+    CDR_STANDARD_PROP1b             = 0x86
+    CDR_STANDARD_Interlaken_2       = 0xC6
+    CDR_STANDARD_SFF_8431           = 0xD6
+
+    # Subrate (VCO divider) settings for manual mode register 0x2F[7:4]
+    SUBRATE_DIV_Grp0_8__Grp1_1              = 0b0000
+    SUBRATE_DIV_Grp0_1_2_4__Grp1_1          = 0b0001
+    SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4      = 0b0010
+    SUBRATE_DIV_Grp0_2_4__Grp1_2_4          = 0b0100
+    SUBRATE_DIV_Grp0_1_4__Grp1_1_4          = 0b0101
+    SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8  = 0b0110
+    SUBRATE_DIV_Grp0_1__Grp1_1              = 0b0111    # Or duplicate settings 0b1000, 0b1100, 0b1101
+    SUBRATE_DIV_Grp0_2__Grp1_2              = 0b1010
+
+    # Reference clock mode (rarely not 0b11)
+    REF_CLK_Mode_3                      = 0b11
+    REF_CLK_Constr_CAPDAC__RefClk_EN    = 0b10
+    REF_CLK_Refless_Constr_CAPDAC       = 0b01
+    REF_CLK_Refless_All_CAPDAC          = 0b00
+
+    # CAP DAC range settings (override), stop = <setting>
+    CAP_DAC_RANGE_Start_Minus_4     = 0b11
+    CAP_DAC_RANGE_Start_Minus_3     = 0b10
+    CAP_DAC_RANGE_Start_Minus_2     = 0b01
+    CAP_DAC_RANGE_Start_Minus_1     = 0b00
+
     # Register Fields (Channel)
     _FIELD_Chn_Reset = _Field(0x00, _REG_GRP_Channel, 3, 4)         # Combined channel reset bits
 
@@ -91,15 +128,37 @@ class DS110F410(I2CDevice):
 
     _FIELD_Chn_Status = _Field(0x02, _REG_GRP_Channel, 7, 8)        # Channel status full byte
 
+    _FIELD_Chn_CAPDAC_StartVal_EN = _Field(0x09, _REG_GRP_Channel, 7, 1)    # EN CAPDAC startval ovr
+    _FIELD_Chn_CAPDAC_Setting_0 = _Field(0x08, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group0
+    _FIELD_Chn_CAPDAC_Setting_1 = _Field(0x0B, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group1
+
     _FIELD_Chn_Driver_VOD = _Field(0x2D, _REG_GRP_Channel, 2, 3)    # Output Differential Voltage
     _FIELD_Chn_Driver_DEM = _Field(0x15, _REG_GRP_Channel, 2, 3)    # Output De-emphasis
     _FIELD_Chn_Driver_SLOW = _Field(0x18, _REG_GRP_Channel, 2, 1)   # Output Slow Rise/Fall enable
     _FIELD_Chn_Driver_POL = _Field(0x1F, _REG_GRP_Channel, 7, 1)    # Output Polarity Inversion
 
+    _FIELD_Chn_CDR_Standard_Rate = _Field(0x2F, _REG_GRP_Channel, 7, 8) # CDR Standard-based rates
+    _FIELD_Chn_CDR_Subrate_Div = _Field(0x2F, _REG_GRP_Channel, 7, 4)   # CDR Manual Rate Mode
+
     _FIELD_Chn_EOM_VR_Lim_Err = _Field(0x30, _REG_GRP_Channel, 5, 1)
     _FIELD_Chn_HEO_VEO_INT = _Field(0x30, _REG_GRP_Channel, 4, 1)       # Cleared on read
 
     _FIELD_Chn_Adapt_Mode = +_Field(0x31, _REG_GRP_Channel, 6, 2)   # Adaptation / Lock mode
+
+    _FIELD_Chn_Ref_Clk_Mode = _Field(0x36, _REG_GRP_Channel, 5, 2)  # Reference clock mode
+    _FIELD_CAPDAC_Range_Ovr_EN = _Field(0x36, _REG_GRP_Channel, 2, 1)  # CAPDAC range override EN
+
+    _FIELD_Chn_PPM_Count_G0_LSB = _Field(0x60, _REG_GRP_Channel, 7, 8)  # PPM Count Group 0 LSB
+    _FIELD_Chn_PPM_Count_G0_MSB = _Field(0x61, _REG_GRP_Channel, 6, 7)  # PPM Count Group 0 MSB
+    _FIELD_Chn_PPM_Count_G0_EN  = _Field(0x61, _REG_GRP_Channel, 7, 1)  # PPM Count Group 0 Enable
+    _FIELD_Chn_PPM_Count_G1_LSB = _Field(0x62, _REG_GRP_Channel, 7, 8)  # PPM Count Group 1 LSB
+    _FIELD_Chn_PPM_Count_G1_MSB = _Field(0x63, _REG_GRP_Channel, 6, 7)  # PPM Count Group 1 MSB
+    _FIELD_Chn_PPM_Count_G1_EN  = _Field(0x63, _REG_GRP_Channel, 7, 1)  # PPM Count Group 1 Enable
+    _FIELD_Chn_PPM_Tolerance_G0 = _Field(0x64, _REG_GRP_Channel, 7, 4)  # PPM Tolerance Group 0
+    _FIELD_Chn_PPM_Tolerance_G1 = _Field(0x64, _REG_GRP_Channel, 3, 4)  # PPM Tolerance Group 1
+
+    _FIELD_Chn_VCO_Div_Override = _Field(0x18, _REG_GRP_Channel, 6, 3)  # Manual VCO div override
+    _FIELD_Chn_VCO_Div_Override_EN = _Field(0x09, _REG_GRP_Channel, 2, 1)   # Enable above
 
     # Register Fields (Shared / Control)
     _FIELD_Shr_Reset = _Field(0x04, _REG_GRP_Shared, 6, 1)
@@ -339,11 +398,272 @@ class DS110F410(I2CDevice):
             if (tmp & 0b00000010): print 'Auto Adapt Complete'
             if (tmp & 0b00000011): print 'PPM Count Met'
 
-            heo = self.ds110._read_field(_FIELD_Chn_HEO_Val, self.CID)
-            veo = self.ds110._read_field(_FIELD_Chn_VEO_Val, seld.CID)
+            heo = self.ds110._read_field(DS110F410._FIELD_Chn_HEO_Val, self.CID)
+            veo = self.ds110._read_field(DS110F410._FIELD_Chn_VEO_Val, seld.CID)
             print 'HEO ' + str(heo)
             print 'VEO ' + str(veo)
 
+        """
+        CDR (Clock Data Recovery) Settings:
+        """
+        def configure_cdr_ppm_tolerance(ppm_tolerance, group_select):
+            """
+            Apply a PPM tolerance for the channel for a given group 0, 1, or both. The field is one
+            byte in total, with one nibble for each group.
+
+            :param ppm_tolerance:   PPM tolerance setting, one nibble wide (masked to 0x0F).
+            :param group_select:    Group to apply the setting to. Choose PPM_GROUP_0, PPM_GROUP_1
+                                    or PPM_GROUP_Both to set both nibbles.
+            """
+            if (ppm_tolerance & 0xF) != ppm_tolerance:
+                raise I2CException(
+                        "Please specify a single group tolerance with mask 0x0F."
+                        "To apply this to both groups, choose PPM_GROUP_Both.")
+            if not (group_select in [PPM_GROUP_0, PPM_GROUP_1, PPM_GROUP_Both]):
+                raise I2CException(
+                        "Invalid group selected. Please Choose PPM_GROUP_0/1/Both")
+
+            if group_select in [PPM_GROUP_0, PPM_GROUP_Both]:
+                self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Tolerance_G0,
+                                        self.CID, ppm_tolerance)
+
+            if group_select in [PPM_GROUP_1, PPM_GROUP_Both]:
+                self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Tolerance_G1,
+                                        self.CID, ppm_tolerance)
+
+# THE LOGIC IN THESE FUNCTIONS SHOULD BE CHECKED!!!!
+        def configure_cdr_standard_rate(cdr_standard):
+            """
+            Use a pre-defined standard for automatically determining channel rates and subrates. If
+            a standard rate matches requirements, no further PPM settings will need to be set.
+
+            :param cdr_standard:    Selected standard to determine rates. Choose from:
+                                        CDR_STANDARD_Ethernet
+                                        CDR_STANDARD_Fibre_Channel
+                                        CDR_STANDARD_Infiniband
+                                        CDR_STANDARD_SDH_SONET
+                                        CDR_STANDARD_PROP1a
+                                        CDR_STANDARD_PROP1b
+                                        CDR_STANDARD_Interlaken_2
+                                        CDR_STANDARD_SFF_8431
+            """
+
+            # Set value of 0x2f depending on standard selected
+            self.ds110._write_field(DS110F410._FIELD_Chn_CDR_Standard_Rate,
+                                    self.CID, cdr_standard)
+
+            # NO rates should need to be set here, rates and subrates automatic (see 8.3.5)
+
+            # Ensure standard mode is enabled
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G0_EN,
+                                    self.CID, 0b1)                  # Group 0 Disable manual rate
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G1_EN,
+                                    self.CID, 0b1)                  # Group 0 Disable manual rate
+
+            # TODO Does Fibre need special consideration? See documentation:
+            """
+            For Fibre-Channel, the standard requiring a 10.51875GHz VCO frequency and the standard
+            requiring an 8.5GHz VCO frequency require different settings for the registers shown in
+            the table. The retimer cannot automatically switch between these two standards.
+            """
+
+        def configure_cdr_manual_rate(data_rate_group0, data_rate_group1,
+                                      divider_ratio=SUBRATE_DIV_Grp0_1__Grp1_1):
+            """
+            If a standard rate cannot be found to match requirements, custom rate/subrate settings
+            can be used. PPM count targets can be set to allocate the correct VCO frequency for a
+            required data rate.
+
+            This also takes into account a custom divider ratio, which is otherwise nominally 1 for
+            both groups of the channel (meaning VCO frequency = data rate). When a divider ratio
+            that has been specified lists more than one ratio, they will be switched between
+            automatically, as long as Clock Reference Mode 3 is active.
+
+            :param data_rate_group0:    Raw data rate for group 0, in Gbps
+            :param data_rate_group1:    Raw data rate for group 1, in Gbps
+            :param divider_ratio:       Divider ratio for VCO frequency to use for each group, in a
+                                        combined setting (see above). Set to (1, 1) if unspecified.
+                                        Choose from SUBRATE_DIV_Grp0_x__Grp1_x settings
+            """
+            #TODO check input ranges
+
+            # VCO divider is typically 1 for manual mode, meaning the PPM count alone sets the frequency
+            self.ds110._write_field(DS110F410._FIELD_Chn_CDR_Subrate_Div,
+                                    self.CID, divider_ratio)
+
+            # Interpret selected divider rations for use in determining frequency settings
+            #TODO actually get this from the divider_ratio supplied (where there are multiple
+            # ratios chosen, the device will choose the best one automatically)
+            if divider_ratio == SUBRATE_DIV_Grp0_1__Grp1_1:
+                divider_group0 = 1
+                divider_group1 = 1
+            elif divider_ratio == SUBRATE_DIV_Grp0_2__Grp1_2:
+                divider_group0 = 2
+                divider_group1 = 2
+            elif divider_ratio == SUBRATE_DIV_Grp0_8__Grp1_1:
+                divider_group0 = 8
+                divider_group1 = 1
+            else:
+                raise I2CException("Divider ratio not currently supported")
+
+            # Calcualte PPM count settings for given data rate, taking account of the selected divider subrate.
+            # Make sure 'manual' is also enabled in MSB bit 7 for each group
+            data_rate_group0_scaled = data_rate_group0 * divider_group0
+            int_Nppm_group0 = (int) (1280 * data_rate_group0_scaled)
+            data_rate_group1_scaled = data_rate_group1 * divider_group1
+            int_Nppm_group1 = (int) (1280 * data_rate_group1_scaled)
+
+            # Ensure calculated values are possible in 15 bits
+            if ((int_Nppm_group0 > 0x7FFF) or
+                (int_Nppm_group1 > 0x7FFF)):
+                raise I2CException(
+                        "Failed to calculate valid Nppm value with current divider ratio (0x2F[7:4]"
+                        "=0b{:04b}). Try specifying a different ratio.".format(divider_ratio))
+
+            # Write Nppm values for each group, and enable manual rate selection
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G0_LSB,
+                                    self.CID, int_Nppm_group0 & 0xFF)           # Count Group 0 LSB
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G0_MSB,
+                                    self.CID, (int_Nppm_group0 & 0x7F00) << 8)  # Count Group 0 MSB
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G1_LSB,
+                                    self.CID, int_Nppm_group1 & 0xFF)           # Count Group 1 LSB
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G1_MSB,
+                                    self.CID, (int_Nppm_group1 & 0x7F00) << 8)  # Count Group 1 MSB
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G0_EN,
+                                    self.CID, 0b1)                      # Group 0 Enable manual rate
+            self.ds110._write_field(DS110F410._FIELD_Chn_PPM_Count_G1_EN,
+                                    self.CID, 0b1)                      # Group 0 Enable manual rate
+
+            # Set PPM tolerance to 0xFF default (0xF for both channels)
+            configure_cdr_ppm_tolerance(0xF, PPM_GROUP_ALL)
+
+#TODO Set CAP DAC / ref mode thing, see 8.5.9
+        def set_reference_clock_mode(ref_clk_mode):
+            """
+            Set the CAP DAC reference mode. In the default mode (Ref mode 3), VCO divider ratios
+            will be tried automatically using ext osc, with no futher CAP DAC settings set.
+
+            :param ref_clk_mode:    Select from: REF_CLK_Mode_3, REF_CLK_Constr_CAPDAC__RefClk_EN,
+                                    REF_CLK_Refless_Constr_CAPDAC, REF_CLK_Refless_All_CAPDAC.
+            """
+            # By default, ref clk mode 3 will use external osc to switch VCO ratios in 0x2F manual mode
+            if not (ref_clk_mode in [REF_CLK_Mode_3,
+                                     REF_CLK_Constr_CAPDAC__RefClk_EN,
+                                     REF_CLK_Refless_Constr_CAPDAC,
+                                     REF_CLK_Refless_All_CAPDAC]):
+                raise I2CException(
+                        "Invalid reference clock mode specified, choose from:"
+                        " REF_CLK_[Mode_3, Constr_CAPDAC__RefClk_EN, Refless_Constr_CAPDAC,"
+                        " Refless_All_CAPDAC].")
+            self.ds110._write_field(DS110F410._FIELD_Chn_Ref_Clk_Mode,
+                                    self.CID, REF_CLK_Mode_3)
+
+        def set_cap_dac_start_override_en(enable):
+            """
+            Set to enable CAP DAC start value override values in registers 0x08 and 0x0B, set using
+            the set_cap_dac_start_values() function below.
+
+            :param enable:  Boolean, True to enable override
+            """
+            self.ds110._write_field(DS110F410._FIELD_Chn_CAPDAC_StartVal_EN,
+                                    self.CID, bool(enable))
+
+        def set_cap_dac_start_values(cap_dac_setting_0, cap_dac_setting_1):
+            """
+            Set the CAP DAC start value override values in registers 0x08 and 0x0B. Must be enabled
+            with above function to take effect.
+
+            :param cap_dac_setting_0:   CAP DAC start value for group 0, 5 bit field
+            :param cap_dac_setting_1:   CAP DAC start value for group 1, 5 bit field
+            """
+            if ((cap_dac_setting_0 & 0b11111 != cap_dac_setting_0) or
+                (cap_dac_setting_1 & 0b11111 != cap_dac_setting_1)):
+                raise I2CExcaption(
+                        "CAP DAC setting in in correct range, should fit in 5 bit field")
+
+            self.ds110._write_field(DS110F410._FIELD_Chn_CAPDAC_Setting_0,
+                                    self.CID, cap_dac_setting_0)
+            self.ds110._write_field(DS110F410._FIELD_Chn_CAPDAC_Setting_1,
+                                    self.CID, cap_dac_setting_1)
+
+        def cap_dac_range_override_en(enable):
+            """
+            Set to enable range (stop value) override for CAP DAC in function below.
+
+            :param enable:  Boolean, True to enable override
+            """
+            self.ds110._write_field(DS110F410._FIELD_CAPDAC_Range_Ovr_En,
+                                    self.CID, bool(enable))
+
+        def cap_dac_range_override(cap_dac_range):
+            """
+            Override for VCO search range (stop) value. this is specified relative to the start
+            value using several pre-defined choices. Must be enabled with above to take effect.
+
+            :param cap_dac_range:   Range choice, from CAP_DAC_RANGE_Start_Minus<1-4>
+            """
+            if not (cap_dac_range in [CAP_DAC_RANGE_Start_Minus_1,
+                                      CAP_DAC_RANGE_Start_Minus_2,
+                                      CAP_DAC_RANGE_Start_Minus_3,
+                                      CAP_DAC_RANGE_Start_Minus_4]):
+                raise I2CException(
+                        "Incorrect CAP DAC Range Specified")
+            self.ds110._write_field(DS110F410._FIELD_CAPDAC_Range_Override,
+                                    self.CID, cap_dac_range)
+
+        def override_vco_divider_ratio(manual_divider_ratio):
+            """
+            Manually force a certain VCO divider ratio. This should not commonly be used (8.5.11).
+
+            :param manual_divider_ratio:    Integer selection from: 1, 2, 4, 8, or 16.
+                                            Set to 0 to disable manual selection.
+            """
+
+            if manual_divider_ratio == 0:   # Disable override
+                self.ds110._write_field(DS110F410._FIELD_Chn_VCO_Div_Override_EN,
+                                        self.CID, 0b0)
+                return
+            elif not (manual_divider_ration in [1,2,4,8,16]):
+                raise I2CException(
+                        "Invalid divider ratio supplied, please choose 1, 2, 4, 8, or 16")
+
+            # Set override field
+            self.ds110._write_field(DS110F410._FIELD_Chn_VCO_Div_Override,
+                                    self.CID, math.log2(manual_divider_ratio))
+
+            # Enable override
+            self.ds110._write_field(DS110F410._FIELD_Chn_VCO_Div_Override_EN,
+                                    self.CID, 0b1)
+
+
+# THE LOGIC IN THESE FUNCTIONS SHOULD BE CHECKED!!!!
+
+        """
+        Adaptation Settings:
+        """
+        def set_adaptation_mode(self, adaptation_mode):
+            """
+            Simple wrapper to set adaptation mode bits, which could be done in isolation from other
+            settings. See DS110F410 datasheet section 8.5.19 (Rev D Apr 2015) for guide.
+
+            :param adaptation_mode: Mode to select from the following:
+                                    ADAPT_Mode0_None, ADAPT_Mode1_CTLE_Only,
+                                    ADAPT_Mode2_Both_CTLE_Optimal, ADAPT_Mode3_Both_DFE_Emphasis
+            """
+            if adaptation_mode in [ADAPT_Mode0_None,
+                                   ADAPT_Mode1_CTLE_Only,
+                                   ADAPT_Mode2_Both_CTLE_Optimal,
+                                   ADAPT_Mode3_Both_DFE_Emphasis]:
+                self.ds110._write_field(DS110F410._FIELD_Chn_Adapt_Mode,
+                                        self.CID, adaptation_mode)
+            else:
+                raise I2CException(
+                        "Incorrect Adaptation Mode specified. "
+                        "Use ADAPT_Modex_x.")
+
+        """
+        Output Driver Settings:
+        """
         def select_output(self, mux_output):
             """
             Selects a particular MUX output.
@@ -378,26 +698,6 @@ class DS110F410(I2CDevice):
                                         self.CID, 0b1)                      # Enable PRBS clock
                 self.ds110._write_field(DS110F410._FIELD_Chn_PRBS_CLK_EN,
                                         self.CID, 0b1)                      # Enable PRBS
-
-        def set_adaptation_mode(self, adaptation_mode):
-            """
-            Simple wrapper to set adaptation mode bits, which could be done in isolation from other
-            settings. See DS110F410 datasheet section 8.5.19 (Rev D Apr 2015) for guide.
-
-            :param adaptation_mode: Mode to select from the following:
-                                    ADAPT_Mode0_None, ADAPT_Mode1_CTLE_Only,
-                                    ADAPT_Mode2_Both_CTLE_Optimal, ADAPT_Mode3_Both_DFE_Emphasis
-            """
-            if adaptation_mode in [ADAPT_Mode0_None,
-                                   ADAPT_Mode1_CTLE_Only,
-                                   ADAPT_Mode2_Both_CTLE_Optimal,
-                                   ADAPT_Mode3_Both_DFE_Emphasis]:
-                self.ds110._write_field(DS110F410._FIELD_Chn_Adapt_Mode,
-                                        self.CID, adaptation_mode)
-            else:
-                raise I2CException(
-                        "Incorrect Adaptation Mode specified. "
-                        "Use ADAPT_Modex_x.")
 
         def configure_output_driver(self, diff_voltage=0.6, de_emphasis_db=0.0,
                                     slow_rise_fall_time=False, invert_output=False):
@@ -442,6 +742,9 @@ class DS110F410(I2CDevice):
             # Output Polarity Inversion
             self.ds110._write_field(_FIELD_Chn_Driver_POL, self.CID, 0b1 & invert_output)
 
+        """
+        Channel Actions
+        """
         def reset(self, selection=[RST_ALL]):
             """
             Resets entire device or only sections of it for a given channel.
