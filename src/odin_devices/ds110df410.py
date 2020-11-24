@@ -125,6 +125,11 @@ class DS110DF410(I2CDevice):
     CAP_DAC_RANGE_Start_Minus_2     = 0b01
     CAP_DAC_RANGE_Start_Minus_1     = 0b00
 
+    # Figure of Merit (FOM) Mode
+    FOM_MODE_HEO_Only   = 0x1
+    FOM_MODE_VEO_Only   = 0x2
+    FOM_MODE_HEO_VEO    = 0x3   # Default
+
     # Register Fields (Channel)
     _FIELD_Chn_Reset = _Field(0x00, _REG_GRP_Channel, 3, 4)         # Combined channel reset bits
 
@@ -132,6 +137,9 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_SIG_DET_LOSS_INT = _Field(0x01, _REG_GRP_Channel, 0, 1)  # SD Loss Interrupt
 
     _FIELD_Chn_Status = _Field(0x02, _REG_GRP_Channel, 7, 8)        # Channel status full byte
+
+    _FIELD_Chn_Current_CTLE_Setting = _Field(0x03, _REG_GRP_Channel, 7, 8)      # CTLE stage setting
+    _FIELD_Chn_LowDataRate_CTLE_Setting = _Field(0x3A, _REG_GRP_Channel, 7, 8)  # LR CTLE stage stng
 
     _FIELD_Chn_CAPDAC_StartVal_EN = _Field(0x09, _REG_GRP_Channel, 7, 1)    # EN CAPDAC startval ovr
     _FIELD_Chn_CAPDAC_Setting_0 = _Field(0x08, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group0
@@ -155,11 +163,13 @@ class DS110DF410(I2CDevice):
 
     _FIELD_Chn_CDR_Standard_Rate = _Field(0x2F, _REG_GRP_Channel, 7, 8) # CDR Standard-based rates
     _FIELD_Chn_CDR_Subrate_Div = _Field(0x2F, _REG_GRP_Channel, 7, 4)   # CDR Manual Rate Mode
+    _FIELD_Chn_Manual_Adapt_Initiate = _Field(0x2F, _REG_GRP_Channel, 0, 1) # Initiate Adaptation
 
     _FIELD_Chn_EOM_VR_Lim_Err = _Field(0x30, _REG_GRP_Channel, 5, 1)
     _FIELD_Chn_HEO_VEO_INT = _Field(0x30, _REG_GRP_Channel, 4, 1)       # Cleared on read
 
-    _FIELD_Chn_Adapt_Mode = +_Field(0x31, _REG_GRP_Channel, 6, 2)   # Adaptation / Lock mode
+    _FIELD_Chn_Adapt_Mode = _Field(0x31, _REG_GRP_Channel, 6, 2)    # Adaptation / Lock mode
+    _FIELD_Chn_FOM_Mode = _Field(0x31, _REG_GRP_Channel, 4, 2)      # Figure of Merit mode
 
     _FIELD_Chn_Ref_Clk_Mode = _Field(0x36, _REG_GRP_Channel, 5, 2)  # Reference clock mode
     _FIELD_CAPDAC_Range_Ovr_EN = _Field(0x36, _REG_GRP_Channel, 2, 1)  # CAPDAC range override EN
@@ -172,6 +182,12 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_PPM_Count_G1_EN  = _Field(0x63, _REG_GRP_Channel, 7, 1)  # PPM Count Group 1 Enable
     _FIELD_Chn_PPM_Tolerance_G0 = _Field(0x64, _REG_GRP_Channel, 7, 4)  # PPM Tolerance Group 0
     _FIELD_Chn_PPM_Tolerance_G1 = _Field(0x64, _REG_GRP_Channel, 3, 4)  # PPM Tolerance Group 1
+
+    _FIELD_Chn_FOM_Config_A = _Field(0x6B, _REG_GRP_Channel, 7, 8)  # Configurable FOM Param 'a'
+    _FIELD_Chn_FOM_Config_B = _Field(0x6C, _REG_GRP_Channel, 7, 8)  # Configurable FOM Param 'b'
+    _FIELD_Chn_FOM_Config_C = _Field(0x6D, _REG_GRP_Channel, 7, 8)  # Configurable FOM Param 'c'
+    _FIELD_Chn_FOM_CTLE_EN = _Field(0x6E, _REG_GRP_Channel, 7, 1)   # Configurable FOM CTLE Enable
+    _FIELD_Chn_FOM_CTLE_EN = _Field(0x6E, _REG_GRP_Channel, 6, 1)   # Configurable FOM DFE Enable
 
     _FIELD_Chn_VCO_Div_Override = _Field(0x18, _REG_GRP_Channel, 6, 3)  # Manual VCO div override
     _FIELD_Chn_VCO_Div_Override_EN = _Field(0x09, _REG_GRP_Channel, 2, 1)   # Enable above
@@ -798,6 +814,8 @@ class DS110DF410(I2CDevice):
             """
             Simple wrapper to set adaptation mode bits, which could be done in isolation from other
             settings. See DS110DF410 datasheet section 8.5.19 (Rev D Apr 2015) for guide.
+            This will take effect at next loss of lock, or when manually enabled by calling
+            initiate_adaptation().
 
             :param adaptation_mode: Mode to select from the following:
                                     ADAPT_Mode0_None, ADAPT_Mode1_CTLE_Only,
@@ -813,6 +831,67 @@ class DS110DF410(I2CDevice):
                 raise I2CException(
                         "Incorrect Adaptation Mode specified. "
                         "Use ADAPT_Modex_x.")
+
+        def initiate_adaptation():
+            """
+            Manually initiate ataptation. Not that setting the adaptation mode is enough to ensure
+            that adaptation will be used at the next loss of lock. This function will perform
+            adapatation immediately.
+            """
+            self.ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
+                                   self.CID, 0b1)
+            time.sleep(50)
+            self.ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
+                                   self.CID, 0b0)
+
+        def set_FOM_mode(fom_mode):
+            """
+            Set the figure of merit mode to use HEO, VEO, or both (the default) when not using the
+            configurable mode.
+
+            :param fom_mode:    Select from FOM_MODE_<HEO_Only, VEO_Only, HEO_VEO>
+            """
+            if fom_mode not in [FOM_MODE_HEO_Only, FOM_MODE_VEO_Only, FOM_MODE_HEO_VEO]:
+                raise I2CException(
+                        "Invalid FOM Mode, choose from FOM_MODE_<HEO_Only, VEO_Only, HEO_VEO>")
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Mode,
+                                    self.CID, fom_mode)
+
+        def set_FOM_configurable(a, b, c, CTLE_EN, DFE_EN):
+            """
+            Set the arguments for the alternative 'configurable' figure of merit calculation:
+                FOM= (HEO– b) x a + (VEO– c) x (1 – a)
+
+            If used, this must be individually enabled for CTLE and DFE if they should use it rather
+            than the normal FOM calculation configured with set_FOM_mode in 0x2C[5:4].
+
+            :param a/b/c:       Equation parameters. a is 7-bit, b/c are 8-bit fields
+            :param CTLE_EN:     Enable configurable FOM calculation for CTLE
+            :param DFE_EN:      Enable configurable FOM calculation for DFE
+            """
+            # Check Inputs
+            if (a > 128):
+                raise I2CException("Max configurable FOM argument a is 128")
+            if (((a & 0xFF) != a) or
+                ((b & 0xFF) != b) or
+                ((c & 0xFF) != c)):
+                    raise I2CException("Invalid FOM argument for unsigned 8-bit field")
+
+            # Set the a, b, c arguments
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_A,
+                                    self.CID, a)
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_B,
+                                    self.CID, b)
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_C,
+                                    self.CID, c)
+
+            # Enable for CTLE and DFE if required
+            if CTLE_EN:
+                self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_CTLE_EN,
+                                        self.CID, 0b1)
+            if DFE_EN:
+                self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_DFE_EN,
+                                        self.CID, 0b1)
 
         def override_CTLE_boost_setting(stage0, stage1, stage2, stage3, limit_final_stage = False):
             """
