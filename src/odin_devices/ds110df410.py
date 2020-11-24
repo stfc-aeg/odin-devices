@@ -142,6 +142,17 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_Driver_SLOW = _Field(0x18, _REG_GRP_Channel, 2, 1)   # Output Slow Rise/Fall enable
     _FIELD_Chn_Driver_POL = _Field(0x1F, _REG_GRP_Channel, 7, 1)    # Output Polarity Inversion
 
+    _FIELD_Chn_DFE_Power_Down = _Field(0x1E, _REG_GRP_Channel, 3, 1)    # DFE Power Down
+    _FIELD_Chn_DFE_Override_En = _Field(0x23, _REG_GRP_Channel, 6, 1)   # DFE override enable
+    _FIELD_Chn_DFE_Force_En = _Field(0x15, _REG_GRP_Channel, 7, 1)      # DFE Manual Tap enable
+    _FIELD_Chn_DFE_Tap1_Weight = _Field(0x12, _REG_GRP_Channel, 4, 5)   # DFE Tap 1 Weight
+    _FIELD_Chn_DFE_Tap2_Weight = _Field(0x21, _REG_GRP_Channel, 3, 4)   # DFE Tap 2 Weight
+    _FIELD_Chn_DFE_Tap3_Weight = _Field(0x21, _REG_GRP_Channel, 7, 4)   # DFE Tap 3 Weight
+    _FIELD_Chn_DFE_Tap4_Weight = _Field(0x20, _REG_GRP_Channel, 3, 4)   # DFE Tap 4 Weight
+    _FIELD_Chn_DFE_Tap5_Weight = _Field(0x20, _REG_GRP_Channel, 7, 4)   # DFE Tap 5 Weight
+    _FIELD_Chn_DFE_Tap1_Polarity = _Field(0x12, _REG_GRP_Channel, 7, 1) # DFE Tap 1 Polarity
+    _FIELD_Chn_DFE_Tap2_5_Polarities = _Field(0x11, _REG_GRP_Channel, 3, 4) # DFE Taps 2-5 Polarity
+
     _FIELD_Chn_CDR_Standard_Rate = _Field(0x2F, _REG_GRP_Channel, 7, 8) # CDR Standard-based rates
     _FIELD_Chn_CDR_Subrate_Div = _Field(0x2F, _REG_GRP_Channel, 7, 4)   # CDR Manual Rate Mode
 
@@ -802,6 +813,60 @@ class DS110DF410(I2CDevice):
                 raise I2CException(
                         "Incorrect Adaptation Mode specified. "
                         "Use ADAPT_Modex_x.")
+
+        def override_DFE_tap_weights(tap1_weight, tap2_weight, tabl3_weight, tap4_weight,
+                                     tap5_weight,
+                                     tap1_pol_positive = False, tap2_pol_positive = False,
+                                     tap3_pol_positive = False, tap4_pol_positive = False,
+                                     tap5_pol_positive = False):
+            """
+            Override the DFE tap weights rather than use the ones determined by the adaptation
+            system. Note that depending on the adaptation settin, these changes may be overridden,
+            so make sure DFE adaptation is off. Also, expect changed DFE settings to cause the CTLE
+            to lose lock, which may cause it to adapt its own settings depending on the adaptation
+            mode in use.
+
+            :param tapx_weight:     Absolute weight for tap 'x'. Tap1 is 5 bits, all others are 4.
+            :param tapx_pol_positive:   Boolean. Set True to make weight positive. Negative default.
+            """
+            # Check Inputs
+            if (tap1_weight & 0b11111) != tap1_weight:
+                raise I2CException("Tap 1 weight must fit in 5 bit field")
+            for current_weight in [tap2_weight, tap3_weight, tap4_weight, tap5_weight]:
+                if (current_weight & 0b1111) != current_weight:
+                    raise I2CException(
+                            "Tap {} weight must fit in 4 bit field".format(current_weight))
+
+            # Enable DFE override
+            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Override_En,
+                                    self.CID, 0b1)
+
+            # Power up DFE
+            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Power_Down,
+                                    self.CID, 0b0)
+
+            # Enable manual DFE tap settings
+            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Force_En,
+                                    self.CID, 0b1)
+
+            # Set tap weights
+            weights = [tap1_weight, tap2_weight, tap3_weight, tap4_weight, tap5_weight]
+            fields = [DS110DF410._FIELD_Chn_DFE_Tap1_Weight, DS110DF410._FIELD_Chn_DFE_Tap1_Weight,
+                      DS110DF410._FIELD_Chn_DFE_Tap1_Weight, DS110DF410._FIELD_Chn_DFE_Tap1_Weight,
+                      DS110DF410._FIELD_Chn_DFE_Tap1_Weight]
+            for weightnum in range(1,6):
+                self.ds110._write_field(fields[weightnum], self.CID, weights[weightnum])
+
+            # Set tap polarities
+            polarities = [tap1_pol_positive, tap2_pol_positive, tap3_pol_positive,
+                          tap4_pol_positive, tap5_pol_positive]
+            fields = [DS110DF410._FIELD_Chn_DFE_Tap1_Polarity,
+                      DS110DF410._FIELD_Chn_DFE_Tap2_Polarity,
+                      DS110DF410._FIELD_Chn_DFE_Tap3_Polarity,
+                      DS110DF410._FIELD_Chn_DFE_Tap4_Polarity,
+                      DS110DF410._FIELD_Chn_DFE_Tap5_Polarity]
+            for tapnum in range(1,6):
+                self.ds110._write_field(fields[tapnum], self.CID, polarities[tapnum])
 
         """
         Output Driver Settings:
