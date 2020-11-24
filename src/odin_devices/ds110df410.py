@@ -814,6 +814,52 @@ class DS110DF410(I2CDevice):
                         "Incorrect Adaptation Mode specified. "
                         "Use ADAPT_Modex_x.")
 
+        def override_CTLE_boost_setting(stage0, stage1, stage2, stage3, limit_final_stage = False):
+            """
+            Override the CTLE setting in 0x03 to a custom set of stages rather than the set created
+            by the adaptation system. This will disable adaptation since, the only setting allowing
+            CTLE adaptation is the setting where all adaptation is disabled.
+
+            By bits:            override_CTLE_boost_setting(0b11, 0b01, 0b00, 0b10)
+            By Boost String:    override_CTLE_boost_setting(3,1,0,2)
+
+            :param stagex:              2-bit Field for each stage (all linear by default)
+            :param limit_final_stage:   Set True to Convert final stage to limiting (not linear)
+            """
+            # Check Inputs
+            for stage in [stage0, stage1, stage2, stage3]:
+                if (stage & 0b11) != stage:
+                    raise I2CException("All stages should fit in a 2-bit field")
+
+            # Force Adaptation mode to 0 (the only one where CTLE is is not overridden)
+            self.set_adaptation_mode(ADAPT_Mode0_None)
+
+            # Apply desired setting in low-rate value used in LOL
+            self.ds110._write_field(DS110DF410._FIELD_Chn_LowDataRate_CTLE_Setting, self.CID
+                                    (stage0 << 6 +
+                                     stage1 << 4 +
+                                     stage2 << 2 +
+                                     stage3))
+
+            # Apply desired setting in current CTLE setting register
+            self.ds110._write_field(DS110DF410._FIELD_Chn_Current_CTLE_Setting, self.CID
+                                    (stage0 << 6 +
+                                     stage1 << 4 +
+                                     stage2 << 2 +
+                                     stage3))
+
+            # Apply desired setting in initial value for CTLE adaptation sequence
+            tempField = _Field(0x40, _REG_GRP_Channel, 7, 8)    # The first of 32 registers
+            self.ds110._write_field(tempField, self.CID
+                                    (stage0 << 6 +
+                                     stage1 << 4 +
+                                     stage2 << 2 +
+                                     stage3))
+
+            # Set limiting bit
+            self.ds11._write_field(DS110DF410._FIELD_Chn_CTLE_Stg3_Limiting, self.CID,
+                                   bool(limit_final_stage))
+
         def override_DFE_tap_weights(tap1_weight, tap2_weight, tabl3_weight, tap4_weight,
                                      tap5_weight,
                                      tap1_pol_positive = False, tap2_pol_positive = False,
