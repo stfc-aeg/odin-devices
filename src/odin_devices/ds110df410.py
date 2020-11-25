@@ -130,6 +130,12 @@ class DS110DF410(I2CDevice):
     FOM_MODE_VEO_Only   = 0x2
     FOM_MODE_HEO_VEO    = 0x3   # Default
 
+    # EOM Voltage Range Selection
+    EOM_Voltage_pm_100mV    = 0x0
+    EOM_Voltage_pm_200mV    = 0x1
+    EOM_Voltage_pm_300mV    = 0x2
+    EOM_Voltage_pm_400mV    = 0x3
+
     # Register Fields (Channel)
     _FIELD_Chn_Reset = _Field(0x00, _REG_GRP_Channel, 3, 4)         # Combined channel reset bits
 
@@ -141,9 +147,15 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_Current_CTLE_Setting = _Field(0x03, _REG_GRP_Channel, 7, 8)      # CTLE stage setting
     _FIELD_Chn_LowDataRate_CTLE_Setting = _Field(0x3A, _REG_GRP_Channel, 7, 8)  # LR CTLE stage stng
 
+    _FIELD_EOM_LockM_EN = _Field(0x3E, _REG_GRP_Channel, 7, 1)      # EOM Lock monitoring enable
+    _FIELD_EOM_LockM_Thr_VEO = _Field(0x6A, _REG_GRP_Channel, 7, 4) # EOM Lock mon VEO Threshold
+    _FIELD_EOM_LockM_Thr_HEO = _Field(0x6A, _REG_GRP_Channel, 3, 4) # EOM Lock mon HEO Threshold
+
     _FIELD_Chn_CAPDAC_StartVal_EN = _Field(0x09, _REG_GRP_Channel, 7, 1)    # EN CAPDAC startval ovr
     _FIELD_Chn_CAPDAC_Setting_0 = _Field(0x08, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group0
     _FIELD_Chn_CAPDAC_Setting_1 = _Field(0x0B, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group1
+
+    _FIELD_Chn_EOM_VoltageRange = _Field(0x11, _REG_GRP_Channel, 7, 2)  # EOM Voltage Range Select
 
     _FIELD_Chn_Driver_VOD = _Field(0x2D, _REG_GRP_Channel, 2, 3)    # Output Differential Voltage
     _FIELD_Chn_Driver_DEM = _Field(0x15, _REG_GRP_Channel, 2, 3)    # Output De-emphasis
@@ -160,6 +172,12 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_DFE_Tap5_Weight = _Field(0x20, _REG_GRP_Channel, 7, 4)   # DFE Tap 5 Weight
     _FIELD_Chn_DFE_Tap1_Polarity = _Field(0x12, _REG_GRP_Channel, 7, 1) # DFE Tap 1 Polarity
     _FIELD_Chn_DFE_Tap2_5_Polarities = _Field(0x11, _REG_GRP_Channel, 3, 4) # DFE Taps 2-5 Polarity
+
+    _FIELD_EOM_LockM_EN = _Field(0x3E, _REG_GRP_Channel, 7, 1)          # EOM Lock monitor enable
+    _FIELD_Chn_EOM_Power_Down = _Field(0x11, _REG_GRP_Channel, 5, 1)    # EOM Power Down
+    _FIELD_Chn_EOM_Override_EN = _Field(0x22, _REG_GRP_Channel, 7, 1)   # EOM Override enable
+    _FIELD_Chn_FastEye_EN = _Field(0x24, _REG_GRP_Channel, 7, 1)        # EOM Fast Eye enable
+    _FIELD_Chn_FastEye_Auto = _Field(0x24, _REG_GRP_Channel, 1, 1)      # EOM Fast Eye auto init
 
     _FIELD_Chn_CDR_Standard_Rate = _Field(0x2F, _REG_GRP_Channel, 7, 8) # CDR Standard-based rates
     _FIELD_Chn_CDR_Subrate_Div = _Field(0x2F, _REG_GRP_Channel, 7, 4)   # CDR Manual Rate Mode
@@ -804,8 +822,103 @@ class DS110DF410(I2CDevice):
             self.ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
                                     self.CID, 0b1)
 
-
 # THE LOGIC IN THESE FUNCTIONS SHOULD BE CHECKED!!!!
+        """
+        Eye Opening Monitor (EOM) Settings:
+        """
+        def set_eom_voltage_range(eom_voltage_range):
+            """
+            Override for the voltage range for the eye-opening measurement comparator. This will
+            usually be set during the CTLE lock/adaptation process, so should not normally require
+            being overridden.
+
+            :param eom_voltage_range:   Choice from a selection of voltage ranges between +-100 and
+                                        +-400mV: EOM_Voltage_pm_<100, 200, 300, 400>mV
+            """
+            if not eom_voltage_range in [EOM_Voltage_pm_100mV,
+                                         EOM_Voltage_pm_200mV,
+                                         EOM_Voltage_pm_300mV,
+                                         EOM_Voltage_pm_400mV]:
+                raise I2CException("Invalid EOM Voltage Range selected")
+
+            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_VoltageRange,
+                                    self.CID, eom_voltage_range)
+
+        def eom_lock_monitor_en(enable):
+            """
+            Enable lock monitoring using the eye-opening monitor. Set the thresholds using the
+            set_eom_lock_monitor() function below.
+            """
+            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_EN,
+                                    self.CID, bool(enable))
+
+        def set_eom_lock_monitor_thresholds(threshold_veo, threshold_heo):
+            """
+            Set the vertical and horisontal thresholds when using the eye-opening monitor in lock
+            monitoring mode.
+
+            :param threshold_veo:       Vertical threshold
+            :param threshold_heo:       Horisontal threshold
+            """
+            if ((threshold_veo & 0xF) != threshold_veo or
+                (threshold_heo & 0xF) != threshold_heo):
+                raise I2CException("Threshold values must fit in 4-bit field")
+            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_VEO,
+                                    self.CID, threshold_veo)
+            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_HEO,
+                                    self.CID, threshold_heo)
+
+        def fast_eom_readout(eom_voltage_range=None):
+            """
+            Read out Fast Eye Monitor data under external control, into a 64x64 array representing
+            the eye monitor output.
+
+            :param eom_voltage_range:   Voltage range to be used by the EOM. If not specified, it
+                                        will not be changed.
+            :return:                    EOM output as 64x64 array of unsigned 16-bit integers
+            """
+            # Read current lock monitoring setting, temporarily disable it
+            old_lockmon_setting = self.ds110._read_field(DS110DF410._FIELD_EOM_LockM_EN, self.CID)
+            self.eom_lock_monitor_en(False)
+
+            # If specified, change the EOM Voltage Range
+            if eom_voltage_range is not None:
+                self.set_eom_voltage_range(eom_voltage_range)
+
+            # Force power to EOM circuitry
+            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
+                                    self.CID, 0b0)
+
+            # Clear EOM override (may not be enabled)
+            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Override_EN,
+                                    self.CID, 0b0)
+
+            # Enable Fast Eye Monitor, automatic Fast Eye
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
+                                    self.CID, 0b1)
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_Auto,
+                                    self.CID, 0b1)
+
+            # Read out first 4 bytes, which are discarded
+            self.ds110.readList(0x25, 4)
+
+            # Read out remaining 64x64 array in 64 byte segments
+            fast_eom_output = [[0 for i in range(64)] for j in range(64)]
+            result_dump = self.ds110.readList(0x25, 64*64*2)    # All values are 2 byte MSB, LSB
+            for output_index in range(0,64*64):
+                outputval = result_dump[output_index*2] << 8 + result_dump[output_index*2+1]
+                fast_eom_output[output_index/64][output_index % 64] = outputval
+
+            # Restore normal operating settings
+            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
+                                    self.CID, 0b0)          # Disable fasteye
+            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
+                                    self.CID, 0b1)          # Enable auto power down
+
+            # Restore original lock monitor setting
+            self.eom_lock_monitor_en(old_lockmon_setting)
+
+            return fast_eom_output
 
         """
         Adaptation Settings:
