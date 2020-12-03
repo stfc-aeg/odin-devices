@@ -30,9 +30,15 @@ class FireFly:
     self._interface = None      # _FireFly_Interface derived instance, QSFP+ or CXP
     self._log = None            # Logger instance
     self.num_channels = 0       # Derived from part number
+    self.direction = None       # Derived from part number
+    self.data_rate = None       # Derived form part number
 
     DIRECTION_TX = 1        # Definition used in driver only
     DIRECTION_RX = 0        # Definition used in driver only
+    DIRECTION_DUPLEX = 2    # Definition used in driver only
+
+    INTERFACE_CXP = 1
+    INTERFACE_QSFP = 0
 
     CHANNEL_00  = 0b000000000001        # This is the first channel for CXP devices
     CHANNEL_01  = 0b000000000010        # This is the first channel for QSFP+ devices
@@ -64,23 +70,13 @@ class FireFly:
         self._log = logging.getLogger('odin_devicecs.FireFly.' + ('%02x'%base_address))
         self._log.info("Init FireFly with base address 0x%02x" % base_address)
 
-        # Determine which communications interface is being used using upper00 byte 128
-        # This interface ID is defined in SFF-8024, but Samtec uses the vendor-specific range.
-        # Read memory at upper00:128 to get the byte for the interface if unknown
-        tempbus = smbus.SMBus(1)
-        if select_line is not None:
-            #TODO GPIO select line low
-            pass
-        SFF_identifier = tempbus.read_i2c_byte_data(base_address, 128, 1)
-        if select_line is not None:
-            #TODO GPIO select line high
-            pass
+        INTERFACE_Detect = _get_interface(select_line, 0x50)
 
-        if SFF_identifier == 0x81:                          # Samtec Vendor-specific ID For QSFP+
-            self._interface = _interface_QSFP(base_address, select_line)
+        if INTERFACE_Detect == FireFly.INTERFACE_QSFP:
+            self._interface = _interface_QSFP(base_address, select_line, self._log)
             self._log.info("Interface detected and verified as QSFP+ based")
-        elif SFF_identifier == None:                        # TODO Samtec Vendor-specific ID for CXP
-            self._interface = _interface_CXP(base_address, select_line)
+        elif INTERFACE_Detect == FireFly.INTERFACE_CXP:
+            self._interface = _interface_CXP(base_address, select_line, self._log)
             self._log.info("Interface detected and verified as CXP based")
         else:
             raise I2CException("Unsupported SFF interface class: {}".format(SFF_identifier))
@@ -93,15 +89,100 @@ class FireFly:
         self._log.info(
                 "Found device, Vendor: {} ({}), PN:{}".format(PN_ascii, VN_ascii, OUI))
 
-        # Populate number of channels
-        self.num_channels = int(PN_ascii[1:3])
-        self._log.info("This device has {} channels".format(self.num_channels))
+        _check_PN_fields(PN_ascii)
 
         # Turn off all Tx channels initially to prevent overheat
-        self.disable_tx_channels(CHANNEL_ALL)
+        self.disable_tx_channels(FireFly.CHANNEL_ALL)
 
         temp_tx = self.get_temperature()
         self._log.info("Tx Temperature: {}".format(temp_tx))
+
+    def _get_interface(self, select_line, default_address):
+        # Assuming the device is currently on the default address, and OUI is 0x40C880
+        tempbus = smbus.SMBus(1)
+
+        if select_line is not None:
+            #TODO GPIO select line low
+            pass
+
+        # Read bytes 168, 169, 170
+        cxp_oui = tempbus.read_i2c_block_data(default_address, 168, 3)
+        # Read bytes 165, 166, 167
+        qsfp_oui = tempbus.read_i2c_block_data(default_address, 165, 3)
+
+        if select_line is not None:
+            #TODO GPIO select line high
+            pass
+
+        if cxp_oui == [0x04, 0xC8, 0x80]:
+            # OUI found correctly, must be CXP device
+            return FireFly.INTERFACE_CXP
+        elif qsfp_oui == [0x04, 0xC8, 0x80]:
+            # OUI found correctly, must be QSFP interface
+            return FireFly.INTERFACE_QSFP
+        else:
+            # Given that Samtec does not 'officially' support the OUI field for 4 channel devices,
+            # it is possible it would not be present. In that case, we assume QSFP is being used.
+            self._log.warning("OUI not found, but assuming QSFP device is present")
+            return FireFly.INTERFACE_QSFP
+
+    def _check_pn_fields(pn_str):
+        """
+        Checks some common fields accross all common devices to make sure the PN has been read
+        correctly. Some fields important to the driver's operation are designated as CRITICAL, and
+        will trigger an exception if failed. Others designated with WARNING will simply show a
+        warning if the value is not recognised.
+
+        This function also populates some fields used by the driver, like number of channels, data
+        direction and data rate.
+
+        :param pn_str:  String of unformatted Part number (without ECU0 prefix)
+        """
+
+        # (CRITICAL) Check data direction (width) field
+        if pn_str[0] in ['T']:
+            self.direction = DIRECTION_TX
+        elif pn_str[0] in ['R']:
+            self.direction = DIRECTION_RX
+        elif pn_str[0] in ['B', 'Y']:
+            self.direction = DIRECTION_DUPLEX
+        elif pn_str[0] in ['U']:
+            # Currently unsure what this mode means
+            #TODO
+            pass
+        else:
+            raise I2CException(
+                    "Data direction {} in part number field not recognised".format(pn_str[0]))
+        self._log.info("Device data direction: {}".format(pn_str[0]))
+
+        # (CRITICAL) Check number of channels
+        if pn_str[1:3] == '12':
+            self.num_channels = 12
+        elif pn_str[1:3] == '04':
+            self.num_channels = 4
+        else:
+            raise I2CException("Unsupported number of channels: {}".format(pn_str[1:3]))
+        self._log.info("Device channels: {}".format(self.num_channels))
+
+        # (WARNING) Check data rate
+        if pn_str[3:5] in ['14','16','25','28']:
+            self.data_rate_Gbps = int(pn_str[3:5])
+            self._log.info("Device data rate: {}Gbps".format(self.data_rate_Gbps))
+        else:
+            self._log.warning("Device data rate: unsupported ({})".format(pn_str[3:5]))
+
+        # (CRITICAL) Check static padding fields (wrong implies invalid PN)
+        if pn_str[8] != '0' or pn_str[10] != '1':
+            raise I2CException("Invalid PN static field(s)")
+
+        # (WARNING) Check heat sink type
+        if pn_str[9] not in "12345":
+            self._log.warning("Unknown head sink type ({})".format(pn_str[9]))
+
+        # (WARNING) Fiber type
+        if pn_str[11] not in "12456":
+            self._log.warning("Unknown fiber type ({})".format(pn_str[11]))
+
 
     def get_device_info(self):
         """
@@ -117,16 +198,16 @@ class FireFly:
         vendor_name_ascii = "".join(vendor_name_array)
         return (part_number_ascii, vendor_name_ascii, vendor_OUI)
 
-    def get_temperature(self, direction=DIRECTION_TX):
+    def get_temperature(self, direction=FireFly.DIRECTION_TX):
         """
         Generic function to get the temperature of the firefly transmitter or receiver.
 
         :param direction:   Selection from DIRECTION_<TX/RX>
         :return:            float temperature of specified device
         """
-        if direction == DIRECTION_TX:
+        if direction == FireFly.DIRECTION_TX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
-        elif direction == DIRECTION_RX:
+        elif direction == FireFly.DIRECTION_RX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
         else:
             raise I2CException("Invalid direction specified")
@@ -235,10 +316,12 @@ class _FireFly_Interface:
     """
     self.SFF_ID = None
     self.channel_no_offset = 0      # Some interfaces start numbering channels from 1...
+    self._log
 
-    def __init__(self, SFF_ID, channel_no_offset):
+    def __init__(self, SFF_ID, channel_no_offset, logger):
         self.SFF_ID = SFF_ID
         self.channel_no_offset = channel_no_offset
+        self._log = logger
 
     def write_field(self, field, values, verify, i2c_device):
         """
@@ -253,7 +336,7 @@ class _FireFly_Interface:
         # Convert array values to a single value for easier masking and shifting
         value = _array_to_int(values)
 
-        logger.debug("Writing value {} to field {}-{} in register {}".format(
+        self._log.debug("Writing value {} to field {}-{} in register {}".format(
             value,field.startbit,field.get_endbit(),field.register))
 
         # Check input fits in specified field
@@ -286,7 +369,7 @@ class _FireFly_Interface:
         # Verify
         if verify:
             verify_value = self.read_field(field, i2c_device)
-            logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(
+            self._log.debug("Verifying value written ({:b}) against re-read: {:b}".format(
                 value,verify_value))
             if verify_value != value:
                 raise I2CException(
@@ -302,7 +385,7 @@ class _FireFly_Interface:
         :return:        Array of byte values from field, with no offset. If less than the size of
                         one byte, an array of size 1 is returned.
         """
-        logger.debug("Getting field starting at bit {}, length {} from register {}".format(
+        self._log.debug("Getting field starting at bit {}, length {} from register {}".format(
             field.startbit,field.length,field.register))
 
         # Read byte values from starting register onwards
@@ -367,13 +450,13 @@ class _interface_CXP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_version_control = _Field_CXP(0x03, True, 0x00, 7, 8)
 
-    def __init__(self, base_address = 0x00, select_line = None):
+    def __init__(self, base_address = 0x00, select_line = None, logger):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
         _FireFly_Interface.__init__(self, None,     # TODO Currently unknown SFF ID (vendor)
-                                    0)              # Channels start at 00
+                                    0, logger)      # Channels start at 00
 
         # Set up select line use for the given address
         self._select_line = select_line
@@ -389,7 +472,8 @@ class _interface_CXP(_FireFly_Interface):
         # Check interface is correct by getting interface version
         version_control = self.get_field(_FLG_interface_version_control)
         if not version_control in [0x01, 0x02, 0x03, 0x04]:
-            raise I2CException("Invalid interface version control, may not be CXP")
+            # Only warn because this is not officially supported by Samtec
+            self._log.warning("Invalid interface version control, may not be a CXP interface")
 
         # Set up the device select using selectL line with chosen base address
         self._init_select(base_address)
@@ -404,7 +488,7 @@ class _interface_CXP(_FireFly_Interface):
             # If no selectL line is provided, it must be assumed that it is being pulled low
             # externally, or setup cannot be completed. It must also be the only device pulled low
             # on the bus.
-            logger.warning("Select Line not specified. "
+            self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
         # Write address field with initial settings for select line
@@ -420,7 +504,7 @@ class _interface_CXP(_FireFly_Interface):
 
         if chosen_address == 0x50:
             # This means that the device will be set to respond to 0x50 even without selection
-            logger.warning("Device set to respond to address 0x50 ignoring selectL state! "
+            self._log.warning("Device set to respond to address 0x50 ignoring selectL state! "
                     " This WILL conflict with any other FireFly devices on the bus not using "
                     " addresses in range 0x40-0x7E, or any not yet configured...")
 
@@ -525,13 +609,13 @@ class _interface_QSFP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_revision_compliance = _Field_QSFP(0x01, 0x00, 7, 8)
 
-    def __init__(self, address = 0x00, select_line = None):
+    def __init__(self, address = 0x00, select_line = None, logger):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
         _FireFly_Interface.__init__(self, 0x81,     # Vendor-specific QSFP+
-                                    1)              # Channels start at 1 for some reason...
+                                    1, logger)      # Channels start at 1 for some reason...
 
         # Set up select line use for the given address
         self._select_line = select_line
@@ -545,7 +629,8 @@ class _interface_QSFP(_FireFly_Interface):
         # Check interface is correct by getting interface version
         compliance = self.get_field(_FLG_interface_revision_compliance)
         if not compliance in [0x00, 0x01, 0x02, 0x03]:
-            raise I2CException("Invalid interface compliance reading, may not be QSFP+")
+            # Only warn because this is not officially supported by Samtec
+            self._log.warning("Invalid interface compliance reading, may not be a QSFP+ interface")
 
         # Set up the device select using selectL line with chosen address
         self._init_select(address)
@@ -560,7 +645,7 @@ class _interface_QSFP(_FireFly_Interface):
             # If no selectL line is provided, it must be assumed that it is being pulled low
             # externally, or setup cannot be completed. It must also be the only device pulled low
             # on the bus.
-            logger.warning("Select Line not specified. "
+            self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
         # Write address field with initial settings for select line
@@ -571,7 +656,7 @@ class _interface_QSFP(_FireFly_Interface):
         # Apply extra address-specific measures
         if chosen_address == 0x00 or 0x7F < chosen_address < 0xFF:
             # Revert to default behaviour, where address is 0x50 when selectL pulled low
-            logger.warning("Device will be responding to 0x50, not {}".format(chosen_address))
+            self._log.warning("Device will be responding to 0x50, not {}".format(chosen_address))
             self._base_address = 0x50
 
         # Otherwise chosen address will be used when selectL pulled low
