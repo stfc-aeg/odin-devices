@@ -1,6 +1,8 @@
 from odin_devices.i2c_device import I2CDevice, I2CException
 import smbus
+import math
 import logging
+import time
 
 logger = logging.getLogger('odin_devices.FireFly')
 
@@ -12,8 +14,8 @@ def _int_to_array(int_in, num_bytes):
     new_value_array = []
     for byte_index in range(0, num_bytes):
         byte_offset = 8*((num_bytes-1) - byte_index)
-        byte_masked = (0xFF << byte_offset) & new_value
-        new_byte_array.append(int_in >> byte_offset)
+        byte_masked = (0xFF << byte_offset) & int_in
+        new_value_array.append(byte_masked >> byte_offset)
     return new_value_array
 
 def _array_to_int(array_in):
@@ -22,17 +24,12 @@ def _array_to_int(array_in):
     """
     out_value = 0
     for byte_index in range(0, len(array_in)):
-        byte_offset = 8*((num_full_bytes-1) - byte_index)
-        out_value += raw_register_values[byte_index] << byte_offset
+        byte_offset = 8*((len(array_in)-1) - byte_index)
+        out_value += array_in[byte_index] << byte_offset
+    return out_value
 
 
 class FireFly:
-    self._interface = None      # _FireFly_Interface derived instance, QSFP+ or CXP
-    self._log = None            # Logger instance
-    self.num_channels = 0       # Derived from part number
-    self.direction = None       # Derived from part number
-    self.data_rate = None       # Derived form part number
-
     DIRECTION_TX = 1        # Definition used in driver only
     DIRECTION_RX = 0        # Definition used in driver only
     DIRECTION_DUPLEX = 2    # Definition used in driver only
@@ -54,7 +51,9 @@ class FireFly:
     CHANNEL_11  = 0b100000000000
     CHANNEL_ALL = 0xFFFF    # This MUST be masked before use
 
-    def __init__(self, base_address = None, select_line = None):
+    _LOGGER_BASENAME = "odin_devices.FireFly"
+
+    def __init__(self, base_address = 0x00, select_line = None):
         """
         Create an instance of a generic FireFly device. The interface type will be determined
         automatically, as will the number of channels. Devices are assumed to be in POR, and at
@@ -67,17 +66,18 @@ class FireFly:
         """
 
         # Init logger for instance (likely to have multiple fireflies)
-        self._log = logging.getLogger('odin_devicecs.FireFly.' + ('%02x'%base_address))
+        loggername = FireFly._LOGGER_BASENAME + ('@0x%02x'%base_address)
+        self._log = logging.getLogger(loggername)
         self._log.info("Init FireFly with base address 0x%02x" % base_address)
 
-        INTERFACE_Detect = _get_interface(select_line, 0x50)
+        INTERFACE_Detect = self._get_interface(select_line, 0x50)
 
         if INTERFACE_Detect == FireFly.INTERFACE_QSFP:
-            self._interface = _interface_QSFP(base_address, select_line, self._log)
-            self._log.info("Interface detected and verified as QSFP+ based")
+            self._interface = _interface_QSFP(loggername+".QSFP+", base_address, select_line)
+            self._log.info("Interface detected as QSFP+ based")
         elif INTERFACE_Detect == FireFly.INTERFACE_CXP:
-            self._interface = _interface_CXP(base_address, select_line, self._log)
-            self._log.info("Interface detected and verified as CXP based")
+            self._interface = _interface_CXP(loggername+".CXP", base_address, select_line)
+            self._log.info("Interface detected as CXP based")
         else:
             raise I2CException("Unsupported SFF interface class: {}".format(SFF_identifier))
 
@@ -85,16 +85,15 @@ class FireFly:
         # self._interface.???(), and address, register and select line usage will be handled.
 
         # Read some identifying information
-        PN_ascii, VN_ascii, OUI_ascii = get_device_info()
+        PN_ascii, VN_ascii, OUI = self.get_device_info()
+        self._check_pn_fields(PN_ascii)
         self._log.info(
-                "Found device, Vendor: {} ({}), PN:{}".format(PN_ascii, VN_ascii, OUI))
-
-        _check_PN_fields(PN_ascii)
+                "Found device, Vendor: {} ({}),\tPN: {}".format(VN_ascii, OUI, PN_ascii))
 
         # Turn off all Tx channels initially to prevent overheat
         self.disable_tx_channels(FireFly.CHANNEL_ALL)
 
-        temp_tx = self.get_temperature()
+        temp_tx = self.get_temperature(FireFly.DIRECTION_TX)
         self._log.info("Tx Temperature: {}".format(temp_tx))
 
     def _get_interface(self, select_line, default_address):
@@ -105,6 +104,8 @@ class FireFly:
             #TODO GPIO select line low
             pass
 
+        # Force the page to 0x00
+        tempbus.write_byte_data(default_address, 127, 0x00)
         # Read bytes 168, 169, 170
         cxp_oui = tempbus.read_i2c_block_data(default_address, 168, 3)
         # Read bytes 165, 166, 167
@@ -113,6 +114,10 @@ class FireFly:
         if select_line is not None:
             #TODO GPIO select line high
             pass
+
+        self._log.debug(
+                "Reading OUI fields from device at {}: CXP OUI {}, QSFP OUI {}".format(
+                    default_address, cxp_oui,qsfp_oui))
 
         if cxp_oui == [0x04, 0xC8, 0x80]:
             # OUI found correctly, must be CXP device
@@ -126,7 +131,7 @@ class FireFly:
             self._log.warning("OUI not found, but assuming QSFP device is present")
             return FireFly.INTERFACE_QSFP
 
-    def _check_pn_fields(pn_str):
+    def _check_pn_fields(self, pn_str):
         """
         Checks some common fields accross all common devices to make sure the PN has been read
         correctly. Some fields important to the driver's operation are designated as CRITICAL, and
@@ -141,11 +146,11 @@ class FireFly:
 
         # (CRITICAL) Check data direction (width) field
         if pn_str[0] in ['T']:
-            self.direction = DIRECTION_TX
+            self.direction = FireFly.DIRECTION_TX
         elif pn_str[0] in ['R']:
-            self.direction = DIRECTION_RX
+            self.direction = FireFly.DIRECTION_RX
         elif pn_str[0] in ['B', 'Y']:
-            self.direction = DIRECTION_DUPLEX
+            self.direction = FireFly.DIRECTION_DUPLEX
         elif pn_str[0] in ['U']:
             # Currently unsure what this mode means
             #TODO
@@ -194,11 +199,11 @@ class FireFly:
         vendor_name_array = self._interface.read_field(self._interface.FLD_Vendor_Name)
         vendor_OUI_array = self._interface.read_field(self._interface.FLD_Vendor_OUI)
 
-        part_number_ascii = "".join(part_number_array)
-        vendor_name_ascii = "".join(vendor_name_array)
-        return (part_number_ascii, vendor_name_ascii, vendor_OUI)
+        part_number_ascii = "".join([chr(value) for value in part_number_array])
+        vendor_name_ascii = "".join([chr(value) for value in vendor_name_array])
+        return (part_number_ascii, vendor_name_ascii, vendor_OUI_array)
 
-    def get_temperature(self, direction=FireFly.DIRECTION_TX):
+    def get_temperature(self, direction):
         """
         Generic function to get the temperature of the firefly transmitter or receiver.
 
@@ -215,7 +220,7 @@ class FireFly:
         if len(temperature_bytes) != 2:
             raise I2CException("Failed to read temperature")
 
-        output_temp = temperature_byes[0] + temperature[1] * (float(1) / float(256))
+        output_temp = temperature_bytes[0] + temperature_bytes[1] * (float(1) / float(256))
         return output_temp
 
     def disable_tx_channels(self, channels_combined):
@@ -314,16 +319,48 @@ class _FireFly_Interface:
     register field definitions) so that externally they behave the same as treated by the main
     FireFly instance, which will have ownership of one type of interface (detected automatically).
     """
-    self.SFF_ID = None
-    self.channel_no_offset = 0      # Some interfaces start numbering channels from 1...
-    self._log
 
-    def __init__(self, SFF_ID, channel_no_offset, logger):
+    def __init__(self, SFF_ID, channel_no_offset, loggername):
         self.SFF_ID = SFF_ID
         self.channel_no_offset = channel_no_offset
-        self._log = logger
+        self._log = logging.getLogger(loggername)
 
-    def write_field(self, field, values, verify, i2c_device):
+    def read_field(self, field, i2c_device):
+        """
+        Generic function to read from a register field (see above).
+
+        :field:         Field instance containing information about field location and size
+        :i2c_device:    I2CDevice instance that will be read from
+        :return:        Array of byte values from field, with no offset. If less than the size of
+                        one byte, an array of size 1 is returned.
+        """
+        self._log.debug("Getting field starting at bit {}, length {} from register {}".format(
+            field.startbit,field.length,field.register))
+
+        # Read byte values from starting register onwards
+        num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
+        raw_register_values = i2c_device.readList(field.register, num_full_bytes)
+
+        # Convert to a single value
+        out_value = _array_to_int(raw_register_values)
+        self._log.debug("\tRegister value: {:x}".format(out_value))
+
+        # Create mask for value location
+        new_mask = int(math.pow(2, field.length)) - 1   # Create to match field size
+        new_mask = new_mask << field.get_endbit()       # Shift to correct position
+        self._log.debug("\tCreated mask: {:x}".format(new_mask))
+
+        # Mask off unwanted bits
+        out_value &= new_mask
+        self._log.debug("\tMasked output: {:x}".format(out_value))
+
+        # Shift value down to endbit position 0
+        out_value = out_value >> field.get_endbit()
+        self._log.debug("\tShifted output:{:x}".format(out_value))
+
+        return _int_to_array(out_value, num_full_bytes)
+
+    def write_field(self, field, values, i2c_device, verify=False):
         """
         Generic function to write a field to registers, where the field may both span multiple
         registers and start and stop at any bit (completely variable length).
@@ -346,13 +383,14 @@ class _FireFly_Interface:
                         value, field.length))
 
         # Align new value with register bytes
-        value = value << field.endbit()
+        value = value << field.get_endbit()
 
-        # Read old value, align with register bytes
-        old_value = read_field(field, i2c_device) << field.endbit()
+        # Read old value, align with register bytes, with superclass
+        old_values = super(type(self), self).read_field(field, i2c_device)
+        old_value = _array_to_int(old_values) << field.get_endbit()
 
         # Create mask for value location
-        new_mask = int(math.pow(field.length, 2) -1)    # Create to match field size
+        new_mask = int(math.pow(2, field.length)) - 1   # Create to match field size
         new_mask = new_mask << field.get_endbit()       # Shift to correct position
 
         # Apply mask to old value to clear new value space
@@ -376,36 +414,7 @@ class _FireFly_Interface:
                         "Value {} was not successfully written to Field {}".format(
                             value, field))
 
-    def read_field(self, field, i2c_device):
-        """
-        Generic function to read from a register field (see above).
-
-        :field:         Field instance containing information about field location and size
-        :i2c_device:    I2CDevice instance that will be read from
-        :return:        Array of byte values from field, with no offset. If less than the size of
-                        one byte, an array of size 1 is returned.
-        """
-        self._log.debug("Getting field starting at bit {}, length {} from register {}".format(
-            field.startbit,field.length,field.register))
-
-        # Read byte values from starting register onwards
-        num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
-        raw_register_values = i2c_device.readList(field.register, num_full_bytes)
-
-        # Convert to a single value
-        out_value = _array_to_int(raw_register_values, num_full_bytes)
-
-        # Create mask for value location
-        new_mask = int(math.pow(field.length, 2) -1)    # Create to match field size
-        new_mask = new_mask << field.get_endbit()       # Shift to correct position
-
-        # Mask off unwanted bits
-        out_value &= new_mask
-
-        # Shift value down to endbit position 0
-        out_value >> field.get_endbit()
-
-        return _int_to_array(value, num_full_bytes)
+        time.sleep(0.040)       # Write operations (especially upper02) should be separated by 40ms
 
 
 class _interface_CXP(_FireFly_Interface):
@@ -422,16 +431,11 @@ class _interface_CXP(_FireFly_Interface):
         as the is_tx flag which determines which of the two I2C addresses should be used (since the
         CXP interface separates the functionality).
         """
-        def __init__(self, register, is_tx, startbit, length, write_only=False):
+        def __init__(self, register, is_tx, page, startbit, length, write_only=False):
+            _Field.__init__(self, register, startbit, length, write_only)
             # CXP-specific attributes
             self.is_tx = is_tx
             self.page = page            # This is only needed for upper pages
-
-    self._tx_device = None
-    self._rx_device = None
-
-    self._base_address = None
-    self._select_line = None
 
     # Generic fields used by the FireFly class
     FLD_Device_Part_No = _Field_CXP(171, True, 0x00, (16*8)-1, 16*8)    # 16-byte ASCII field
@@ -445,38 +449,35 @@ class _interface_CXP(_FireFly_Interface):
 
     FLD_I2C_Address = _Field_CXP(255, True, 0x02, 7, 8)                 # I2C Address Select
 
-    FLD_Page_Select = _Field_CXP(127, True, 0x00, 7, 7)                 # Page Select
+    FLD_Page_Select = _Field_CXP(127, True, 0x00, 7, 8)                 # Page Select
 
     # Private interface-specific fields
     _FLG_interface_version_control = _Field_CXP(0x03, True, 0x00, 7, 8)
 
-    def __init__(self, base_address = 0x00, select_line = None, logger):
+    def __init__(self, loggername, base_address = 0x00, select_line = None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
         _FireFly_Interface.__init__(self, None,     # TODO Currently unknown SFF ID (vendor)
-                                    0, logger)      # Channels start at 00
+                                    0, loggername)      # Channels start at 00
 
         # Set up select line use for the given address
         self._select_line = select_line
         if base_address == None:
             base_address = 0x00 # Default
         self._base_address = base_address
-        self._init_select(self, base_address)   # May modify _base_address
+        self._init_select(base_address)     # May modify _base_address
 
         # CXP uses seperate 'devices' for Tx/Rx operations
         self._tx_device = I2CDevice(base_address)
         self._rx_device = I2CDevice(base_address + 4)
 
         # Check interface is correct by getting interface version
-        version_control = self.get_field(_FLG_interface_version_control)
+        version_control = self.read_field(_interface_CXP._FLG_interface_version_control)
         if not version_control in [0x01, 0x02, 0x03, 0x04]:
             # Only warn because this is not officially supported by Samtec
             self._log.warning("Invalid interface version control, may not be a CXP interface")
-
-        # Set up the device select using selectL line with chosen base address
-        self._init_select(base_address)
 
     def _init_select(self, chosen_address):
         """
@@ -490,11 +491,6 @@ class _interface_CXP(_FireFly_Interface):
             # on the bus.
             self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
-
-        # Write address field with initial settings for select line
-        self._tx_device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
-        self.write_field(self.FLD_I2C_Address, chosen_address)
-        self._tx_device = None              # Will be properly assigned later
 
         # Apply extra address-specific measures
         if chosen_address in [0x00, 0x7F]:
@@ -511,6 +507,11 @@ class _interface_CXP(_FireFly_Interface):
         if 0x40 < chosen_address < 0x7E:
             # Addresses in this range will ignore selectL, so disable it (if not already None)
             self._select_line = None
+
+        # Write address field with initial settings for select line
+        self._tx_device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
+        self.write_field(self.FLD_I2C_Address, [chosen_address])
+        self._tx_device = None              # Will be properly assigned later
 
     def _select_device(self):
         if self._select_line is not None:
@@ -537,11 +538,11 @@ class _interface_CXP(_FireFly_Interface):
 
         # Set the page using lower page, if accessing upper byte
         if (field.register >= 128):
-            super(_FireFly_Interface, self).write_field(self.FLD_Page_Select,
-                                                        field.page, self._tx_device)
+            super(_interface_CXP, self).write_field(self.FLD_Page_Select,
+                                                        [field.page], self._tx_device)
 
         # Call parent write field
-        super(_FireFly_Interface, self).write_field(field, value, chosen_interface)
+        super(_interface_CXP, self).write_field(field, value, chosen_interface)
 
         self._deselect_device()
 
@@ -560,11 +561,11 @@ class _interface_CXP(_FireFly_Interface):
 
         # Set the page using lower page, if accessing upper byte
         if (field.register >= 128):
-            super(_FireFly_Interface, self).write_field(self.FLD_Page_Select,
-                                                        field.page, self._tx_device)
+            super(_interface_CXP, self).write_field(self.FLD_Page_Select,
+                                                        [field.page], self._tx_device)
 
         # Call parent read field
-        read_value = super(_FireFly_Interface, self).write_field(field, chosen_interface)
+        read_value = super(_interface_CXP, self).read_field(field, chosen_interface)
 
         self._deselect_device()
 
@@ -584,13 +585,9 @@ class _interface_QSFP(_FireFly_Interface):
         Nested bit field class to access fields within the QSFP+ memory map. This includes pages.
         """
         def __init__(self, register, page, startbit, length, write_only=False):
+            _Field.__init__(self, register, startbit, length, write_only)
             # QSFP+ specific attributes
             self.page = page            # This is only needed for upper pages
-
-    self._device = None
-
-    self._select_line = None
-    self._address = None
 
     # Generic fields used by the FireFly class
     FLD_Device_Part_No = _Field_QSFP(168, 0x00, (16*8)-1, 16*8)         # 16-byte ASCII field
@@ -604,36 +601,34 @@ class _interface_QSFP(_FireFly_Interface):
 
     FLD_I2C_Address = _Field_QSFP(255, 0x02, 7, 8)                  # I2C Address Select
 
-    FLD_Page_Select = _Field_QSFP(127, 0x00, 7, 7)                  # Page Select
+    FLD_Page_Select = _Field_QSFP(127, 0x00, 7, 8)                  # Page Select
 
     # Private interface-specific fields
     _FLG_interface_revision_compliance = _Field_QSFP(0x01, 0x00, 7, 8)
 
-    def __init__(self, address = 0x00, select_line = None, logger):
+    def __init__(self, loggername, address = 0x00, select_line = None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
         _FireFly_Interface.__init__(self, 0x81,     # Vendor-specific QSFP+
-                                    1, logger)      # Channels start at 1 for some reason...
+                                    1, loggername)      # Channels start at 1 for some reason...
 
         # Set up select line use for the given address
         self._select_line = select_line
         if address == None:
             address = 0x00      # Default
         self._address = address
-        self._init_select(self, address)    # May modify _address
+        self._init_select(address)          # May modify _address
 
         self._device = I2CDevice(address)
+        self._device.enable_exceptions()#TODO remove
 
         # Check interface is correct by getting interface version
-        compliance = self.get_field(_FLG_interface_revision_compliance)
+        compliance = self.read_field(_interface_QSFP._FLG_interface_revision_compliance)
         if not compliance in [0x00, 0x01, 0x02, 0x03]:
             # Only warn because this is not officially supported by Samtec
             self._log.warning("Invalid interface compliance reading, may not be a QSFP+ interface")
-
-        # Set up the device select using selectL line with chosen address
-        self._init_select(address)
 
     def _init_select(self, chosen_address):
         """
@@ -648,17 +643,21 @@ class _interface_QSFP(_FireFly_Interface):
             self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
-        # Write address field with initial settings for select line
-        self._tx_device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
-        self.write_field(self.FLD_I2C_Address, chosen_address)
-        self._tx_device = None              # Will be properly assigned later
+        if chosen_address == 0x00:
+            # This is the rest value, and the device is assumed to be reset when this is run.
+            return
 
         # Apply extra address-specific measures
         if chosen_address == 0x00 or 0x7F < chosen_address < 0xFF:
             # Revert to default behaviour, where address is 0x50 when selectL pulled low
             self._log.warning("Device will be responding to 0x50, not {}".format(chosen_address))
             self._base_address = 0x50
+            return
 
+        # Write address field with initial settings for select line
+        self._device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
+        self.write_field(self.FLD_I2C_Address, [chosen_address])
+        self._device = None              # Will be properly assigned later
         # Otherwise chosen address will be used when selectL pulled low
 
     def _select_device(self):
@@ -680,10 +679,10 @@ class _interface_QSFP(_FireFly_Interface):
 
         # Set the page using lower page, if accessing upper byte
         if (field.register >= 128):
-            super(_FireFly_Interface, self).write_field(self.FLD_Page_Select, field.page)
+            super(_interface_QSFP, self).write_field(self.FLD_Page_Select, [field.page], self._device)
 
         # Call parent write field
-        super(_FireFly_Interface, self).write_field(field, value)
+        super(_interface_QSFP, self).write_field(field, value, self._device)
 
         self._deselect_device()
 
@@ -696,10 +695,10 @@ class _interface_QSFP(_FireFly_Interface):
 
         # Set the page using lower page, if accessing upper byte
         if (field.register >= 128):
-            super(_FireFly_Interface, self).write_field(self.FLD_Page_Select, field.page)
+            super(_interface_QSFP, self).write_field(self.FLD_Page_Select, [field.page], self._device)
 
         # Call parent read field
-        read_value = super(_FireFly_Interface, self).write_field(field)
+        read_value = super(_interface_QSFP, self).read_field(field, self._device)
 
         self._deselect_device()
 
