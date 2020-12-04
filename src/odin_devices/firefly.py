@@ -277,7 +277,7 @@ class FireFly:
         self._interface.write_field(self._interface.FLD_Tx_Channel_Disable,
                                     _int_to_array(new_value, len(old_values)))
 
-    def get_disabled_tx_channels(self):
+    def _get_disabled_tx_channels_field(self):
         """
         Return a combined bitfield representing transmitter channels that have been disabled for
         the device. Note that depending on the encoding of channel names, this might be a shifted
@@ -293,6 +293,24 @@ class FireFly:
         output_value << self._interface.channel_no_offset
 
         return output_value
+
+    def get_disabled_tx_channels(self):
+        """
+        Provides a more user-suited version of the above function, returning an array of booleans,
+        one for each channel (numbering is the user's issue) where True means disabled.
+
+        :return:    Array of booleans, True means disabled channel. Lowest number channel first.
+        """
+        # Get raw bitfield
+        byte_values = self._interface.read_field(self._interface.FLD_Tx_Channel_Disable)
+        output_value = _array_to_int(byte_values)
+
+        # Construct array from bit positions, lowest channel number first
+        channels_disabled = []
+        for bit_offset in range (0, self.num_channels):
+            channels_disabled.append(bool(output_value & (0b1 << bit_offset)))
+
+        return channels_disabled
 
 class _Field:
     """
@@ -340,6 +358,13 @@ class _FireFly_Interface:
         # Read byte values from starting register onwards
         num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
         raw_register_values = i2c_device.readList(field.register, num_full_bytes)
+
+        # Check resulting I2C read format and length
+        if (type(raw_register_values) != list):
+                raise I2CException("Failed to read byte list from I2C Device")
+        if (len(raw_register_values) != num_full_bytes):
+                raise I2CException("Number of bytes read incorrect. "
+                    "Expected {}, got {}".format(len(raw_register_values), num_full_bytes))
 
         # Convert to a single value
         out_value = _array_to_int(raw_register_values)
@@ -472,12 +497,6 @@ class _interface_CXP(_FireFly_Interface):
         # CXP uses seperate 'devices' for Tx/Rx operations
         self._tx_device = I2CDevice(base_address)
         self._rx_device = I2CDevice(base_address + 4)
-
-        # Check interface is correct by getting interface version
-        version_control = self.read_field(_interface_CXP._FLG_interface_version_control)
-        if not version_control in [0x01, 0x02, 0x03, 0x04]:
-            # Only warn because this is not officially supported by Samtec
-            self._log.warning("Invalid interface version control, may not be a CXP interface")
 
     def _init_select(self, chosen_address):
         """
@@ -623,12 +642,6 @@ class _interface_QSFP(_FireFly_Interface):
 
         self._device = I2CDevice(address)
         self._device.enable_exceptions()#TODO remove
-
-        # Check interface is correct by getting interface version
-        compliance = self.read_field(_interface_QSFP._FLG_interface_revision_compliance)
-        if not compliance in [0x00, 0x01, 0x02, 0x03]:
-            # Only warn because this is not officially supported by Samtec
-            self._log.warning("Invalid interface compliance reading, may not be a QSFP+ interface")
 
     def _init_select(self, chosen_address):
         """
