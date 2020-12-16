@@ -238,7 +238,7 @@ class FireFly:
         channels_combined = channels_combined >> self._interface.channel_no_offset
 
         # Mask off any channels that are not present
-        channels_combined &= (1 << (self.num_channels) - 1)
+        channels_combined &= ((1 << self.num_channels) - 1)
 
         # Write to disable field, but preseve states of other channels
         old_values = self._interface.read_field(self._interface.FLD_Tx_Channel_Disable)
@@ -265,7 +265,7 @@ class FireFly:
         channels_combined = channels_combined >> self._interface.channel_no_offset
 
         # Mask off any channels that are not present
-        channels_combined &= (1 << (self.num_channels) - 1)
+        channels_combined &= ((1 << self.num_channels) - 1)
 
         # Write to disable field, but preseve states of other channels
         old_values = self._interface.read_field(self._interface.FLD_Tx_Channel_Disable)
@@ -413,21 +413,25 @@ class _FireFly_Interface:
         # Read old value, align with register bytes, with superclass
         old_values = super(type(self), self).read_field(field, i2c_device)
         old_value = _array_to_int(old_values) << field.get_endbit()
+        self._log.debug("\tOld register value: {:x}".format(old_value))
 
         # Create mask for value location
         new_mask = int(math.pow(2, field.length)) - 1   # Create to match field size
         new_mask = new_mask << field.get_endbit()       # Shift to correct position
+        self._log.debug("\tCreated mask: {:x}".format(new_mask))
 
         # Apply mask to old value to clear new value space
         new_value = old_value &  ~new_mask
 
         # Overwrite high bits from new value
         new_value |= value
+        self._log.debug("\tApplied output: {:x}".format(new_value))
 
         # Convert an array of bytes, and write
         num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
         new_value_array = _int_to_array(new_value, num_full_bytes)
         i2c_device.writeList(field.register, new_value_array)   # Perform write
+        self._log.debug("\tWrite list: {}".format(new_value_array))
 
         # Verify
         if verify:
