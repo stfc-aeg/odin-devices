@@ -557,12 +557,12 @@ class _interface_CXP(_FireFly_Interface):
     def _select_device(self):
         if self._select_line is not None:
             # pull select line low
-            self.select_line.set_value(0)
+            self._select_line.set_value(0)
 
     def _deselect_device(self):
         if self._select_line is not None:
             # pull select line high
-            self.select_line.set_value(1)
+            self._select_line.set_value(1)
 
     def write_field(self, field, value):
         """
@@ -698,12 +698,12 @@ class _interface_QSFP(_FireFly_Interface):
     def _select_device(self):
         if self._select_line is not None:
             # pull select line low
-            self.select_line.set_value(0)
+            self._select_line.set_value(0)
 
     def _deselect_device(self):
         if self._select_line is not None:
             # pull select line high
-            self.select_line.set_value(1)
+            self._select_line.set_value(1)
 
     def write_field(self, field, value):
         """
