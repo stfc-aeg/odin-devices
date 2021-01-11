@@ -110,7 +110,7 @@ class GPIO_Bus():
     def get_pin(self, index, direction, active_l=False, no_request=False):
 
         # check pin is valid and available
-        self._check_pin_avail(index)
+        if not no_request: self._check_pin_avail(index)
 
         # Create GPIO_Pin wrapper around master linebulk pin
         line = self._master_linebulk.to_list()[index]
@@ -123,8 +123,9 @@ class GPIO_Bus():
                          type = direction,
                          flags = flags,
                          default_val = 0)
-        elif line.is_requested():
+        elif line.is_requested() and not no_request:
             # Warn user if they have already requested this line, but still return it
+            # (without them asking specifically)
             logger.warning("This line is already requested, returning handle")
 
         return line
@@ -134,7 +135,7 @@ class GPIO_Bus():
 
         # Check pins are valid and available
         for index in indexes:
-            self._check_pin_avail(index, ignore_current=True)
+            if not no_request: self._check_pin_avail(index, ignore_current=True)
 
         # Create GPIO_Bulk_Pins wrapper around master linebulk pin
         lines = self._master_linebulk.get_lines(indexes)
