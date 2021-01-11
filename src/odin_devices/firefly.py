@@ -543,14 +543,10 @@ class _interface_CXP(_FireFly_Interface):
             self._base_address = 0x50
             return
 
-        if chosen_address == 0x50:
-            # This means that the device will be set to respond to 0x50 even without selection
-            self._log.warning("Device set to respond to address 0x50 ignoring selectL state! "
-                    " This WILL conflict with any other FireFly devices on the bus not using "
-                    " addresses in range 0x40-0x7E, or any not yet configured...")
-
-        if 0x40 < chosen_address < 0x7E:
+        if 0x40 < chosen_address < 0x7E and chosen_address is not 0x50:
             # Addresses in this range will ignore selectL, so disable it (if not already None)
+            # Note that 0x50 is a special case as the default, since it is responded to with
+            # address register set to 0x00, and so not in this range...
             self._select_line = None
 
         # Write address field with initial settings for select line
