@@ -6,6 +6,13 @@ import time
 
 logger = logging.getLogger('odin_devices.FireFly')
 
+_GPIO_AVAIL = True
+try:
+    from odin_devices.gpio_bus import GPIO_ZynqMP
+except Exception:
+    _GPIO_AVAIL = False
+    logger.warning("No support for GPIO, cannot use CS line")
+
 # TODO I'm not sure if there is a better way of doing this that works in python 2 and 3
 def _int_to_array(int_in, num_bytes):
     """
@@ -62,7 +69,8 @@ class FireFly:
         is the only one present on the bus and has its select line pulled low.
 
         :param base_address:    Address that will be set for future communication. Omit for default
-        :param select_line:     GPIO line to use for active-low chip select, if used
+        :param select_line:     GPIO line to use for active-low chip select, if used. This should be
+                                a line provided by odin_devices.gpio_bus or directly via gpiod.
         """
 
         # Init logger for instance (likely to have multiple fireflies)
@@ -101,8 +109,22 @@ class FireFly:
         tempbus = smbus.SMBus(1)
 
         if select_line is not None:
-            #TODO GPIO select line low
-            pass
+            # Check GPIO control is available
+            if not _GPIO_AVAIL:
+                raise I2CException(
+                        "GPIO control is not available, cannot use CS line")
+
+            # Check select_line is valid
+            try:
+                if not select_line.is_requested():
+                    raise I2CException (
+                            "GPIO Line supplied is not requested by user")
+            except AttributeError:
+                raise I2CException (
+                        "Supplied line was not a valid object. Use gpiod or odin_devices.gpio_bus")
+
+            # GPIO select line low
+            select_line.set_value(0)
 
         # Force the page to 0x00
         tempbus.write_byte_data(default_address, 127, 0x00)
@@ -112,8 +134,8 @@ class FireFly:
         qsfp_oui = tempbus.read_i2c_block_data(default_address, 165, 3)
 
         if select_line is not None:
-            #TODO GPIO select line high
-            pass
+            # GPIO select line high
+            select_line.set_value(1)
 
         self._log.debug(
                 "Reading OUI fields from device at {}: CXP OUI {}, QSFP OUI {}".format(
@@ -538,13 +560,13 @@ class _interface_CXP(_FireFly_Interface):
 
     def _select_device(self):
         if self._select_line is not None:
-            # TODO pull select line low
-            pass
+            # pull select line low
+            self.select_line.set_value(0)
 
     def _deselect_device(self):
         if self._select_line is not None:
-            # TODO pull select line high
-            pass
+            # pull select line high
+            self.select_line.set_value(1)
 
     def write_field(self, field, value):
         """
@@ -679,13 +701,13 @@ class _interface_QSFP(_FireFly_Interface):
 
     def _select_device(self):
         if self._select_line is not None:
-            # TODO pull select line low
-            pass
+            # pull select line low
+            self.select_line.set_value(0)
 
     def _deselect_device(self):
         if self._select_line is not None:
-            # TODO pull select line high
-            pass
+            # pull select line high
+            self.select_line.set_value(1)
 
     def write_field(self, field, value):
         """
