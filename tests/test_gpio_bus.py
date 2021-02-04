@@ -6,6 +6,7 @@ if sys.version_info[0] == 3:    # pragma: no cover
     from unittest.mock import Mock, mock_open, MagicMock, patch
 else:                           # pragma: no cover
     from mock import Mock, mock_open, MagicMock, patch
+    ModuleNotFoundError = ImportError
 
 # Create mocks
 sys.modules['gpiod'] = Mock()
@@ -32,9 +33,14 @@ class TestGPIOBus():
 
     def test_imports_noconcurrent(self, test_gpio_bus):
         # remove concurrent reference so that on import it will fail
-        import concurrent
-        oldconcurrent = sys.modules['concurrent']
-        sys.modules['concurrent'] = None
+        if sys.version_info[0] == 3:    #pragma: no cover
+            import concurrent
+            oldconcurrent = sys.modules['concurrent']
+            sys.modules['concurrent'] = None
+        else:                           #pragma: no cover
+            import futures
+            oldfutures = sys.modules['futures']
+            sys.modules['futures'] = None
 
         # import with concurrent removed
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
@@ -58,7 +64,10 @@ class TestGPIOBus():
         test_gpio_bus.gpio_bus_temp.release_all_consumed()
 
         # Restore concurrent
-        sys.modules['cocurrent'] = oldconcurrent
+        if sys.version_info[0] == 3:    #pragma: no cover
+            sys.modules['concurrent'] = oldfutures
+        else:                           #pragma: no cover
+            sys.modules['futures'] = oldfutures
 
     def test_instantiation_chip(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException

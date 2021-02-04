@@ -1,4 +1,5 @@
 import logging
+import sys
 logger = logging.getLogger('odin_devices.gpio_bus')
 
 class GPIOException(Exception):
@@ -18,12 +19,20 @@ except ModuleNotFoundException:
 
 # If concurrence is not available, module should still be able to be used without events.
 _ASYNC_AVAIL = True
-try:
-    import concurrent.futures
-except ModuleNotFoundError:
-    _ASYNC_AVAIL = False
-    logger.warning(
-            "concurrent.futures module not available, asynchronous events not supported")
+if sys.version_info[0] == 3:
+    try:
+        import concurrent.futures as futures
+    except ModuleNotFoundError:
+        _ASYNC_AVAIL = False
+        logger.warning(
+                "concurrent.futures module not available, asynchronous events not supported")
+else:
+    try:
+        import futures
+    except ImportError:
+        _ASYNC_AVAIL = False
+        logger.warning(
+                "concurrent.futures module not available, asynchronous events not supported")
 
 # This module requires a new enough version of libgpiod that the line.update() function exists
 try:
@@ -233,7 +242,7 @@ class GPIO_Bus():
 
         # Register callback
         if self._executor == None:
-            self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=None)
+            self._executor = futures.ThreadPoolExecutor(max_workers=None)
         self._monitors[index] = (self._executor.submit(self._event_monitor_task, callback_function, index, line))
 
     def remove_pin_event_callback(self, index):
