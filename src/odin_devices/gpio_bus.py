@@ -20,7 +20,7 @@ except ModuleNotFoundException:
 _ASYNC_AVAIL = True
 try:
     import concurrent.futures
-except ModuleNotFoundException:
+except ModuleNotFoundError:
     _ASYNC_AVAIL = False
     logger.warning(
             "concurrent.futures module not available, asynchronous events not supported")
@@ -51,13 +51,27 @@ class GPIO_Bus():
     EV_REQ_BOTH_EDGES = gpiod.LINE_REQ_EV_BOTH_EDGES
 
     def __init__(self, width, chipno=0, system_offset=0):
+        # Check width is valid
+        if not width > 0:
+            raise GPIOException(
+                    "Width supplied is invalid. Please specify a bus width above 0")
+
         # Select the specified GPIO chip
-        self._gpio_chip = gpiod.Chip("/dev/gpiochip" +str(chipno))
+        try:
+            self._gpio_chip = gpiod.Chip("/dev/gpiochip" +str(chipno))
+        except FileNotFoundError:
+            raise GPIOException(
+                    "gpiochip not found, check /dev/gpiochip* for chip numbers present")
 
         # Place the chosen lines into a bulk for offset removal. Not requested until use.
         self._system_offset = system_offset
         self._width = width
-        self._master_linebulk = self._gpio_chip.get_lines(range(system_offset, system_offset+width))
+        try:
+            self._master_linebulk = self._gpio_chip.get_lines(range(system_offset, system_offset+width))
+        except OSError:
+            raise GPIOException(
+                    "Selected lines were not available for this chip. "
+                    "Check if numbering is out of range")
 
         # Set the consumer name
         self._consumer_name = "odin_gpio_bus"
@@ -83,11 +97,12 @@ class GPIO_Bus():
         # Create a new linebulk, since this does not imply ownership.
 
         # Free pins that would become inaccessible
-        if new_width < width:
+        if new_width < self._width:
             for i in range(new_width, width):
                 self._master_linebulk.to_list()[i].release()
 
-        self._gpio_chip.get_lines(range(self._system_offset, self._system_offset + new_width))
+        self._master_linebulk = self._gpio_chip.get_lines(range(self._system_offset, self._system_offset + new_width))
+        self._width = new_width
 
     """
     Pin Requests
@@ -155,6 +170,46 @@ class GPIO_Bus():
         self._master_linebulk.release()
 
     """
+    Synchronous Event Handling:
+    """
+    def register_pin_event(self, index, event_request_type):
+        # Event request is one of those defined at the top
+
+        # check pin is valid and available
+        self._check_pin_avail(index)
+
+        # Create event request
+        line = self._master_linebulk.to_list()[index]
+        line.request(consumer=self._consumer_name,
+                     type=event_request_type)
+
+        return line
+
+    def remove_pin_event(self, index):
+        # Free pin
+        line = self.get_pin(index, None, False, True)
+        line.release()
+
+    def wait_pin_event(self, index, timeout_s=0):
+        # Directly wraps the gpiod call with a check. Blocking if no timeout is supplied.
+        # event description if event occured, False if timeout
+
+        # Check this pin has been registered for an event
+        line = self.get_pin(index, None, False, True)
+        line.update()
+        if not line.is_requested():
+            raise GPIOException(
+                    "This line is not registered to wait for events. "
+                    "Try calling register_pin_event() first")
+
+        event_found = line.event_wait(sec=timeout_s)
+
+        if event_found:
+            return line.event_read()
+        else:
+            return False
+
+    """
     Asynchronous Event Callbacks:
     """
     def _event_monitor_task(self, callback_function, index, line):
@@ -169,17 +224,12 @@ class GPIO_Bus():
         # Callback has 2 arguments, event and index. Event is one of those defined at the top
         # Event request is one of those defined at the top
 
-        # check pin is valid and available
-        self._check_pin_avail(index)
-
         # Check module has been imported to allow asynchronous code
         if not _ASYNC_AVAIL:
             raise GPIOException ("Asynchronous operations not available, no concurrent.futures module")
 
-        # Create event request
-        line = self._master_linebulk.to_list()[index]
-        line.request(consumer=self._consumer_name,
-                     type=event_request_type)
+        # Create and make event request
+        line = self.register_pin_event(index, event_request_type)
 
         # Register callback
         if self._executor == None:
@@ -197,8 +247,7 @@ class GPIO_Bus():
         self._monitors.pop(index)
 
         # Free pin
-        line = self.get_pin(index, None, False, True)
-        line.release()
+        self.remove_pin_event(index)
 
     def report_registered_events(self):
         #TODO list all pins in the monitor list
