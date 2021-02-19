@@ -117,10 +117,13 @@ class GPIO_Bus():
     Pin Requests
     """
     def _check_pin_avail(self, index, ignore_current=False):
-        self._master_linebulk.to_list()[index].update()
         # Check if the pin is in range
         if index >= self._width:
             raise GPIOException ("GPIO Pin index out of range, bus width: {}".format(self._width))
+        elif index < 0:
+            raise GPIOException ("Gpio Pin index cannot be negative")
+
+        self._master_linebulk.to_list()[index].update()     # Sync line info with kernel
 
         if not ignore_current:
             # Check pin is not already requested for other operations by this user
