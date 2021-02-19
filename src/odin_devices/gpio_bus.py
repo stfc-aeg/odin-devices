@@ -49,9 +49,6 @@ class GPIO_Bus():
     DIR_INPUT = gpiod.LINE_REQ_DIR_IN
     DIR_OUTPUT = gpiod.LINE_REQ_DIR_OUT
 
-    ACTIVE_L = gpiod.Line.ACTIVE_LOW
-    ACTIVE_H = gpiod.Line.ACTIVE_HIGH
-
     EVENT_RISING = gpiod.LineEvent.RISING_EDGE
     EVENT_FALLING = gpiod.LineEvent.FALLING_EDGE
 
@@ -136,14 +133,16 @@ class GPIO_Bus():
 
     def get_pin(self, index, direction, active_l=False, no_request=False):
 
-        # check pin is valid and available
-        if not no_request: self._check_pin_avail(index)
+        # check pin is valid and available.
+        # If being called with no_request=True, the pin is being returned without request, so
+        # whether the current program has requested it or not is irrelevant.
+        self._check_pin_avail(index, ignore_current=no_request)
 
         # Create GPIO_Pin wrapper around master linebulk pin
         line = self._master_linebulk.to_list()[index]
         if no_request == False and line.is_requested() == False:
             if active_l:
-                flags = LINE_REQ_FLAG_ACTIVE_LOW
+                flags = gpiod.LINE_REQ_FLAG_ACTIVE_LOW
             else:
                 flags = 0
             line.request(consumer=self._consumer_name,
@@ -168,7 +167,7 @@ class GPIO_Bus():
         lines = self._master_linebulk.get_lines(indexes)
         if no_request == False:
             if active_l:
-                flags = LINE_REQ_FLAG_ACTIVE_LOW
+                flags = gpiod.LINE_REQ_FLAG_ACTIVE_LOW
             else:
                 flags = 0
             lines.request(consumer=self._consumer_name,
