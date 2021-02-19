@@ -65,7 +65,7 @@ class TestGPIOBus():
 
         # Restore concurrent
         if sys.version_info[0] == 3:    #pragma: no cover
-            sys.modules['concurrent'] = oldfutures
+            sys.modules['concurrent'] = oldconcurrent
         else:                           #pragma: no cover
             sys.modules['futures'] = oldfutures
 
@@ -187,3 +187,104 @@ class TestGPIOBus():
             GPIO_Bus(0, 0, 0)
         with pytest.raises(GPIOException, match=".*Width supplied is invalid.*"):
             GPIO_Bus(-1, 0, 0)
+
+    def test_check_pin_avail(self, test_gpio_bus):
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException
+        # Test that expected errors for pin availability trigger exceptions, and that the flag
+        # ignore_concurrent works properly.
+
+        # Init a test bus of width 1 with no offset
+        test_gpio_bus.gpio_bus_temp = GPIO_Bus(1, 0, 0)
+
+        # Create a mock line and the master linebulk
+        mockline = sys.modules['gpiod'].Line()
+        test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
+
+        # Check a pin with range beyond or before the master linebulk is rejected
+        with pytest.raises(GPIOException, match=".*out of range, bus width: 1.*"):
+            test_gpio_bus.gpio_bus_temp._check_pin_avail(6)
+        with pytest.raises(GPIOException, match=".*index cannot be negative.*"):
+            test_gpio_bus.gpio_bus_temp._check_pin_avail(-1)
+
+        # Check a pin that returns is_used() will be rejected
+        mockline.is_used.return_value = True
+        mockline.is_requested.return_value = False
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
+        with pytest.raises(GPIOException, match=".*in use by another user.*"):
+            test_gpio_bus.gpio_bus_temp._check_pin_avail(0)
+
+        # Check a pin that returns is_requested will be rejected, but only if not passed the
+        # ignore_current argument.
+        mockline.is_used.return_value = False
+        mockline.is_requested.return_value = True
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
+        with pytest.raises(GPIOException, match=".*already requested ownership.*"):
+            test_gpio_bus.gpio_bus_temp._check_pin_avail(0)
+        test_gpio_bus.gpio_bus_temp._check_pin_avail(0, ignore_current=True) # Should not throw
+
+
+    def test_get_pin(self, test_gpio_bus):
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException
+        sys.modules['gpiod'].reset_mock()       # Reset call lists for Line() and Linebulk()
+        # Test that get_pin calls the expected checks and forwards correct values to to gpiod
+        # when making the line request.
+
+        # Create a new GPIO bus and a mocked line
+        test_gpio_bus.gpio_bus_temp = GPIO_Bus(1, 0, 0)
+        test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
+        mockline = sys.modules['gpiod'].Line()
+
+        # Change the consumer name for later checks
+        test_gpio_bus.gpio_bus_temp.set_consumer_name("test_get_pin")
+
+        # Check that _check_pin_avail is called and will trigger an exception (see full test above)
+        with pytest.raises(GPIOException, match=".*out of range, bus width: 1.*"):
+            test_gpio_bus.gpio_bus_temp.get_pin(2, GPIO_Bus.DIR_OUTPUT)
+
+        # Check that calling on an already requested pin with no_request supplies the line without
+        # calling the gpiod line request
+        mockline.is_requested.return_value = True
+        mockline.is_used.return_value = False
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
+        pinout = test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, no_request=True)
+        assert(pinout == mockline)                      # Check line is returned correctly
+        print(test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.mock_calls)
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_not_called()
+
+        # Check that calling with no_request on a line ID that does not exist still causes an error
+        with pytest.raises(GPIOException, match=".*out of range.*"):
+            pinout = test_gpio_bus.gpio_bus_temp.get_pin(2, GPIO_Bus.DIR_OUTPUT, no_request=True)
+
+        # Check that a line request with different active_l and direction translate to correct
+        # values being propagated to gpiod, and that the consumer name is correct.
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].is_requested.return_value = False
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].is_used.return_value = False
+
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, active_l = False)
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
+                consumer="test_get_pin",
+                type=sys.modules['gpiod'].LINE_REQ_DIR_OUT,
+                flags=0,                        # NOTE: assumes no flags other than active low
+                default_val=0)
+
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, active_l = True)
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
+                consumer="test_get_pin",
+                type=sys.modules['gpiod'].LINE_REQ_DIR_OUT,
+                flags=sys.modules['gpiod'].LINE_REQ_FLAG_ACTIVE_LOW,
+                default_val=0)
+
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_INPUT, active_l = False)
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
+                consumer="test_get_pin",
+                type=sys.modules['gpiod'].LINE_REQ_DIR_IN,
+                flags=0,                        # NOTE: assumes no flags other than active low
+                default_val=0)
+
+
+
+
