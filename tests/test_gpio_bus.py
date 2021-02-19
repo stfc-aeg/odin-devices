@@ -309,6 +309,41 @@ class TestGPIOBus():
         with pytest.raises(GPIOException, match=""):
             test_gpio_bus.gpio_bus_temp.get_bulk_pins([0,1,2], GPIO_Bus.DIR_OUTPUT)
 
+    def test_synchronous_events(self, test_gpio_bus):
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException
+        sys.modules['gpiod'].reset_mock()       # Reset the call lists for Line() and LineBulk()
 
+        # Create a single line bus for testing (unused and unrequested)
+        test_gpio_bus.gpio_bus_temp = GPIO_Bus(1, 0, 0)
+        test_gpio_bus.gpio_bus_temp.set_consumer_name("test_sync_events")
+        mockline = sys.modules['gpiod'].Line()
+        mockline.is_requested.return_value = False
+        mockline.is_used.return_value = False
+        test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
 
+        # Check event requests send expected request to gpiod
+        test_gpio_bus.gpio_bus_temp.register_pin_event(0, GPIO_Bus.EV_REQ_FALLING)
+        sys.modules['gpiod'].Line.request.called_with(
+                consumer="test_sync_events",
+                type=sys.modules['gpiod'].LINE_REQ_EV_FALLING_EDGE)
 
+        # Check that only valid events are accepted
+        with pytest.raises(GPIOException, match=".*Invalid event type.*"):
+            test_gpio_bus.gpio_bus_temp.register_pin_event(0, 1010)
+
+        # Check that the wait pin event with a timeout and returns False with no event found
+        mockline.is_requested.return_value = True       # Make sure line is not rejected
+        mockline.event_wait.return_value = False        # Return timeout respose
+        assert(test_gpio_bus.gpio_bus_temp.wait_pin_event(0, 10) == False)  # Timeout is instant
+
+        # Check that the wait pin event exits on manual event trigger and reports correct event
+        mockline.is_requested.return_value = True
+        mockline.event_wait.return_value = True
+        mockline.event_read.return_value = sys.modules['gpiod'].LineEvent.RISING_EDGE
+        assert(test_gpio_bus.gpio_bus_temp.wait_pin_event(0, 10) == GPIO_Bus.EVENT_RISING)
+
+        # Check that user is prevented from waiting on a non-requested line
+        mockline.is_requested.return_value = False
+        with pytest.raises(GPIOException):
+            test_gpio_bus.gpio_bus_temp.wait_pin_event(0, 10)

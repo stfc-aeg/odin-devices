@@ -49,9 +49,11 @@ class GPIO_Bus():
     DIR_INPUT = gpiod.LINE_REQ_DIR_IN
     DIR_OUTPUT = gpiod.LINE_REQ_DIR_OUT
 
+    # Event types, used when the events are reported. NOT for requests
     EVENT_RISING = gpiod.LineEvent.RISING_EDGE
     EVENT_FALLING = gpiod.LineEvent.FALLING_EDGE
 
+    # Event request types, used when creating listeners
     EV_REQ_RISING = gpiod.LINE_REQ_EV_RISING_EDGE
     EV_REQ_FALLING = gpiod.LINE_REQ_EV_FALLING_EDGE
     EV_REQ_BOTH_EDGES = gpiod.LINE_REQ_EV_BOTH_EDGES
@@ -182,7 +184,14 @@ class GPIO_Bus():
     Synchronous Event Handling:
     """
     def register_pin_event(self, index, event_request_type):
-        # Event request is one of those defined at the top
+        # Check event request is one of those defined at the top
+        if event_request_type not in [GPIO_Bus.EV_REQ_RISING,
+                GPIO_Bus.EV_REQ_FALLING,
+                GPIO_Bus.EV_REQ_BOTH_EDGES]:
+            raise GPIOException(
+                    "Invalid event type, choose from: "
+                    "GPIO_Bus.EV_REQ_RISING, GPIO_Bus.EV_REQ_FALLING, "
+                    "GPIO_Bus.EV_REQ_BOTH_EDGES")
 
         # check pin is valid and available
         self._check_pin_avail(index)
