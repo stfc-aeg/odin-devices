@@ -285,6 +285,30 @@ class TestGPIOBus():
                 flags=0,                        # NOTE: assumes no flags other than active low
                 default_val=0)
 
+    def test_get_bulk_pins(self, test_gpio_bus):
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException
+        sys.modules['gpiod'].reset_mock()       # Reset call lists for Line() and Linebulk()
+        # This method will be using the same logic as the get_pin(), one so these tests will focus
+        # on differences between the two.
+
+        # Create a test mock linebulk with all pre-requested lines
+        mockline = sys.modules['gpiod'].Line()
+        mockline.is_requested.return_value = True
+        mockline.is_used.return_value = False
+        mocklines = [mockline, mockline, mockline]
+        mocklinebulk = sys.modules['gpiod'].LineBulk()
+        mocklinebulk.to_list.return_values = mocklines
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = mocklines
+        test_gpio_bus.gpio_bus_temp._master_linebulk.get_lines.return_value = mocklinebulk
+
+        # Create a new GPIO bus with the new mocklines
+        test_gpio_bus.gpio_bus_temp = GPIO_Bus(3, 0, 0)
+        test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
+
+        # Check that if one of the lines is requested, an exception will be raised
+        with pytest.raises(GPIOException, match=""):
+            test_gpio_bus.gpio_bus_temp.get_bulk_pins([0,1,2], GPIO_Bus.DIR_OUTPUT)
+
 
 
 

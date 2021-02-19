@@ -149,23 +149,21 @@ class GPIO_Bus():
                          type = direction,
                          flags = flags,
                          default_val = 0)
-        elif line.is_requested() and not no_request:
-            # Warn user if they have already requested this line, but still return it
-            # (without them asking specifically)
-            logger.warning("This line is already requested, returning handle")
 
         return line
 
     def get_bulk_pins(self, indexes, direction, active_l=False, no_request=False):
-        # TODO if requested, but by current consumer, call with no_request and warn
 
         # Check pins are valid and available
+        # If being called with no_request=True, the pins are being returned without request, so
+        # whether the current program has requested any of the pins or not is irrelevant
         for index in indexes:
-            if not no_request: self._check_pin_avail(index, ignore_current=True)
+            self._check_pin_avail(index, ignore_current=no_request)
 
         # Create GPIO_Bulk_Pins wrapper around master linebulk pin
         lines = self._master_linebulk.get_lines(indexes)
-        if no_request == False:
+        any_lines_requested = [x.is_requested() for x in lines.to_list()]
+        if no_request == False and any_lines_requested == False:
             if active_l:
                 flags = gpiod.LINE_REQ_FLAG_ACTIVE_LOW
             else:
