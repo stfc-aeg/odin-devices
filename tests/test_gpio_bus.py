@@ -348,21 +348,15 @@ class TestGPIOBus():
         mockline1 = Mock()
         mockline2 = Mock()
         mockline1.is_requested.return_value = False
-        mockline1.is_used.r
+        mockline1.is_used.return_value = False
         mockline2.is_requested.return_value = False
-        mockline2.is_used.return_value = Falseeturn_value = False
+        mockline2.is_used.return_value = False
         test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline1, mockline2]
 
-        # Check that registering a callback will fail if _ASYNC_AVAIL was not true
-        _ASYNC_AVAIL = False
-        with pytest.raises(GPIOException, match=".*Asynchronous operations not available.*"):
-            test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0, GPIO_Bus.EV_REQ_FALLING, print)
-        _ASYNC_AVAIL = True
-
         # Check that only valid events are accepted
         with pytest.raises(GPIOException, match=".*Invalid event type.*"):
-            test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0, 1010, print)
+            test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0, 1010, int)
 
         # Check that two separate callbacks can be created and triggered independently
         callback_function_1 = Mock()    # Create mocked callback functions
@@ -379,15 +373,25 @@ class TestGPIOBus():
         callback_function_2.assert_not_called()         # Make sure callback not called yet
         mockline1.event_wait.return_value = True        # TRIGGER pin1 event
         mockline2.event_wait.return_value = True        # TRIGGER pin2 event
+        print(callback_function_2)
+        test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(0)
+        test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(1)
 
-        print(callback_function_1.mock_calls)
-        print(callback_function_2.mock_calls)
-        assert(False)
-        #TODO
+        callback_function_1.assert_called()        # Make sure callback called after event
+        callback_function_2.assert_called()        # Make sure callback called after event
+        # Note: number of calls not checked, because real gpiod would only return true once
 
-        # Check that events will only trigger on the correct event type
-        #TODO
+        # Note: checking events do not trigger on the incorrect event_read() return value is not
+        #       necessary, as gpiod will not return true to event_wait() if event is wrong type.
 
         # Check that monitors can be terminated before an event
-        #TODO
+        mockline1.event_wait.return_value = False                   # Set event to wait for now
+        callback_function_1.reset_mock()                            # Reset callback count
+        test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0,  # Monitor for falling event
+                GPIO_Bus.EV_REQ_FALLING, callback_function_1)
+        # (No event triggered)
+        test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(0)    # Remove callback
+        callback_function_1.assert_not_called()                     # Check event not called
+        mockline1.event_wait.return_value = True                    # Trigger falling event
+        callback_function_1.assert_not_called()                     # Check event not called
 
