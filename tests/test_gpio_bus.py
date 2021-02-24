@@ -4,6 +4,7 @@ import pytest
 
 if sys.version_info[0] == 3:    # pragma: no cover
     from unittest.mock import Mock, mock_open, MagicMock, patch
+    from importlib import reload
 else:                           # pragma: no cover
     from mock import Mock, mock_open, MagicMock, patch
     ModuleNotFoundError = ImportError
@@ -12,7 +13,8 @@ else:                           # pragma: no cover
 sys.modules['gpiod'] = Mock()
 sys.modules['logging'] = Mock() # Track calls to logger.warning
 
-##from odin_devices.gpio_bus import GPIO_Bus, GPIO_ZynqMP, logger, GPIOException, _ASYNC_AVAIL
+#import odin_devices.gpio_bus        # Needs direct import so module can be reloaded live
+#from odin_devices.gpio_bus import GPIO_Bus, GPIO_ZynqMP, logger, GPIOException, _ASYNC_AVAIL
 
 class gpio_bus_test_fixture(object):
 
@@ -43,6 +45,8 @@ class TestGPIOBus():
             sys.modules['futures'] = None
 
         # import with concurrent removed
+        import odin_devices.gpio_bus
+        reload(odin_devices.gpio_bus)
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
 
         # Init a test bus
@@ -66,8 +70,12 @@ class TestGPIOBus():
         # Restore concurrent
         if sys.version_info[0] == 3:    #pragma: no cover
             sys.modules['concurrent'] = oldconcurrent
+
         else:                           #pragma: no cover
             sys.modules['futures'] = oldfutures
+
+        import odin_devices.gpio_bus
+        reload(odin_devices.gpio_bus)
 
     def test_instantiation_chip(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
