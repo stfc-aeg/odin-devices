@@ -107,30 +107,18 @@ class TestGPIOBus():
         # Test instantiation with invalid linebulk ranges (pins not available on the gpiochip)
         # In this case, gpiod throws an OSError
 
-        # Set the side-effect of calling get_lines as OSError
-        #sys.modules['gpiod'].Chip.get_lines.side_effect = OSError
+        # Use patch to patch Chip class' instance
+        with patch('gpiod.Chip') as MockChip:
+            # Make sure 'valid' chip instance will fail on call of get_lines
+            instance = MockChip.return_value
+            instance.get_lines.side_effect = OSError
 
-        # Create a new chip instance to use
-        chipmock = sys.modules['gpiod'].Chip(None)
-        chipmock.get_lines.side_effect = FileNotFoundError # Calling get_lines on this chip will fail
-        sys.modules['gpiod'].Chip.side_effect = chipmock    # Return our mock chip
-
-        # Check that OSError on call to get_lines will cause an error description for range
-        with pytest.raises(GPIOException, match=".*out of range.*"):
-            try:
-                test_gpio_bus.gpio_bus_temp = GPIO_Bus(5, 1, 20)    # Test same request as before
-                print(test_gpio_bus.gpio_bus_temp._gpio_chip.get_lines.call_args)
-                print(sys.modules['gpiod'].Chip.get_lines.call_args)
-                print(chipmock.get_lines.call_args)
-                print(chipmock.get_lines.mock_calls)
-            except OSError:
-                print("An OSError was triggered")
-                pass    # Stop trigger error causing failure if it is not handled
-            except exception as e:
-                print("Other error: ", e)
-
-       # Remove the error side-effect
-        sys.modules['gpiod'].Chip.get_lines.side_effect = None
+            with pytest.raises(GPIOException, match=".*out of range.*"):
+                try:
+                    test_g = GPIO_Bus(5, 1, 20)
+                except OSError:
+                    print("An OSError was triggered. Should have been caught by gpio_bus")
+                    pass
 
     def test_consumer_naming(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
@@ -347,3 +335,59 @@ class TestGPIOBus():
         mockline.is_requested.return_value = False
         with pytest.raises(GPIOException):
             test_gpio_bus.gpio_bus_temp.wait_pin_event(0, 10)
+
+
+    def test_asynchronous_events(self, test_gpio_bus):
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException, _ASYNC_AVAIL
+        sys.modules['gpiod'].reset_mock()       # Reset the call lists for Line() and LineBulk()
+
+        # Create a single line bus for testing (unused and unrequested)
+        test_gpio_bus.gpio_bus_temp = GPIO_Bus(2, 0, 0)
+        test_gpio_bus.gpio_bus_temp.set_consumer_name("test_sync_events")
+        #mockline = sys.modules['gpiod'].Line()
+        mockline1 = Mock()
+        mockline2 = Mock()
+        mockline1.is_requested.return_value = False
+        mockline1.is_used.r
+        mockline2.is_requested.return_value = False
+        mockline2.is_used.return_value = Falseeturn_value = False
+        test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
+        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline1, mockline2]
+
+        # Check that registering a callback will fail if _ASYNC_AVAIL was not true
+        _ASYNC_AVAIL = False
+        with pytest.raises(GPIOException, match=".*Asynchronous operations not available.*"):
+            test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0, GPIO_Bus.EV_REQ_FALLING, print)
+        _ASYNC_AVAIL = True
+
+        # Check that only valid events are accepted
+        with pytest.raises(GPIOException, match=".*Invalid event type.*"):
+            test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0, 1010, print)
+
+        # Check that two separate callbacks can be created and triggered independently
+        callback_function_1 = Mock()    # Create mocked callback functions
+        callback_function_2 = Mock()
+        mockline1.event_read.return_value = GPIO_Bus.EVENT_FALLING      # Set event type
+        mockline2.event_read.return_value = GPIO_Bus.EVENT_RISING       # Set event type
+        mockline1.event_wait.return_value = False       # Set events to keep waiting for now
+        mockline2.event_wait.return_value = False
+        test_gpio_bus.gpio_bus_temp.register_pin_event_callback(0,  # Start monitor thread pin0
+                GPIO_Bus.EV_REQ_FALLING, callback_function_1)
+        test_gpio_bus.gpio_bus_temp.register_pin_event_callback(1,  # Start monitor thread pin1
+                GPIO_Bus.EV_REQ_RISING, callback_function_2)
+        callback_function_1.assert_not_called()         # Make sure callback not called yet
+        callback_function_2.assert_not_called()         # Make sure callback not called yet
+        mockline1.event_wait.return_value = True        # TRIGGER pin1 event
+        mockline2.event_wait.return_value = True        # TRIGGER pin2 event
+
+        print(callback_function_1.mock_calls)
+        print(callback_function_2.mock_calls)
+        assert(False)
+        #TODO
+
+        # Check that events will only trigger on the correct event type
+        #TODO
+
+        # Check that monitors can be terminated before an event
+        #TODO
+

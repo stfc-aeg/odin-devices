@@ -240,7 +240,15 @@ class GPIO_Bus():
 
     def register_pin_event_callback(self, index, event_request_type, callback_function):
         # Callback has 2 arguments, event and index. Event is one of those defined at the top
-        # Event request is one of those defined at the top
+
+        # Check event request is one of those defined at the top
+        if event_request_type not in [GPIO_Bus.EV_REQ_RISING,
+                GPIO_Bus.EV_REQ_FALLING,
+                GPIO_Bus.EV_REQ_BOTH_EDGES]:
+            raise GPIOException(
+                    "Invalid event type, choose from: "
+                    "GPIO_Bus.EV_REQ_RISING, GPIO_Bus.EV_REQ_FALLING, "
+                    "GPIO_Bus.EV_REQ_BOTH_EDGES")
 
         # Check module has been imported to allow asynchronous code
         if not _ASYNC_AVAIL:
