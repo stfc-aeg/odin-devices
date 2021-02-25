@@ -225,7 +225,6 @@ class TestGPIOBus():
 
     def test_get_pin(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
-        sys.modules['gpiod'].reset_mock()       # Reset call lists for Line() and Linebulk()
         # Test that get_pin calls the expected checks and forwards correct values to to gpiod
         # when making the line request.
 
@@ -245,6 +244,7 @@ class TestGPIOBus():
         # calling the gpiod line request
         mockline.is_requested.return_value = True
         mockline.is_used.return_value = False
+        mockline.request.reset_mock()                   # Reset call count
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
         pinout = test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, no_request=True)
         assert(pinout == mockline)                      # Check line is returned correctly
@@ -260,7 +260,7 @@ class TestGPIOBus():
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].is_requested.return_value = False
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].is_used.return_value = False
 
-        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        mockline.request.reset_mock()                   # Reset call count
         test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, active_l = False)
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
                 consumer="test_get_pin",
@@ -268,7 +268,7 @@ class TestGPIOBus():
                 flags=0,                        # NOTE: assumes no flags other than active low
                 default_val=0)
 
-        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        mockline.request.reset_mock()                   # Reset call count
         test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_OUTPUT, active_l = True)
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
                 consumer="test_get_pin",
@@ -276,7 +276,7 @@ class TestGPIOBus():
                 flags=sys.modules['gpiod'].LINE_REQ_FLAG_ACTIVE_LOW,
                 default_val=0)
 
-        test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].reset_mock() # Reset line calls
+        mockline.request.reset_mock()                   # Reset call count
         test_gpio_bus.gpio_bus_temp.get_pin(0, GPIO_Bus.DIR_INPUT, active_l = False)
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list()[0].request.assert_called_with(
                 consumer="test_get_pin",
@@ -286,7 +286,6 @@ class TestGPIOBus():
 
     def test_get_bulk_pins(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
-        sys.modules['gpiod'].reset_mock()       # Reset call lists for Line() and Linebulk()
         # This method will be using the same logic as the get_pin(), one so these tests will focus
         # on differences between the two.
 
@@ -310,7 +309,6 @@ class TestGPIOBus():
 
     def test_synchronous_events(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
-        sys.modules['gpiod'].reset_mock()       # Reset the call lists for Line() and LineBulk()
 
         # Create a single line bus for testing (unused and unrequested)
         test_gpio_bus.gpio_bus_temp = GPIO_Bus(1, 0, 0)
@@ -318,12 +316,13 @@ class TestGPIOBus():
         mockline = sys.modules['gpiod'].Line()
         mockline.is_requested.return_value = False
         mockline.is_used.return_value = False
+        mockline.request.reset_mock()                   # Reset call count
         test_gpio_bus.gpio_bus_temp._master_linebulk = sys.modules['gpiod'].LineBulk()
         test_gpio_bus.gpio_bus_temp._master_linebulk.to_list.return_value = [mockline]
 
         # Check event requests send expected request to gpiod
         test_gpio_bus.gpio_bus_temp.register_pin_event(0, GPIO_Bus.EV_REQ_FALLING)
-        sys.modules['gpiod'].Line.request.called_with(
+        mockline.request.assert_called_with(
                 consumer="test_sync_events",
                 type=sys.modules['gpiod'].LINE_REQ_EV_FALLING_EDGE)
 
@@ -350,7 +349,6 @@ class TestGPIOBus():
 
     def test_asynchronous_events(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException, _ASYNC_AVAIL
-        sys.modules['gpiod'].reset_mock()       # Reset the call lists for Line() and LineBulk()
 
         # Create a single line bus for testing (unused and unrequested)
         test_gpio_bus.gpio_bus_temp = GPIO_Bus(2, 0, 0)
