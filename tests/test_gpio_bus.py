@@ -14,7 +14,7 @@ sys.modules['gpiod'] = Mock()
 sys.modules['logging'] = Mock() # Track calls to logger.warning
 
 #import odin_devices.gpio_bus        # Needs direct import so module can be reloaded live
-#from odin_devices.gpio_bus import GPIO_Bus, GPIO_ZynqMP, logger, GPIOException, _ASYNC_AVAIL
+from odin_devices.gpio_bus import GPIO_Bus, GPIO_ZynqMP, logger, GPIOException, _ASYNC_AVAIL
 
 class gpio_bus_test_fixture(object):
 
@@ -70,12 +70,15 @@ class TestGPIOBus():
         # Restore concurrent
         if sys.version_info[0] == 3:    #pragma: no cover
             sys.modules['concurrent'] = oldconcurrent
-
         else:                           #pragma: no cover
             sys.modules['futures'] = oldfutures
-
         import odin_devices.gpio_bus
         reload(odin_devices.gpio_bus)
+        from odin_devices.gpio_bus import GPIO_Bus, GPIOException
+
+        # Check async was restored (stops later async test failing)
+        from odin_devices.gpio_bus import _ASYNC_AVAIL
+        assert(_ASYNC_AVAIL)
 
     def test_instantiation_chip(self, test_gpio_bus):
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
