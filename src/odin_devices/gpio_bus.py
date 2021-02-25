@@ -19,14 +19,14 @@ except ModuleNotFoundException:
 
 # If concurrence is not available, module should still be able to be used without events.
 _ASYNC_AVAIL = True
-if sys.version_info[0] == 3:
+if sys.version_info[0] == 3:        # pragma: no cover
     try:
         import concurrent.futures as futures
     except ModuleNotFoundError:
         _ASYNC_AVAIL = False
         logger.warning(
                 "concurrent.futures module not available, asynchronous events not supported")
-else:
+else:                               # pragma: no cover
     try:
         import futures
     except ImportError:
