@@ -170,7 +170,9 @@ class TestGPIOBus():
         assert test_gpio_bus.gpio_bus_temp._width == 5
 
         # Set gpiod get_lines to return a list of 10 lines (for checking this becomes the linebulk)
-        mocklines = [sys.modules['gpiod'].Line()] * 10
+        mockline_list = [sys.modules['gpiod'].Line()] * 10
+        mocklines = Mock()
+        mocklines.to_list.return_value = mockline_list
         test_gpio_bus.gpio_bus_temp._gpio_chip.get_lines.return_value = mocklines
 
         # Increase width to 10
@@ -180,6 +182,12 @@ class TestGPIOBus():
         test_gpio_bus.gpio_bus_temp._gpio_chip.get_lines.assert_called_with(range(0, 10))
         assert test_gpio_bus.gpio_bus_temp._width == 10
         assert test_gpio_bus.gpio_bus_temp._master_linebulk == mocklines
+        assert(test_gpio_bus.gpio_bus_temp.get_width() == 10)
+
+        # Check that reducing bus width causes pins to be freed
+        test_gpio_bus.gpio_bus_temp.set_width(5)
+        for mockline_num in range(5, 10):
+            mocklines.to_list()[mockline_num].release.assert_called()
 
         # Check that creating a bus with a range less than 1 results in error
         with pytest.raises(GPIOException, match=".*Width supplied is invalid.*"):

@@ -106,7 +106,7 @@ class GPIO_Bus():
 
         # Free pins that would become inaccessible
         if new_width < self._width:
-            for i in range(new_width, width):
+            for i in range(new_width, self._width):
                 self._master_linebulk.to_list()[i].release()
 
         self._master_linebulk = self._gpio_chip.get_lines(range(self._system_offset, self._system_offset + new_width))
