@@ -118,7 +118,9 @@ class _SI534x:
             # Call normal _BitField read functions
             return super(_BitField, self).read()
 
-    # Mapping of registers expected to be present when exporting a register map that could be later
+    class _regmap_generator(object):
+        _regmap_pages = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x0A, 0x0B]
+        # Mapping of registers expected to be present when exporting a register map that could be later
     # programmed back into the device. It is easier to specify ranges and invalid registers instead
     # of listing 'allowed' registers. Each page can have multiple ranges. This is based on an
     # example exported register map CSV from ClockBuilder Pro.
@@ -126,41 +128,88 @@ class _SI534x:
     #                                        range1...]
     # Where ranges are defined as tuples of start, end and invalid values as a list:
     #                                        (start, end, [invalid value list])
-    _regmap_pages_register_ranges = {0x00 : [(0x01, 0x1E, [0x10, 0x15, 0x1B]),
-                                             (0x2B, 0x69, [0x3E])],
-                                     0x01 : [(0x02, 0x02, []),
-                                             (0x12, 0x1A, [0x16]),
-                                             (0x26, 0x42, [0x2A])],
-                                     0x02 : [(0x06, 0x3E, [0x07, 0x30]),
-                                             (0X50, 0x55, []),
-                                             (0x5C, 0x61, []),
-                                             (0x6B, 0x72, []),
-                                             (0x8A, 0x99, [0x92, 0x93, 0x95, 0x98]),
-                                             (0x9D, 0x9F, []),
-                                             (0xA9, 0xAB, []),
-                                             (0xB7, 0xB7, [])],
-                                     0x03 : [(0x02, 0x2D, []),
-                                             (0x38, 0x52, [0x3A]),
-                                             (0x59, 0x60, [])],
-                                     0x04 : [(0x87, 0x87, [])],
-                                     0x05 : [(0x08, 0x21, [0x14, 0x20]),
-                                             (0x2A, 0x3E, [0x30, 0x3A, 0x3B, 0x3C]),
-                                             (0x89, 0x8A, []),
-                                             (0x9B, 0xA6, [0x9C, 0xA3, 0xA4, 0xA5])],
-                                     0x08 : [(0x02, 0x61, [])],
-                                     0x09 : [(0x0E, 0x0E, []),
-                                             (0x43, 0x43, []),
-                                             (0x49, 0x4A, []),
-                                             (0x4E, 0x4F, []),
-                                             (0x5E, 0x5E, [])],
-                                     0x0A : [(0x02, 0x05, []),
-                                             (0x14, 0x14, []),
-                                             (0x1A, 0x1A, []),
-                                             (0x20, 0x20, []),
-                                             (0x26, 0x26, [])],
-                                     0x0B : [(0x44, 0x4A, [0x45, 0x49]),
-                                             (0x57, 0x58, [])]
-                                     }
+
+        _regmap_pages_register_ranges = {0x00 : [(0x01, 0x1E, [0x10, 0x15, 0x1B]),
+                                                 (0x2B, 0x69, [0x3E])],
+                                         0x01 : [(0x02, 0x02, []),
+                                                 (0x12, 0x1A, [0x16]),
+                                                 (0x26, 0x42, [0x2A])],
+                                         0x02 : [(0x06, 0x3E, [0x07, 0x30]),
+                                                 (0X50, 0x55, []),
+                                                 (0x5C, 0x61, []),
+                                                 (0x6B, 0x72, []),
+                                                 (0x8A, 0x99, [0x92, 0x93, 0x95, 0x98]),
+                                                 (0x9D, 0x9F, []),
+                                                 (0xA9, 0xAB, []),
+                                                 (0xB7, 0xB7, [])],
+                                         0x03 : [(0x02, 0x2D, []),
+                                                 (0x38, 0x52, [0x3A]),
+                                                 (0x59, 0x60, [])],
+                                         0x04 : [(0x87, 0x87, [])],
+                                         0x05 : [(0x08, 0x21, [0x14, 0x20]),
+                                                 (0x2A, 0x3E, [0x30, 0x3A, 0x3B, 0x3C]),
+                                                 (0x89, 0x8A, []),
+                                                 (0x9B, 0xA6, [0x9C, 0xA3, 0xA4, 0xA5])],
+                                         0x08 : [(0x02, 0x61, [])],
+                                         0x09 : [(0x0E, 0x0E, []),
+                                                 (0x43, 0x43, []),
+                                                 (0x49, 0x4A, []),
+                                                 (0x4E, 0x4F, []),
+                                                 (0x5E, 0x5E, [])],
+                                         0x0A : [(0x02, 0x05, []),
+                                                 (0x14, 0x14, []),
+                                                 (0x1A, 0x1A, []),
+                                                 (0x20, 0x20, []),
+                                                 (0x26, 0x26, [])],
+                                         0x0B : [(0x44, 0x4A, [0x45, 0x49]),
+                                                 (0x57, 0x58, [])]
+                                         }
+
+        def __init__(self):
+            self.current_page_index = 0
+            self.current_page = self._regmap_pages[self.current_page_index]
+            self.current_range_index = 0
+            minreg, maxrex, excl = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
+            self.current_register = minreg
+            pass
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return self.next()
+
+        def next(self):
+            current_range = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
+            current_min, current_max, current_excluded = current_range
+
+            if self.current_register == current_max:    # Move to next range in page, and next page if last range
+                self.current_range_index += 1
+                if self.current_range_index >= len(self._regmap_pages_register_ranges[self.current_page]):
+                    # Move to next page at range 0
+                    self.current_page_index += 1
+                    if self.current_page_index >= len(self._regmap_pages):      # Last page finished
+                        raise StopIteration()
+                    self.current_page = self._regmap_pages[self.current_page_index]
+                    self.current_range_index = 0
+
+                minreg, maxrex, excl = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
+                self.current_register = minreg          # Get first register in range
+                return self.current_page, self.current_register
+
+            elif self.current_register in current_excluded:     # Read onwards until a non-excluded register reached
+                self.current_register += 1
+                return self.next()
+
+            else:                                       # Read next value normally
+                self.current_register += 1
+                return self.current_page, self.current_register
+
+
+    # An iterable of tuples in the form (page, register) where the pages and registers are those
+    # that should be read from the device when creating a settings map with export_register_map()
+    # for later re-write with the import_register_map() function.
+    _regmap_pages_registers_iter = regmap_generator()
 
     # The register maps to be written to the device require a preamble and postamble that write
     # registers that place the device into an acceptable start state.
@@ -278,6 +327,7 @@ class _SI534x:
         #TODO if ICAL (or another finishing command) is actually still relevant
 
     def export_register_map(self, mapfile_location):
+        #TODO update this text
         """
         Generate a register map file using the current settings in device control
         registers. This file can then be loaded using apply_register_map(filename).
@@ -285,19 +335,23 @@ class _SI534x:
         :param mapfile_location: location of register map file that will be written to.
         """
         with open(mapfile_csv_location, 'w') as csv_file:
+            #TODO Potentially update header line wiht more information
             csv_file.write("# This register map has been generated for the odin-devices SI5324 driver.\n")
             csv_writer = csv.writer(csv_file, delimiter=',')
 
             # The registers that will be read are the ones found in output register
             # maps from DSPLLsim.
-            for page_register in SI534x._regmap_registers:
+            for page, register in SI534x._regmap_pages_registers_iter:
 
                 #TODO potentially include any registers that read as 0 for triggers, that should not be
                 # included in a write map, or need their values changing (like SI5342 ICAL)
 
                 value = self._read_registers(page, register)
-                logger.info("Read register {}: {:02X}".format(register, value))
-                f.write("{}, {:02X}h\n".format(register, value))
+                logger.info("Read register 0x{:02X}{:02X}: {:02X}".format(page, register, value))
+
+                # File target format combines page and register into one 4-nibble hex value
+                page_reg_combined = "0x{:02X}{:02X}".format(page, register)
+                csv_writer.writerow([page_reg_combined, value])
 
             logger.info("Register map extraction complete, to file: {}".format(mapfile_location))
 
