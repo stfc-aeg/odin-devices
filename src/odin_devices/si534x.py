@@ -38,14 +38,15 @@ class _SI534x:
             return self.parent_device.chosen_bytes_read(self.page, self.start_register, self.start_bit_pos, self.bit_width)
 
     class _Channel_BitField(_BitField):
-        def __init__(self, page, first_channel_register, start_bit_pos, bit_width, parent_device, num_channels, channel_width):
+        def __init__(self, page, first_channel_register, start_bit_pos, bit_width, parent_device, channel_positions, channel_width):
             # bit_width is the width of this field, and channel_width is the width of the set of channel-mapped fields.
 
             # Init shared fields using superclass
             super(_BitField, self).__init__(page, start_register, start_bit_pos, bit_width, parent_device)
 
             # Init additional channel-specific fields
-            self.num_channels = num_channels
+            self.channel_positions = channel_positions
+            self.channel_num = len(channel_positions)
             self.channel_width = channel_width
             self.first_channel_start_register = first_channel_register  # Holds the static start of the field
             # start_register now becomes a dynamic value, set per channel on read / writes.
@@ -58,7 +59,8 @@ class _SI534x:
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
-            self.start_register += self.channel_width * channel_num
+            channel_offset = self.channel_width * channel_positions[channel_num]
+            self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField write function
             super(_BitField, self).write(data)
@@ -71,7 +73,8 @@ class _SI534x:
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
-            self.start_register += self.channel_width * channel_num
+            channel_offset = self.channel_width * channel_positions[channel_num]
+            self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField read function
             return super(_BitField, self).read()
@@ -90,8 +93,7 @@ class _SI534x:
             self.synth0_register = synth0_register  # Static first synth register position without offset
             # start_register now becomes a dynamic value, set per multisynth on read/writes
 
-        def write(data, synth_num):
-            # Check synth number is valid
+        def write(data, synth_num): # Check synth number is valid
             if synth_num >= self.num_multisynths:
                 #TODO throw error
                 pass
@@ -172,7 +174,7 @@ class _SI534x:
                                   (0x0B, 0x24, 0xC3),
                                   (0x0B, 0x25, 0x02)]
 
-    def __init__(self, num_channels, num_multisynths, channel_reg_offset, i2c_address=None, spi_device=None,
+    def __init__(self, channel_positions, num_multisynths, i2c_address=None, spi_device=None,
                  LOS_line=None, LOL_Line=None, INT_Line=None):
         #TODO Initiate chosen interface (set chosen read/write functions)
         if i2c_address is not None:
@@ -199,19 +201,21 @@ class _SI534x:
 
         #TODO define channel-mapped fields
         self._output_driver_cfg_PDN = _Channel_BitField(page=0x01,
-                                                        first_channel_register = 0x08 + channel_reg_offset * 0x05,
+                                                        first_channel_register = 0x08,
                                                         start_bit_pos = 0,
                                                         bit_width = 1,
                                                         parent_device = self,
-                                                        num_channels = num_channels,
+                                                        channel_positions = channel_positions,
                                                         channel_width = 0x05)
         self._output_driver_cfg_OE = _Channel_BitField(page=0x01,
-                                                       first_channel_register = 0x08 + channel_reg_offset * 0x05,
+                                                       first_channel_register = 0x08,
                                                        start_bit_pos = 1,
                                                        bit_width = 1,
                                                        parent_device = self,
-                                                       num_channels = num_channels,
+                                                        channel_positions = channel_positions,
                                                        channel_width = 0x05)
+
+        #TODO define multisynth-mapped fields
 
 
         #TODO perform device init
@@ -299,14 +303,23 @@ class _SI534x:
 
 class SI5345 (_SI534x):
     def __init__(self, i2c_address=None, spi_device=None):
-        super(SI5345, self).__init__(12, 0, i2c_address, spi_device)
+        super(SI5345, self).__init__([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],    # All channels
+                                     5,             # 5 Multisynths, 0.5 per channel
+                                     i2c_address, spi_device,
+                                     LOS_line, LOL_Line, INT_Line)
 
 
 class SI5344 (_SI534x):
     def __init__(self, i2c_address=None, spi_device=None):
-        super(SI5345, self).__init__(4, 2, i2c_address, spi_device)
+        super(SI5345, self).__init__([2, 3, 6, 7],  # 4 Channels, in SI5345 map positons 2, 3, 6, 7
+                                     4,             # 4 Multisynths, 1 per channel
+                                     i2c_address, spi_device,
+                                     LOS_line, LOL_Line, INT_Line)
 
 
 class SI5342 (_SI534x):
     def __init__(self, i2c_address=None, spi_device=None):
-        super(SI5345, self).__init__(2, 2, i2c_address, spi_device)
+        super(SI5345, self).__init__([2, 3],        # 2 Channels, in SI5345 map positions 2, 3
+                                     2,             # 2 Multisynths, 1 per channel
+                                     i2c_address, spi_device,
+                                     LOS_Line, LOL_Line, INT_Line)
