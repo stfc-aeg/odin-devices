@@ -24,23 +24,28 @@ class _SI534x:
                 pass
 
             # Send data
-            self.parent_device._write_registers(data, self.page, self.start_register, self.start_bit_pos, self.bit_width)
+            self.parent_device._write_paged_register_field(data, self.page, self.start_register,
+                                                           self.start_bit_pos, self.bit_width)
 
         def read():
-            return self.parent_device.chosen_bytes_read(self.page, self.start_register, self.start_bit_pos, self.bit_width)
+            return self.parent_device.chosen_bytes_read(self.page, self.start_register,
+                                                        self.start_bit_pos, self.bit_width)
 
     class _Channel_BitField(_BitField):
-        def __init__(self, page, first_channel_register, start_bit_pos, bit_width, parent_device, channel_positions, channel_width):
-            # bit_width is the width of this field, and channel_width is the width of the set of channel-mapped fields.
+        def __init__(self, page, first_channel_register, start_bit_pos, bit_width, parent_device,
+                     channel_positions, channel_width):
+            # bit_width is the width of this field, and channel_width is the width of the set of
+            # channel-mapped fields.
 
             # Init shared fields using superclass
-            super(_BitField, self).__init__(page, start_register, start_bit_pos, bit_width, parent_device)
+            super(_BitField, self).__init__(page, start_register, start_bit_pos, bit_width,
+                                            parent_device)
 
             # Init additional channel-specific fields
             self.channel_positions = channel_positions
             self.channel_num = len(channel_positions)
             self.channel_width = channel_width
-            self.first_channel_start_register = first_channel_register  # Holds the static start of the field
+            self.first_channel_start_register = first_channel_register  # Static start of the field
             # start_register now becomes a dynamic value, set per channel on read / writes.
 
         def write(data, channel_num):
@@ -72,17 +77,19 @@ class _SI534x:
             return super(_BitField, self).read()
 
     class _MultiSynth_BitField(_BitField):
-        def __init__(self, page, synth0_register, start_bit_pos, bit_width, parent_device, num_multisynths, synth_width):
+        def __init__(self, page, synth0_register, start_bit_pos, bit_width, parent_device,
+                     num_multisynths, synth_width):
             # bit_width is the width of this field, and synth_width is the width between adjacent
             # multi-synth mapped fields.
 
             # Init shared fields using superclass
-            super(_BitField, self).__init__(page, synth0_register, start_bit_pos, bit_width, parent_device)
+            super(_BitField, self).__init__(page, synth0_register, start_bit_pos, bit_width,
+                                            parent_device)
 
             # Init additional multisynth-specific fields
             self.num_multisyths = num_multisynths
             self.synth_width = synth_width
-            self.synth0_register = synth0_register  # Static first synth register position without offset
+            self.synth0_register = synth0_register  # Static first synth register position 0 offset
             # start_register now becomes a dynamic value, set per multisynth on read/writes
 
         def write(data, synth_num): # Check synth number is valid
@@ -231,8 +238,9 @@ class _SI534x:
             # Init I2C
             self.i2c_bus = I2CDevice(i2c_address)
 
-            self._write_registers = self._bytes_write_i2c
-            self.chosen_bytes_read = self._bytes_read_i2c
+            # Set the used register read/write calls to I2C variants
+            self._write_register = self._write_register_i2c
+            self._read_register = self._read_register_i2c
         elif spi_device is not None:
             # Init the instance's logger
             self.logger = logging.getLogger('odin_devices.si534' +
@@ -242,9 +250,9 @@ class _SI534x:
 
             #TODO init SPI
 
-            # Set the field byte access functions
-            self._write_registers = self._bytes_write_spi
-            self.chosen_bytes_read = self._bytes_read_spi
+            # Set the used register read/write calls to SPI variants
+            self._write_register = self._write_register_spi
+            self._read_register = self._read_register_spi
         else:
             #TODO throw error
             pass
@@ -283,10 +291,10 @@ class _SI534x:
         # Set the correct page
         if self._reg_map_page_select == target_page:
             # Write to page register on whatever page we are currently on (irrelevant)
-            self._write_registers([target_page], 1, self._reg_map_page_select, 0x01, 7, 8)
+            self._write_register(0x01, target_page)
             self._reg_map_page_select = target_page
 
-    def _bytes_write_i2c(self, value_out, page, start_register, start_bit, width_bits):
+    def _write_paged_register_field(self, value_out, page, start_register, start_bit, width_bits):
         # The input to this function is a value rather than an array, so that it is easier to shift.
         # Also, most fields will be identifying a single value no matter their range, and so byte
         # boundaries hold no significance.
@@ -300,7 +308,8 @@ class _SI534x:
 
         # Read original contents of registers as a value
         num_full_bytes = ((width_bits-1)/8)
-        old_full_bytes_value = self._bytes_read_i2c(page, start_register, 8, num_full_bytes*8)
+        old_full_bytes_value = self._read_paged_register_field(page, start_register, 7,
+                                                               num_full_bytes*8)
 
         # Mask original contents value and combine with new value
         bitmask = ((0b1<<width_bits)-1)             # Create mask of correct field width
@@ -313,9 +322,9 @@ class _SI534x:
         for byte_index in range (0, num_full_bytes):
             byte_bit_offset = ((num_full_byte-1) - byte_index) * 8
             byte_value = (value_out >> byte_bit_offset) & 0xFF
-            self.i2c_bus.writeU8(start_register + byte_index, byte_value)
+            self._write_register(start_register + byte_index, byte_value)
 
-    def _bytes_read_i2c(self, page, start_register, start_bit, width_bits):
+    def _read_paged_register_field(self, page, start_register, start_bit, width_bits):
 
         # Set the correct page
         self._set_correct_register_page(page)
@@ -326,7 +335,7 @@ class _SI534x:
 
         for byte_address in range(start_register, start_register + num_full_bytes):
             full_bytes_value << 8
-            full_bytes_value += self.i2c_bus.readU8(byte_address) & 0xFF
+            full_bytes_value += self._read_register(byte_address) & 0xFF
 
             # Remove unused start bits from first byte
             if byte_address == start_register:
@@ -338,10 +347,18 @@ class _SI534x:
 
         return full_bytes_value
 
-    def _bytes_write_spi(self, bytes_out,  bytes_out_length, page, start_register, start_bit, width_bits):
+    def _write_register_i2c(self, register, value):
+        # Wrapper for writing a full 8-bit register over I2C, without page logic.
+        self.i2c_bus.writeU8(register, value)
+
+    def _read_register_i2c(self, register):
+        # Wrapper for reading a full 8-bit register over I2C, without page logic.
+        return self.i2c_bus.readU8(register)
+
+    def _bytes_write_spi(self, register, value):
         pass
 
-    def _bytes_read_spi(self, page, start_register, start_bit, width_bits):
+    def _bytes_read_spi(self, register):
         pass
 
     #TODO add functions for desirable option changes
