@@ -1,5 +1,8 @@
 
 
+from odin_devices.i2c_device import I2CDevice, I2CException
+import logging
+
 class _SI534x:
 
     class _BitField():
@@ -11,28 +14,17 @@ class _SI534x:
             self.parent_device = parent_device
 
         def write(data):
-            if type(data) == int:           # Convert value to list of bytes
-                # Check data fits in desired bit width
-                if data >= (0b1 << bit_width):
-                    #TODO Throw data size error
-                    pass
+            # Check data is of correct type (single value)
+            if type(data) != int:
+                #TODO throw type error
+                pass
+            # Check data fits in desired bit width
+            if data >= (0b1 << bit_width):
+                #TODO Throw data size error
+                pass
 
-                list_data = []
-                while (data > 0xFF):
-                    list_data.insert(0, 0xFF & data)
-                    data = data >> 8
-
-                # Send data
-                self.parent_device._write_registers(list_data, len(list_data), self.page, self.start_register, self.start_bit_pos, self.bit_width)
-
-            elif type(data) == list:        # Send list of bytes directly
-                # Check list fits within bit width  (Extra MSBs to boundary ignored)
-                if len(data) > ((self.bit_width % 8) + 1):
-                    #TODO Throw data size error
-                    pass
-
-                # Send data
-                self.parent_device._write_registers(data, len(data), self.page, self.start_register, self.start_bit_pos, self.bit_width)
+            # Send data
+            self.parent_device._write_registers(data, self.page, self.start_register, self.start_bit_pos, self.bit_width)
 
         def read():
             return self.parent_device.chosen_bytes_read(self.page, self.start_register, self.start_bit_pos, self.bit_width)
@@ -119,7 +111,9 @@ class _SI534x:
             return super(_BitField, self).read()
 
     class _regmap_generator(object):
+        # Pages in the register map that will be read
         _regmap_pages = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0x0A, 0x0B]
+        #TODO update this comment
         # Mapping of registers expected to be present when exporting a register map that could be later
     # programmed back into the device. It is easier to specify ranges and invalid registers instead
     # of listing 'allowed' registers. Each page can have multiple ranges. This is based on an
@@ -129,6 +123,7 @@ class _SI534x:
     # Where ranges are defined as tuples of start, end and invalid values as a list:
     #                                        (start, end, [invalid value list])
 
+# Update these registers to reflex the exported SI5345, not the SI5344 it is based on
         _regmap_pages_register_ranges = {0x00 : [(0x01, 0x1E, [0x10, 0x15, 0x1B]),
                                                  (0x2B, 0x69, [0x3E])],
                                          0x01 : [(0x02, 0x02, []),
@@ -227,11 +222,24 @@ class _SI534x:
                  LOS_line=None, LOL_Line=None, INT_Line=None):
         #TODO Initiate chosen interface (set chosen read/write functions)
         if i2c_address is not None:
-            #TODO init I2C
+            # Init the instance's logger
+            self.logger = logging.getLogger('odin_devices.si534' +
+                                            str(num_multisynths) +
+                                            '.i2c_' +
+                                            hex(i2c_address))
+
+            # Init I2C
+            self.i2c_bus = I2CDevice(i2c_address)
 
             self._write_registers = self._bytes_write_i2c
             self.chosen_bytes_read = self._bytes_read_i2c
         elif spi_device is not None:
+            # Init the instance's logger
+            self.logger = logging.getLogger('odin_devices.si534' +
+                                            str(num_multisynths) +
+                                            '.spi_dev' +
+                                            str(spi_device))
+
             #TODO init SPI
 
             # Set the field byte access functions
@@ -240,6 +248,8 @@ class _SI534x:
         else:
             #TODO throw error
             pass
+
+        self._reg_map_page_select = 0xFF    # Will be immediately reset on first r/w
 
 
         #TODO define static fields
@@ -269,11 +279,64 @@ class _SI534x:
 
         #TODO perform device init
 
-    def _bytes_write_i2c(self, bytes_out,  bytes_out_length, page, start_register, start_bit, width_bits):
-        pass
+    def _set_correct_register_page(self, target_page):
+        # Set the correct page
+        if self._reg_map_page_select == target_page:
+            # Write to page register on whatever page we are currently on (irrelevant)
+            self._write_registers([target_page], 1, self._reg_map_page_select, 0x01, 7, 8)
+            self._reg_map_page_select = target_page
+
+    def _bytes_write_i2c(self, value_out, page, start_register, start_bit, width_bits):
+        # The input to this function is a value rather than an array, so that it is easier to shift.
+        # Also, most fields will be identifying a single value no matter their range, and so byte
+        # boundaries hold no significance.
+
+        # Set the correct page
+        self._set_correct_register_page(page)
+
+        # Align the output with register boundaries
+        additional_lower_bits = (start_bit+1) - (width_bits%8)
+        value_out = value_out << additional_lower_bits
+
+        # Read original contents of registers as a value
+        num_full_bytes = ((width_bits-1)/8)
+        old_full_bytes_value = self._bytes_read_i2c(page, start_register, 8, num_full_bytes*8)
+
+        # Mask original contents value and combine with new value
+        bitmask = ((0b1<<width_bits)-1)             # Create mask of correct field width
+        bitmask = bitmask << additional_lower_bits  # Shift mask to correct offset
+        bitmask = (~bitmask) & ((0b1<<(num_full_bytes*8))-1)    # Reverse mask, crop to byte range
+        old_full_bytes_masked = old_full_bytes_value & bitmask
+        value_out = value_out | old_full_bytes_masked
+
+        # Write back with correct start bit offset (additional lower bits already present)
+        for byte_index in range (0, num_full_bytes):
+            byte_bit_offset = ((num_full_byte-1) - byte_index) * 8
+            byte_value = (value_out >> byte_bit_offset) & 0xFF
+            self.i2c_bus.writeU8(start_register + byte_index, byte_value)
 
     def _bytes_read_i2c(self, page, start_register, start_bit, width_bits):
-        pass
+
+        # Set the correct page
+        self._set_correct_register_page(page)
+
+        # Read whole range of bytes into single value to cover range
+        full_bytes_value = 0
+        num_full_bytes = ((width_bits-1) / 8)
+
+        for byte_address in range(start_register, start_register + num_full_bytes):
+            full_bytes_value << 8
+            full_bytes_value += self.i2c_bus.readU8(byte_address) & 0xFF
+
+            # Remove unused start bits from first byte
+            if byte_address == start_register:
+                full_bytes_value = full_bytes_value & ((0b1<<(start_bit+1))-1)
+
+        # Remove offset from resulting value
+        additional_lower_bits = (start_bit+1) - (width_bits%8)
+        full_bytes_value = full_bytes_value >> additional_lower_bits
+
+        return full_bytes_value
 
     def _bytes_write_spi(self, bytes_out,  bytes_out_length, page, start_register, start_bit, width_bits):
         pass
