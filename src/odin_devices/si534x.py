@@ -2,13 +2,20 @@
 
 from odin_devices.i2c_device import I2CDevice, I2CException
 import logging
+import csv
 
-class _SI534x:
+class SI534xCommsException(Exception):
+    """
+    An Exception triggered when there is an issue with either the SPI or I2C interfaces.
+    """
+    pass
 
-    class _BitField():
+class _SI534x(object):
+
+    class _BitField(object):
         def __init__(self, page, start_register, start_bit_pos, bit_width, parent_device):
             self.page = page
-            self.start_register = start_retister
+            self.start_register = start_register
             self.start_bit_pos = start_bit_pos
             self.bit_width = bit_width
             self.parent_device = parent_device
@@ -38,8 +45,8 @@ class _SI534x:
             # channel-mapped fields.
 
             # Init shared fields using superclass
-            super(_BitField, self).__init__(page, start_register, start_bit_pos, bit_width,
-                                            parent_device)
+            super(_SI534x._Channel_BitField, self).__init__(page, first_channel_register,
+                                                            start_bit_pos, bit_width, parent_device)
 
             # Init additional channel-specific fields
             self.channel_positions = channel_positions
@@ -60,7 +67,7 @@ class _SI534x:
             self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField write function
-            super(_BitField, self).write(data)
+            super(_SI534x._Channel_BitField, self).write(data)
 
         def read(channel_num):
             # Check channel number is valid
@@ -74,7 +81,7 @@ class _SI534x:
             self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField read function
-            return super(_BitField, self).read()
+            return super(_SI534x._Channel_BitField, self).read()
 
     class _MultiSynth_BitField(_BitField):
         def __init__(self, page, synth0_register, start_bit_pos, bit_width, parent_device,
@@ -83,8 +90,8 @@ class _SI534x:
             # multi-synth mapped fields.
 
             # Init shared fields using superclass
-            super(_BitField, self).__init__(page, synth0_register, start_bit_pos, bit_width,
-                                            parent_device)
+            super(_SI534x._MultiSynth_BitField, self).__init__(page, synth0_register, start_bit_pos,
+                                                               bit_width, parent_device)
 
             # Init additional multisynth-specific fields
             self.num_multisyths = num_multisynths
@@ -102,7 +109,7 @@ class _SI534x:
             self.start_register += self.synth_width * synth_num
 
             # Call normal _BitField write function
-            super(_BitField, self).write(data)
+            super(_SI534x._MultiSynth_BitField, self).write(data)
 
         def read(synth_num):
             # Check channel number is valid
@@ -115,7 +122,7 @@ class _SI534x:
             self.start_register += self.synth_width * synth_num
 
             # Call normal _BitField read functions
-            return super(_BitField, self).read()
+            return super(_SI534x._MultiSynth_BitField, self).read()
 
     class _regmap_generator(object):
         # Pages in the register map that will be read
@@ -211,7 +218,7 @@ class _SI534x:
     # An iterable of tuples in the form (page, register) where the pages and registers are those
     # that should be read from the device when creating a settings map with export_register_map()
     # for later re-write with the import_register_map() function.
-    _regmap_pages_registers_iter = regmap_generator()
+    _regmap_pages_registers_iter = _regmap_generator()
 
     # The register maps to be written to the device require a preamble and postamble that write
     # registers that place the device into an acceptable start state.
@@ -261,26 +268,26 @@ class _SI534x:
 
 
         #TODO define static fields
-        self._output_driver_OUTALL_DISABLE_LOW = _BitField(page=0x01,
-                                                           start_register = 0x02,
-                                                           start_bit_pos = 0, bit_width = 1,
-                                                           parent_device = self)
+        self._output_driver_OUTALL_DISABLE_LOW = _SI534x._BitField(page=0x01,
+                                                                   start_register = 0x02,
+                                                                   start_bit_pos = 0, bit_width = 1,
+                                                                   parent_device = self)
 
         #TODO define channel-mapped fields
-        self._output_driver_cfg_PDN = _Channel_BitField(page=0x01,
-                                                        first_channel_register = 0x08,
-                                                        start_bit_pos = 0,
-                                                        bit_width = 1,
-                                                        parent_device = self,
-                                                        channel_positions = channel_positions,
-                                                        channel_width = 0x05)
-        self._output_driver_cfg_OE = _Channel_BitField(page=0x01,
-                                                       first_channel_register = 0x08,
-                                                       start_bit_pos = 1,
-                                                       bit_width = 1,
-                                                       parent_device = self,
-                                                        channel_positions = channel_positions,
-                                                       channel_width = 0x05)
+        self._output_driver_cfg_PDN = _SI534x._Channel_BitField(page=0x01,
+                                                                first_channel_register = 0x08,
+                                                                start_bit_pos = 0,
+                                                                bit_width = 1,
+                                                                parent_device = self,
+                                                                channel_positions = channel_positions,
+                                                                channel_width = 0x05)
+        self._output_driver_cfg_OE = _SI534x._Channel_BitField(page=0x01,
+                                                               first_channel_register = 0x08,
+                                                               start_bit_pos = 1,
+                                                               bit_width = 1,
+                                                               parent_device = self,
+                                                                channel_positions = channel_positions,
+                                                               channel_width = 0x05)
 
         #TODO define multisynth-mapped fields
 
@@ -289,8 +296,9 @@ class _SI534x:
 
     def _set_correct_register_page(self, target_page):
         # Set the correct page
-        if self._reg_map_page_select == target_page:
+        if self._reg_map_page_select != target_page:
             # Write to page register on whatever page we are currently on (irrelevant)
+            print("Changing register map page to ", target_page)
             self._write_register(0x01, target_page)
             self._reg_map_page_select = target_page
 
@@ -303,11 +311,11 @@ class _SI534x:
         self._set_correct_register_page(page)
 
         # Align the output with register boundaries
-        additional_lower_bits = (start_bit+1) - (width_bits%8)
+        additional_lower_bits = ((start_bit+1)%8) - (width_bits%8)
         value_out = value_out << additional_lower_bits
 
         # Read original contents of registers as a value
-        num_full_bytes = ((width_bits-1)/8)
+        num_full_bytes = int((width_bits-1)/8) + 1
         old_full_bytes_value = self._read_paged_register_field(page, start_register, 7,
                                                                num_full_bytes*8)
 
@@ -320,7 +328,7 @@ class _SI534x:
 
         # Write back with correct start bit offset (additional lower bits already present)
         for byte_index in range (0, num_full_bytes):
-            byte_bit_offset = ((num_full_byte-1) - byte_index) * 8
+            byte_bit_offset = ((num_full_bytes-1) - byte_index) * 8
             byte_value = (value_out >> byte_bit_offset) & 0xFF
             self._write_register(start_register + byte_index, byte_value)
 
@@ -331,28 +339,36 @@ class _SI534x:
 
         # Read whole range of bytes into single value to cover range
         full_bytes_value = 0
-        num_full_bytes = ((width_bits-1) / 8)
+        num_full_bytes = int((width_bits-1) / 8) + 1
 
         for byte_address in range(start_register, start_register + num_full_bytes):
-            full_bytes_value << 8
-            full_bytes_value += self._read_register(byte_address) & 0xFF
+            full_bytes_value = full_bytes_value << 8
+            next_byte_value = self._read_register(byte_address)
+            #print("next byte: ", next_byte_value)
 
             # Remove unused start bits from first byte
             if byte_address == start_register:
-                full_bytes_value = full_bytes_value & ((0b1<<(start_bit+1))-1)
+                next_byte_value = next_byte_value & ((0b1<<(start_bit+1))-1)
+                #print("start bits removed: ", next_byte_value)
+
+            full_bytes_value += next_byte_value & 0xFF
+            #print("full bytes now: ", full_bytes_value)
 
         # Remove offset from resulting value
-        additional_lower_bits = (start_bit+1) - (width_bits%8)
+        additional_lower_bits = ((start_bit+1)%8) - (width_bits%8)
         full_bytes_value = full_bytes_value >> additional_lower_bits
+        #print("Now removing {} additional lower bits: {}".format(additional_lower_bits, full_bytes_value))
 
         return full_bytes_value
 
     def _write_register_i2c(self, register, value):
         # Wrapper for writing a full 8-bit register over I2C, without page logic.
+        # print("Writing to register ", register, " with value ", value, " using I2C")
         self.i2c_bus.writeU8(register, value)
 
     def _read_register_i2c(self, register):
         # Wrapper for reading a full 8-bit register over I2C, without page logic.
+        # print("Reading from register ", register, " using I2C")
         return self.i2c_bus.readU8(register)
 
     def _bytes_write_spi(self, register, value):
@@ -381,32 +397,33 @@ class _SI534x:
             csv_reader = csv.reader(csvfile, delimiter=',')
             for row in csv_reader:
                 # The register map starts after general information is printed preceded by '#'
-                if row[0] != '#':
+                print("Line read from CSV: ", row) #TODO remove or make a logging line
+                if row[0][0] != '#':
                     # Extract register-value pairing from register map
                     page_register = int(row[0], 0)  # 0x prefix detected automatically
-                    value = int(row[1], 0)          # 0x prefix detected automatically
+                    value = int(row[1][:-2], 0)     # \\r removed
                     register = page_register & 0xFF         # Lower byte
-                    page = (page_register & 0xFF00) >> 16   # Upper byte
-
+                    page = (page_register & 0xFF00) >> 8    # Upper byte
+                    print("Storing value ", value, " in register ", register, " of page ", page)#TODO remove
                     # Write register value (whole byte at a time)
-                    logger.info(
+                    self.logger.info(
                             "Writing page 0x{:02X} register 0x{:02X} with value {:02X}".format(page,
                                                                                                register,
                                                                                                value))
-                    self._write_registers([value], 1, page, register, 7, 8)
+                    self._write_paged_register_field(value, page, register, 7, 8)
 
                     if verify:
-                        verify_value = self._read_registers(page, register, 7, 0)
-                        logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(
+                        verify_value = self._read_paged_register_field(page, register, 7, 0)
+                        self.logger.debug("Verifying value written ({:b}) against re-read: {:b}".format(
                             value,verify_value))
                         if verify_value != value:
-                            raise self.CommsException(
+                            raise SI534xCommsException(
                                     "Write of byte to register {} failed.".format(register))
 
         # ICAL-sensitive registers will have been modified during this process
         #TODO if ICAL (or another finishing command) is actually still relevant
 
-    def export_register_map(self, mapfile_location):
+    def export_register_map(self, mapfile_csv_location):
         #TODO update this text
         """
         Generate a register map file using the current settings in device control
@@ -421,38 +438,43 @@ class _SI534x:
 
             # The registers that will be read are the ones found in output register
             # maps from DSPLLsim.
-            for page, register in SI534x._regmap_pages_registers_iter:
+            for page, register in _SI534x._regmap_pages_registers_iter:
 
                 #TODO potentially include any registers that read as 0 for triggers, that should not be
                 # included in a write map, or need their values changing (like SI5342 ICAL)
 
-                value = self._read_registers(page, register)
-                logger.info("Read register 0x{:02X}{:02X}: {:02X}".format(page, register, value))
+                value = self._read_paged_register_field(page, register, 7, 8)
+                print("Read register 0x{:02X}{:02X}: {:02X}".format(page, register, value))#TODO remove
+                self.logger.info("Read register 0x{:02X}{:02X}: {:02X}".format(page, register, value))
 
                 # File target format combines page and register into one 4-nibble hex value
                 page_reg_combined = "0x{:02X}{:02X}".format(page, register)
-                csv_writer.writerow([page_reg_combined, value])
+                value_hex = "0x{:02X}".format(value)
+                csv_writer.writerow([page_reg_combined, value_hex])
 
-            logger.info("Register map extraction complete, to file: {}".format(mapfile_location))
+            self.logger.info("Register map extraction complete, to file: {}".format(mapfile_csv_location))
 
 class SI5345 (_SI534x):
-    def __init__(self, i2c_address=None, spi_device=None):
+    def __init__(self, i2c_address=None, spi_device=None,
+                 LOS_Line=None, LOL_Line=None, INT_Line=None):
         super(SI5345, self).__init__([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],    # All channels
                                      5,             # 5 Multisynths, 0.5 per channel
                                      i2c_address, spi_device,
-                                     LOS_line, LOL_Line, INT_Line)
+                                     LOS_Line, LOL_Line, INT_Line)
 
 
 class SI5344 (_SI534x):
-    def __init__(self, i2c_address=None, spi_device=None):
+    def __init__(self, i2c_address=None, spi_device=None,
+                 LOS_Line=None, LOL_Line=None, INT_Line=None):
         super(SI5345, self).__init__([2, 3, 6, 7],  # 4 Channels, in SI5345 map positons 2, 3, 6, 7
                                      4,             # 4 Multisynths, 1 per channel
                                      i2c_address, spi_device,
-                                     LOS_line, LOL_Line, INT_Line)
+                                     LOS_Line, LOL_Line, INT_Line)
 
 
 class SI5342 (_SI534x):
-    def __init__(self, i2c_address=None, spi_device=None):
+    def __init__(self, i2c_address=None, spi_device=None,
+                 LOS_Line=None, LOL_Line=None, INT_Line=None):
         super(SI5345, self).__init__([2, 3],        # 2 Channels, in SI5345 map positions 2, 3
                                      2,             # 2 Multisynths, 1 per channel
                                      i2c_address, spi_device,
