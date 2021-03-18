@@ -272,6 +272,12 @@ class _SI534x(object):
                                                                    start_register = 0x02,
                                                                    start_bit_pos = 0, bit_width = 1,
                                                                    parent_device = self)
+        self._hard_reset_bit = _SI534x._BitField(page=0x00, start_register = 0x01E,
+                                                 start_bit_pos = 1, bit_width = 1,
+                                                 parent_device = self)
+        self._soft_reset_bit = _SI534x._BitField(page=0x00, start_register = 0x01C,
+                                                 start_bit_pos = 2, bit_width = 1,
+                                                 parent_device = self)
 
         #TODO define channel-mapped fields
         self._output_driver_cfg_PDN = _SI534x._Channel_BitField(page=0x01,
@@ -378,6 +384,15 @@ class _SI534x(object):
         pass
 
     #TODO add functions for desirable option changes
+
+    def reset(self, soft=False):
+        if soft:    # Reset state machines
+            self._soft_reset_bit.write(1)
+            self._soft_reset_bit.write(0)
+        else:       # POR device. Registers set to default.
+            self._hard_reset_bit.write(1)
+            self._hard_reset_but.write(0)
+
 
 
     """
