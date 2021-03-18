@@ -234,6 +234,9 @@ class _SI534x(object):
 
     def __init__(self, channel_positions, num_multisynths, i2c_address=None, spi_device=None,
                  LOS_line=None, LOL_Line=None, INT_Line=None):
+        self._num_multisynths = num_multisynths
+        self._num_channels = len(channel_positions)
+
         #TODO Initiate chosen interface (set chosen read/write functions)
         if i2c_address is not None:
             # Init the instance's logger
@@ -281,6 +284,16 @@ class _SI534x(object):
         self._soft_reset_bit = _SI534x._BitField(page=0x00, start_register = 0x01C,
                                                  start_bit_pos = 2, bit_width = 1,
                                                  parent_device = self)
+        self._output_driver_cfg_OE_ALL = _SI534x._BitField(page=0x01,
+                                                           start_register = 0x02,
+                                                           start_bit_pos = 0,
+                                                           bit_width = 1,
+                                                           parent_device = self)
+        self._multisynth_frequency_step_mask = _SI534x._BitField(page=0x03,
+                                                                 start_register = 0x39,
+                                                                 start_bit_pos = num_multisynths-1,
+                                                                 bit_width = num_multisynths,
+                                                                 parent_device = self)
 
         #TODO define channel-mapped fields
         self._output_driver_cfg_PDN = _SI534x._Channel_BitField(page=0x01,
@@ -295,14 +308,14 @@ class _SI534x(object):
                                                                start_bit_pos = 1,
                                                                bit_width = 1,
                                                                parent_device = self,
-                                                               channel_positions = channel_positions_condensed,
+                                                               channel_positions = channel_positions,
                                                                channel_width = 0x05)
-        self._output_driver_cfg_OE_ALL = _SI534x._BitField(page=0x01,
-                                                           first_channel_register = 0x02,
-                                                           start_bit_pos = 0,
-                                                           bit_width = 1,
-                                                           parent_device = self)
-
+        self._channel_multisynth_selection = _SI534x._Channel_BitField(page=0x01,
+                                                                       first_channel_register = 0x0B,
+                                                                       start_bit_pos = 2, bit_width = 3,
+                                                                       parent_device = self,
+                                                                       channel_positions = channel_positions,
+                                                                       channel_width = 0x05)
         #TODO define multisynth-mapped fields
 
 
@@ -401,6 +414,9 @@ class _SI534x(object):
             self._hard_reset_bit.write(1)
             self._hard_reset_but.write(0)
 
+    """
+    Channel Output Enable Control:
+    """
     def set_channel_output_enabled(self, channel_number, output_enable):
         if output_enable:
             # Ensure that the all-channel disable is not active
@@ -412,6 +428,73 @@ class _SI534x(object):
 
     def get_channel_output_enabled(self, channel_number):
         return self._output_driver_cfg_OE.read(channel_number)
+
+    """
+    Channel (MultiSynth) Frequency Stepping:
+    """
+    def increment_multisynth_frequency(self, multisynth_number):
+        all_multisynth_mask = (0b1 << self._num_multisynths) - 1
+        step_mask = all_multisynth_mask & ~(0b1 << multisynth_number)
+        self._multisynth_frequency_step_mask.write(step_mask)
+
+        self._multisynth_frequency_increment.write(1, multisynth_number)
+        self._multisynth_frequency_increment.write(0, multisynth_number)
+
+    def decrement_multisynth_frequency(self, multisynth_number):
+        all_multisynth_mask = (0b1 << self._num_multisynths) - 1
+        step_mask = all_multisynth_mask & ~(0b1 << multisynth_number)
+        self._multisynth_frequency_step_mask.write(step_mask)
+
+        self._multisynth_frequency_decrement.write(1, multisynth_number)
+        self._multisynth_frequency_decrement.write(0, multisynth_number)
+
+    def decrement_channel_frequency(self, channel_number, ignore_affected_channels=False):
+        # Get the multisynth currently associated with the channel specified
+        multisynth_number = get_multisynth_from_channel(channel_number)
+
+        if not ignore_affected_channels:
+            # Check if other channels will be affected by this change
+            channels_on_multisynth = get_channels_from_multisynth(multisynth_number)
+
+            for affected_channel in channels_on_multisynth:
+                if self.get_channel_output_enabled:     # Only warn for channels that are enabled
+                    logger.warning(
+                            "This channel shares a multisynth with ch {}.".format(affected_channel)
+                            " Both channels will be stepped. To ignore this warning, supply the "
+                            "argument ignore_affected_channels=True")
+
+        self.decrement_multisynth_frequency(multisynth_number)
+
+
+    def increment_channel_frequency(self, channel_number):
+        # Get the multisynth currently associated with the channel specified
+        multisynth_number = get_multisynth_from_channel(channel_number)
+
+        if not ignore_affected_channels:
+            # Check if other channels will be affected by this change
+            channels_on_multisynth = get_channels_from_multisynth(multisynth_number)
+
+            for affected_channel in channels_on_multisynth:
+                if self.get_channel_output_enabled:     # Only warn for channels that are enabled
+                    logger.warning(
+                            "This channel shares a multisynth with ch {}.".format(affected_channel)
+                            " Both channels will be stepped. To ignore this warning, supply the "
+                            "argument ignore_affected_channels=True")
+
+        self.increment_multisynth_frequency(multisynth_number)
+
+    """
+    Utility Functions:
+    """
+    def get_multisynth_from_channel(self, channel_number):
+        return self._channel_multisynth_selection.read(channel_number)
+
+    def get_channels_from_multisynth(self, multisynth_number):
+        channel_list = []
+        for channel in range(0, self._num_channels):
+            if self.get_multisynth_from_channel(channel) == multisynth_number:
+                channel_list.append(channel)
+        return channel_list
 
     """
     Register Map File Functions
