@@ -266,6 +266,9 @@ class _SI534x(object):
 
         self._reg_map_page_select = 0xFF    # Will be immediately reset on first r/w
 
+        # Some channel fields use an ordered channel-mapping without the strange order that other
+        # fields use. See the channel OE registers.
+        channel_positions_condensed = [x for x in range(0, len(channel_positions))]
 
         #TODO define static fields
         self._output_driver_OUTALL_DISABLE_LOW = _SI534x._BitField(page=0x01,
@@ -292,8 +295,13 @@ class _SI534x(object):
                                                                start_bit_pos = 1,
                                                                bit_width = 1,
                                                                parent_device = self,
-                                                                channel_positions = channel_positions,
+                                                               channel_positions = channel_positions_condensed,
                                                                channel_width = 0x05)
+        self._output_driver_cfg_OE_ALL = _SI534x._BitField(page=0x01,
+                                                           first_channel_register = 0x02,
+                                                           start_bit_pos = 0,
+                                                           bit_width = 1,
+                                                           parent_device = self)
 
         #TODO define multisynth-mapped fields
 
@@ -393,7 +401,17 @@ class _SI534x(object):
             self._hard_reset_bit.write(1)
             self._hard_reset_but.write(0)
 
+    def set_channel_output_enabled(self, channel_number, output_enable):
+        if output_enable:
+            # Ensure that the all-channel disable is not active
+            self._output_driver_cfg_OE_ALL.write(1)
 
+            self._output_driver_cfg_OE.write(1, channel_number)
+        else:
+            self._output_driver_cfg_OE.write(0, channel_number)
+
+    def get_channel_output_enabled(self, channel_number):
+        return self._output_driver_cfg_OE.read(channel_number)
 
     """
     Register Map File Functions
