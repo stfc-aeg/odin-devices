@@ -391,7 +391,7 @@ class _SI534x(object):
     def _write_register_i2c(self, register, value):
         # Wrapper for writing a full 8-bit register over I2C, without page logic.
         # print("Writing to register ", register, " with value ", value, " using I2C")
-        self.i2c_bus.writeU8(register, value)
+        self.i2c_bus.write8(register, value)
 
     def _read_register_i2c(self, register):
         # Wrapper for reading a full 8-bit register over I2C, without page logic.
@@ -514,10 +514,11 @@ class _SI534x(object):
             for row in csv_reader:
                 # The register map starts after general information is printed preceded by '#'
                 print("Line read from CSV: ", row) #TODO remove or make a logging line
-                if row[0][0] != '#':
+                if row[0][0] == '0':    # Register values are preceeded by 0x
                     # Extract register-value pairing from register map
                     page_register = int(row[0], 0)  # 0x prefix detected automatically
-                    value = int(row[1][:-2], 0)     # \\r removed
+                    #value = int(row[1][:-2], 0)     # \\r removed
+                    value = int(row[1], 0)
                     register = page_register & 0xFF         # Lower byte
                     page = (page_register & 0xFF00) >> 8    # Upper byte
                     print("Storing value ", value, " in register ", register, " of page ", page)#TODO remove
@@ -582,7 +583,7 @@ class SI5345 (_SI534x):
 class SI5344 (_SI534x):
     def __init__(self, i2c_address=None, spi_device=None,
                  LOS_Line=None, LOL_Line=None, INT_Line=None):
-        super(SI5345, self).__init__([2, 3, 6, 7],  # 4 Channels, in SI5345 map positons 2, 3, 6, 7
+        super(SI5344, self).__init__([2, 3, 6, 7],  # 4 Channels, in SI5345 map positons 2, 3, 6, 7
                                      4,             # 4 Multisynths, 1 per channel
                                      i2c_address, spi_device,
                                      LOS_Line, LOL_Line, INT_Line)
@@ -591,7 +592,7 @@ class SI5344 (_SI534x):
 class SI5342 (_SI534x):
     def __init__(self, i2c_address=None, spi_device=None,
                  LOS_Line=None, LOL_Line=None, INT_Line=None):
-        super(SI5345, self).__init__([2, 3],        # 2 Channels, in SI5345 map positions 2, 3
+        super(SI5342, self).__init__([2, 3],        # 2 Channels, in SI5345 map positions 2, 3
                                      2,             # 2 Multisynths, 1 per channel
                                      i2c_address, spi_device,
                                      LOS_Line, LOL_Line, INT_Line)
