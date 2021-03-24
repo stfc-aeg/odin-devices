@@ -214,6 +214,60 @@ class _SI534x(object):
                 self.current_register += 1
                 return self.current_page, self.current_register
 
+    def _FaultReport(Object):
+        def __init__ (lol_status, lol_flag, los_status, los_flag, los_xtal_status, los_xtal_flag,
+                      oof_status_field, oof_flag_field):
+            # Assign booleans
+            self.lol_status = lol_status > 0
+            self.lol_flag = lol_flag > 0
+            self.los_xtal_status = los_xtal_status > 0
+            self.los_xtal_flag = los_xtal_flag > 0
+
+            # Assign input-bitfields
+            for input_no in range(0, 4):
+                self.los_input_status[input_no] = (los_status & (0b1 << input_no)) > 0
+                self.los_input_flag[input_no] = (los_flag & (0b1 << input_no)) > 0
+                self.oof_input_status[input_no] = (los_status & (0b1 << input_no)) > 0
+                self.oof_input_flag[input_no] = (los_flag & (0b1 << input_no)) > 0
+
+        def has_fault(self):
+            if (self.lol_status or self.los_xtal_status
+                or (True in self.los_input_status) or (True in self.oof_input_status)):
+                return True
+            else:
+                return False
+
+        def had_fault(self):
+            if (self.lol_flag or self.los_flag
+                or (True in self.los_input_flag) or (True in self.oof_input_flag)):
+                return True
+            else:
+                return False
+
+        def __repr__(self):
+            outputstr = ""
+            if self.has_fault():
+                outputstr += "Faults Active!\nDetails:\n"
+                outputstr += "\tLOS: {}\n".format(self.lol_status)
+                outputstr += "\tlos xtal: {}\n".format(self.los_xtal_status)
+                outputstr += "\tlos inputs: {}\n".format(self.los_input_status)
+                outputstr += "\toof inputs: {}\n".format(self.oof_input_status)
+            else:
+                outputstr += "No currently active faults.\n"
+
+            if self.had_faults():
+                outputstr += "Faults Flagged!\nDetails:\n"
+                outputstr += "\tLOS: {}\n".format(self.lol_flag)
+                outputstr += "\tlos xtal: {}\n".format(self.los_xtal_flag)
+                outputstr += "\tlos inputs: {}\n".format(self.los_input_flag)
+                outputstr += "\toof inputs: {}\n".format(self.oof_input_flag)
+            else:
+                outputstr += "No currently flagged faults.\n"
+
+            return outputstr
+
+
+
 
     # An iterable of tuples in the form (page, register) where the pages and registers are those
     # that should be read from the device when creating a settings map with export_register_map()
@@ -233,9 +287,13 @@ class _SI534x(object):
                                   (0x0B, 0x25, 0x02)]
 
     def __init__(self, channel_positions, num_multisynths, i2c_address=None, spi_device=None,
-                 LOS_line=None, LOL_Line=None, INT_Line=None):
+                 LOL_Line=None, INT_Line=None):
+
+        # Allocate device properties
         self._num_multisynths = num_multisynths
         self._num_channels = len(channel_positions)
+        self._LOL_Pin = LOL_Line
+        self._INT_Pin = INT_Line
 
         #TODO Initiate chosen interface (set chosen read/write functions)
         if i2c_address is not None:
@@ -294,7 +352,41 @@ class _SI534x(object):
                                                                  start_bit_pos = num_multisynths-1,
                                                                  bit_width = num_multisynths,
                                                                  parent_device = self)
+        self._fault_lol_status = _SI534x._BitField(page=0x00,
+                                                   start_register = 0x0E,
+                                                   start_bit_pos = 1, bit_width = 1,
+                                                   parent_device = self)
+        self._fault_lol_flag = _SI534x._BitField(page=0x00,
+                                                 start_register = 0x13,
+                                                 start_bit_pos = 1, bit_width = 1,
+                                                 parent_device = self)
+        self._fault_los_status = _SI534x._BitField(page=0x00,
+                                                   start_register = 0x0D,
+                                                   start_bit_pos = 3, bit_width = 4,
+                                                   parent_device = self)
+        self._fault_los_flag = _SI534x._BitField(page=0x00,
+                                                 start_register = 0x12,
+                                                 start_bit_pos = 3, bit_width = 4,
+                                                 parent_device = self)
+        self._fault_los_xtal_status = _SI534x._BitField(page=0x00,
+                                                   start_register = 0x0C,
+                                                   start_bit_pos = 1, bit_width = 1,
+                                                   parent_device = self)
+        self._fault_los_xtal_flag = _SI534x._BitField(page=0x00,
+                                                 start_register = 0x11,
+                                                 start_bit_pos = 3, bit_width = 1,
+                                                 parent_device = self)
+        self._fault_oof_status = _SI534x._BitField(page=0x00,
+                                                   start_register = 0x0D,
+                                                   start_bit_pos = 7, bit_width = 4,
+                                                   parent_device = self)
+        self._fault_oof_flag = _SI534x._BitField(page=0x00,
+                                                 start_register = 0x12,
+                                                 start_bit_pos = 7, bit_width = 4,
+                                                 parent_device = self)
 
+            oof_status = self._fault_oof_status.read()
+            oof_flag = self._fault_oof_flag.read()
         #TODO define channel-mapped fields
         self._output_driver_cfg_PDN = _SI534x._Channel_BitField(page=0x01,
                                                                 first_channel_register = 0x08,
@@ -460,8 +552,8 @@ class _SI534x(object):
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
                     logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
-                            " Both channels will be stepped. To ignore this warning, supply the "
-                            "argument ignore_affected_channels=True")
+                            + " Both channels will be stepped. To ignore this warning, supply the "
+                            + "argument ignore_affected_channels=True")
 
         self.decrement_multisynth_frequency(multisynth_number)
 
@@ -478,8 +570,8 @@ class _SI534x(object):
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
                     logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
-                            " Both channels will be stepped. To ignore this warning, supply the "
-                            "argument ignore_affected_channels=True")
+                            + " Both channels will be stepped. To ignore this warning, supply the "
+                            + "argument ignore_affected_channels=True")
 
         self.increment_multisynth_frequency(multisynth_number)
 
@@ -495,6 +587,72 @@ class _SI534x(object):
             if self.get_multisynth_from_channel(channel) == multisynth_number:
                 channel_list.append(channel)
         return channel_list
+
+    """
+    Fault monitoring:
+    These functions are aimed at monitoring state only. Set-up should be completed using CPB.
+    """
+
+    def get_enabled_fault_monitoring(self):
+        # Return the currently enabled features for fault monitoring.
+
+    def get_fault_report(self, attempt_use_pins=False):
+        # Reads fault registers, returns False if no fault, or a report if there is one
+        # If pins are supplied, it will skip the register access if neither are high.
+        # Because of the immediate return, this could be used to create a custom async handler.
+        # attempt_use_pins will try to use pins if available. If False will not even try
+        # note that when pins are used, a there will be no result returned when there are fault flags
+
+        # If monitoring via pins was asked for, warn if no pins are supplied
+        if attempt_use_pins and self._LOL_Pin == None and self._INT_Pin == None:
+            logger.warning("Requested a fault report with pin monitoring, but no pins configured.")
+
+        # If pins are being used, return no report unless either of the pins is 1
+        pinfault_found = False
+        pins_checked = False
+        if self._LOL_Pin != None and attempt_use_pins:
+            pins_checked = True
+            if LOL_Pin.read_value() == 0:   # If the pin is active (low)
+                pinfault_found = True
+        if self._INT_Pin != None and attempt_use_pins:
+            pins_checked = True
+            if INT_Pin.read_value() == 0:   # If the pin is active (high)
+                pinfault_found = True
+
+        # Only return false if the pins were actually used and neither found a fault
+        if pins_checked and not pinfault_found:
+            # Return a blank report, including no flags (despite these not being checked)
+            return self._FaultReport(0,0,0,0,0,0,0,0)
+        else:   # Either pins were not checked, or they were and a fault was found
+            lol_status = self._fault_lol_status.read()
+            lol_flag = self._fault_lol_flag.read()
+            los_status = self._fault_los_status.read()
+            los_flag = self._fault_los_flag.read()
+            los_xtal_status = self._fault_los_xtal_status.read()
+            lost_xtal_flag = self._fault_los_xtal_flag.read()
+            oof_status = self._fault_oof_status.read()
+            oof_flag = self._fault_oof_flag.read()
+
+            fault_report = self._FaultReport(lol_status, lol_flag, los_status, los_flag,
+                                             los_xtal_stataus, los_xtal_flag,
+                                             oof_status, oof_flag)
+
+            return fault_report
+
+    def clear_fault_flag(self, ALL=False, LOL=False, OOF=False,
+                         LOS0=False, LOS1=False, LOS2=False, LOS3=False):
+        if LOL or ALL:
+            self._fault_lol_flag.write(0)
+        if OOF or ALL:
+            self._fault_oof_flag.write(0)
+        if LOS3 or ALL:
+            self._fault_los_flag.write(0b1000)
+        if LOS2 or ALL:
+            self._fault_los_flag.write(0b0100)
+        if LOS1 or ALL:
+            self._fault_los_flag.write(0b0010)
+        if LOS0 or ALL:
+            self._fault_los_flag.write(0b0001)
 
     """
     Register Map File Functions
@@ -577,7 +735,7 @@ class SI5345 (_SI534x):
         super(SI5345, self).__init__([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],    # All channels
                                      5,             # 5 Multisynths, 0.5 per channel
                                      i2c_address, spi_device,
-                                     LOS_Line, LOL_Line, INT_Line)
+                                     LOL_Line, INT_Line)
 
 
 class SI5344 (_SI534x):
@@ -586,7 +744,7 @@ class SI5344 (_SI534x):
         super(SI5344, self).__init__([2, 3, 6, 7],  # 4 Channels, in SI5345 map positons 2, 3, 6, 7
                                      4,             # 4 Multisynths, 1 per channel
                                      i2c_address, spi_device,
-                                     LOS_Line, LOL_Line, INT_Line)
+                                     LOL_Line, INT_Line)
 
 
 class SI5342 (_SI534x):
@@ -595,4 +753,4 @@ class SI5342 (_SI534x):
         super(SI5342, self).__init__([2, 3],        # 2 Channels, in SI5345 map positions 2, 3
                                      2,             # 2 Multisynths, 1 per channel
                                      i2c_address, spi_device,
-                                     LOS_Line, LOL_Line, INT_Line)
+                                     LOL_Line, INT_Line)
