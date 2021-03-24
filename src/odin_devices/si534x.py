@@ -20,13 +20,13 @@ class _SI534x(object):
             self.bit_width = bit_width
             self.parent_device = parent_device
 
-        def write(data):
+        def write(self, data):
             # Check data is of correct type (single value)
             if type(data) != int:
                 #TODO throw type error
                 pass
             # Check data fits in desired bit width
-            if data >= (0b1 << bit_width):
+            if data >= (0b1 << self.bit_width):
                 #TODO Throw data size error
                 pass
 
@@ -34,8 +34,8 @@ class _SI534x(object):
             self.parent_device._write_paged_register_field(data, self.page, self.start_register,
                                                            self.start_bit_pos, self.bit_width)
 
-        def read():
-            return self.parent_device.chosen_bytes_read(self.page, self.start_register,
+        def read(self):
+            return self.parent_device._read_paged_register_field(self.page, self.start_register,
                                                         self.start_bit_pos, self.bit_width)
 
     class _Channel_BitField(_BitField):
@@ -55,7 +55,7 @@ class _SI534x(object):
             self.first_channel_start_register = first_channel_register  # Static start of the field
             # start_register now becomes a dynamic value, set per channel on read / writes.
 
-        def write(data, channel_num):
+        def write(self, data, channel_num):
             # Check channel number is valid
             if channel_num >= self.num_channels:
                 #TODO throw channel number error
@@ -63,13 +63,13 @@ class _SI534x(object):
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
-            channel_offset = self.channel_width * channel_positions[channel_num]
+            channel_offset = self.channel_width * self.channel_positions[channel_num]
             self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField write function
             super(_SI534x._Channel_BitField, self).write(data)
 
-        def read(channel_num):
+        def read(self, channel_num):
             # Check channel number is valid
             if channel_num >= self.num_channels:
                 #TODO throw channel number error
@@ -77,7 +77,7 @@ class _SI534x(object):
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
-            channel_offset = self.channel_width * channel_positions[channel_num]
+            channel_offset = self.channel_width * self.channel_positions[channel_num]
             self.start_register += self.channel_width * channel_offset
 
             # Call normal _BitField read function
@@ -99,7 +99,7 @@ class _SI534x(object):
             self.synth0_register = synth0_register  # Static first synth register position 0 offset
             # start_register now becomes a dynamic value, set per multisynth on read/writes
 
-        def write(data, synth_num): # Check synth number is valid
+        def write(self, data, synth_num): # Check synth number is valid
             if synth_num >= self.num_multisynths:
                 #TODO throw error
                 pass
@@ -111,7 +111,7 @@ class _SI534x(object):
             # Call normal _BitField write function
             super(_SI534x._MultiSynth_BitField, self).write(data)
 
-        def read(synth_num):
+        def read(self, synth_num):
             # Check channel number is valid
             if synth_num >= self.num_multisynths:
                 #TODO throw error
@@ -214,9 +214,9 @@ class _SI534x(object):
                 self.current_register += 1
                 return self.current_page, self.current_register
 
-    def _FaultReport(Object):
-        def __init__ (lol_status, lol_flag, los_status, los_flag, los_xtal_status, los_xtal_flag,
-                      oof_status_field, oof_flag_field):
+    class _FaultReport(object):
+        def __init__(self, lol_status, lol_flag, los_status, los_flag, los_xtal_status,
+                      los_xtal_flag, oof_status_field, oof_flag_field):
             # Assign booleans
             self.lol_status = lol_status > 0
             self.lol_flag = lol_flag > 0
@@ -224,6 +224,10 @@ class _SI534x(object):
             self.los_xtal_flag = los_xtal_flag > 0
 
             # Assign input-bitfields
+            self.los_input_status = [False, False, False, False]
+            self.los_input_flag = [False, False, False, False]
+            self.oof_input_status = [False, False, False, False]
+            self.oof_input_flag = [False, False, False, False]
             for input_no in range(0, 4):
                 self.los_input_status[input_no] = (los_status & (0b1 << input_no)) > 0
                 self.los_input_flag[input_no] = (los_flag & (0b1 << input_no)) > 0
@@ -248,19 +252,19 @@ class _SI534x(object):
             outputstr = ""
             if self.has_fault():
                 outputstr += "Faults Active!\nDetails:\n"
-                outputstr += "\tLOS: {}\n".format(self.lol_status)
-                outputstr += "\tlos xtal: {}\n".format(self.los_xtal_status)
-                outputstr += "\tlos inputs: {}\n".format(self.los_input_status)
-                outputstr += "\toof inputs: {}\n".format(self.oof_input_status)
+                outputstr += "\tLOL: {}\n".format(self.lol_status)
+                outputstr += "\tLOS xtal: {}\n".format(self.los_xtal_status)
+                outputstr += "\tLOS inputs: {}\n".format(self.los_input_status)
+                outputstr += "\tOOF inputs: {}\n".format(self.oof_input_status)
             else:
                 outputstr += "No currently active faults.\n"
 
-            if self.had_faults():
+            if self.had_fault():
                 outputstr += "Faults Flagged!\nDetails:\n"
-                outputstr += "\tLOS: {}\n".format(self.lol_flag)
-                outputstr += "\tlos xtal: {}\n".format(self.los_xtal_flag)
-                outputstr += "\tlos inputs: {}\n".format(self.los_input_flag)
-                outputstr += "\toof inputs: {}\n".format(self.oof_input_flag)
+                outputstr += "\tLOL: {}\n".format(self.lol_flag)
+                outputstr += "\tLOS xtal: {}\n".format(self.los_xtal_flag)
+                outputstr += "\tLOS inputs: {}\n".format(self.los_input_flag)
+                outputstr += "\tOOF inputs: {}\n".format(self.oof_input_flag)
             else:
                 outputstr += "No currently flagged faults.\n"
 
@@ -385,8 +389,6 @@ class _SI534x(object):
                                                  start_bit_pos = 7, bit_width = 4,
                                                  parent_device = self)
 
-            oof_status = self._fault_oof_status.read()
-            oof_flag = self._fault_oof_flag.read()
         #TODO define channel-mapped fields
         self._output_driver_cfg_PDN = _SI534x._Channel_BitField(page=0x01,
                                                                 first_channel_register = 0x08,
@@ -430,7 +432,7 @@ class _SI534x(object):
         self._set_correct_register_page(page)
 
         # Align the output with register boundaries
-        additional_lower_bits = ((start_bit+1)%8) - (width_bits%8)
+        additional_lower_bits = (start_bit - width_bits) + 1
         value_out = value_out << additional_lower_bits
 
         # Read original contents of registers as a value
@@ -474,7 +476,7 @@ class _SI534x(object):
             #print("full bytes now: ", full_bytes_value)
 
         # Remove offset from resulting value
-        additional_lower_bits = ((start_bit+1)%8) - (width_bits%8)
+        additional_lower_bits = (start_bit - width_bits) + 1
         full_bytes_value = full_bytes_value >> additional_lower_bits
         #print("Now removing {} additional lower bits: {}".format(additional_lower_bits, full_bytes_value))
 
@@ -542,15 +544,15 @@ class _SI534x(object):
 
     def decrement_channel_frequency(self, channel_number, ignore_affected_channels=False):
         # Get the multisynth currently associated with the channel specified
-        multisynth_number = get_multisynth_from_channel(channel_number)
+        multisynth_number = self.get_multisynth_from_channel(channel_number)
 
         if not ignore_affected_channels:
             # Check if other channels will be affected by this change
-            channels_on_multisynth = get_channels_from_multisynth(multisynth_number)
+            channels_on_multisynth = self.get_channels_from_multisynth(multisynth_number)
 
             for affected_channel in channels_on_multisynth:
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
-                    logger.warning(
+                    self.logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
                             + " Both channels will be stepped. To ignore this warning, supply the "
                             + "argument ignore_affected_channels=True")
@@ -558,17 +560,17 @@ class _SI534x(object):
         self.decrement_multisynth_frequency(multisynth_number)
 
 
-    def increment_channel_frequency(self, channel_number):
+    def increment_channel_frequency(self, channel_number, ignore_affected_channels=False):
         # Get the multisynth currently associated with the channel specified
-        multisynth_number = get_multisynth_from_channel(channel_number)
+        multisynth_number = self.get_multisynth_from_channel(channel_number)
 
         if not ignore_affected_channels:
             # Check if other channels will be affected by this change
-            channels_on_multisynth = get_channels_from_multisynth(multisynth_number)
+            channels_on_multisynth = self.get_channels_from_multisynth(multisynth_number)
 
             for affected_channel in channels_on_multisynth:
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
-                    logger.warning(
+                    self.logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
                             + " Both channels will be stepped. To ignore this warning, supply the "
                             + "argument ignore_affected_channels=True")
@@ -595,6 +597,7 @@ class _SI534x(object):
 
     def get_enabled_fault_monitoring(self):
         # Return the currently enabled features for fault monitoring.
+        pass
 
     def get_fault_report(self, attempt_use_pins=False):
         # Reads fault registers, returns False if no fault, or a report if there is one
@@ -605,18 +608,18 @@ class _SI534x(object):
 
         # If monitoring via pins was asked for, warn if no pins are supplied
         if attempt_use_pins and self._LOL_Pin == None and self._INT_Pin == None:
-            logger.warning("Requested a fault report with pin monitoring, but no pins configured.")
+            self.logger.warning("Requested a fault report with pin monitoring, but no pins configured.")
 
         # If pins are being used, return no report unless either of the pins is 1
         pinfault_found = False
         pins_checked = False
         if self._LOL_Pin != None and attempt_use_pins:
             pins_checked = True
-            if LOL_Pin.read_value() == 0:   # If the pin is active (low)
+            if self._LOL_Pin.read_value() == 0:   # If the pin is active (low)
                 pinfault_found = True
         if self._INT_Pin != None and attempt_use_pins:
             pins_checked = True
-            if INT_Pin.read_value() == 0:   # If the pin is active (high)
+            if self._INT_Pin.read_value() == 0:   # If the pin is active (high)
                 pinfault_found = True
 
         # Only return false if the pins were actually used and neither found a fault
@@ -629,30 +632,32 @@ class _SI534x(object):
             los_status = self._fault_los_status.read()
             los_flag = self._fault_los_flag.read()
             los_xtal_status = self._fault_los_xtal_status.read()
-            lost_xtal_flag = self._fault_los_xtal_flag.read()
+            los_xtal_flag = self._fault_los_xtal_flag.read()
             oof_status = self._fault_oof_status.read()
             oof_flag = self._fault_oof_flag.read()
 
             fault_report = self._FaultReport(lol_status, lol_flag, los_status, los_flag,
-                                             los_xtal_stataus, los_xtal_flag,
+                                             los_xtal_status, los_xtal_flag,
                                              oof_status, oof_flag)
 
             return fault_report
 
-    def clear_fault_flag(self, ALL=False, LOL=False, OOF=False,
+    def clear_fault_flag(self, ALL=False, LOL=False, OOF=False, LOSXTAL=False,
                          LOS0=False, LOS1=False, LOS2=False, LOS3=False):
         if LOL or ALL:
             self._fault_lol_flag.write(0)
         if OOF or ALL:
             self._fault_oof_flag.write(0)
+        if LOSXTAL or ALL:
+            self._fault_los_xtal_flag.write(0)
         if LOS3 or ALL:
-            self._fault_los_flag.write(0b1000)
+            self._fault_los_flag.write(0b0111)
         if LOS2 or ALL:
-            self._fault_los_flag.write(0b0100)
+            self._fault_los_flag.write(0b1011)
         if LOS1 or ALL:
-            self._fault_los_flag.write(0b0010)
+            self._fault_los_flag.write(0b1101)
         if LOS0 or ALL:
-            self._fault_los_flag.write(0b0001)
+            self._fault_los_flag.write(0b1110)
 
     """
     Register Map File Functions
