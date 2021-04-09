@@ -31,6 +31,11 @@ _RTD_EXCITATION_MODE_LSB = 18
 _RTD_EXCITATION_CURRENT_LSB = 14
 _RTD_CURVE_LSB = 12
 
+_DIODE_ENDEDNESS_LSB = 26
+_DIODE_CONVERSION_CYCLES_LSB = 25
+_DIODE_RUNNING_AVG_LSB = 24
+_DIODE_EXCITATION_CURRENT_LSB = 22
+
 def _OR_Bytes(bytesa, bytesb):
     return bytes([x | y for x, y in zip(bytesa, bytesb)])
 
@@ -60,7 +65,7 @@ class LTC2986 (SPIDevice):
 
         # TODO Add Thermocouples
 
-        SENSOR_TYPE_OFF_CHIP_DIODE = (0x1C << _SENSOR_TYPE_LSB).to_bytes(4, byteorder='big')
+        SENSOR_TYPE_DIODE = (0x1C << _SENSOR_TYPE_LSB).to_bytes(4, byteorder='big')
 
     """
     RTD Config Values:
@@ -110,6 +115,34 @@ class LTC2986 (SPIDevice):
         NUM_3_WIRES = (0x01 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
         NUM_4_WIRES = (0x02 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
         NUM_4_WIRES_KELVIN_RSENSE = (0x03 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
+
+    """
+    Diode Config Values:
+    | Bit          | 31 30 29 28 27 | 26             | 25           | 24     | 23 22              |
+    | ------------ | -------------- | -------------- | ------------ | ------ | ------------------ |
+    | Diode Config | Type = 28      | Single or Diff | Num Readings | Avg on | Excitation Current |
+
+                   | 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0 |
+                   | ------------------------------------------------------- |
+                   | Diode Ideality Factor                                   |
+    """
+    class Diode_Endedness (Enum):
+        SINGLE = (0x1 << _DIODE_ENDEDNESS_LSB).to_bytes(4, byteorder='big')
+        DIFFERENTIAL = (0x0 << _DIODE_ENDEDNESS_LSB).to_bytes(4, byteorder='big')
+
+    class Diode_Conversion_Cycles (Enum):
+        CYCLES_2 = (0x0 << _DIODE_CONVERSION_CYCLES_LSB).to_bytes(4, byteorder='big')
+        CYCLES_3 = (0x1 << _DIODE_CONVERSION_CYCLES_LSB).to_bytes(4, byteorder='big')
+
+    class Diode_Running_Average_En (Enum):
+        ON = (0x1 << _DIODE_RUNNING_AVG_LSB).to_bytes(4, byteorder='big')
+        OFF = (0x0 << _DIODE_RUNNING_AVG_LSB).to_bytes(4, byteorder='big')
+
+    class Diode_Excitation_Current (Enum):
+        CUR_10UA_40UA_80UA = (0x0 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CUR_20UA_80UA_160UA = (0x1 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CUR_40UA_160UA_320UA = (0x2 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CUR_80UA_320UA_640UA = (0x3 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
 
     def __init__(self, bus=0, device=0):
 
@@ -360,9 +393,42 @@ class LTC2986 (SPIDevice):
                 'with value {} ({} ohms)'.format(rsense_value_bytes, rsense_value / 1024))
         self._assign_channel(rsense_ch_num, rsense_config)
 
-    def add_diode_channel(self, channel_num):
-        # TODO add channel config calculation for diode
-        pass
+    def add_diode_channel(self, endedness: Diode_Endedness,
+                          conversion_cycles: Diode_Conversion_Cycles,
+                          average_en: Diode_Running_Average_En,
+                          excitation_current: Diode_Excitation_Current,
+                          diode_non_ideality: float,
+                          channel_num):
+        # The diode non-ideality is between 0.0 and 4.0, and will be accurate to 1/1048576
+
+        # Check the channel number is valid
+        if channel_num not in range(1,10):
+            raise ValueError("Channel Number must be between 1-10")
+
+        # Check the diode non-ideality factor is in the correct range
+        if diode_non_ideality < 0.0 or diode_non_ideality >  4.0:
+            raise ValueError("Diode non-ideality must be between 0.0 and 4.0")
+
+        # TODO add other checks for input types
+
+        # Calculate non-ideality factor byte field value
+        non_ideality_value = int(diode_non_ideality * 1048576)
+        non_ideality_factor_bytes = (non_ideality_value).to_bytes(4, byteorder='big')
+
+        # Assemble the Diode channel config values
+        channel_config = bytearray(4)
+
+        channel_config = _OR_Bytes(channel_config, LTC2986.Sensor_Type.SENSOR_TYPE_DIODE.value)
+        channel_config = _OR_Bytes(channel_config, endedness.value)
+        channel_config = _OR_Bytes(channel_config, conversion_cycles.value)
+        channel_config = _OR_Bytes(channel_config, average_en.value)
+        channel_config = _OR_Bytes(channel_config, excitation_current.value)
+        channel_config = _OR_Bytes(channel_config, non_ideality_factor_bytes)
+
+        # Call the RTD Channel config assignment method
+        self._logger.info(
+                'Assigning new Diode channel with info bytes: {}'.format(channel_config))
+        self._assign_channel(channel_num, channel_config)
 
     def add_thermistor_channel(self, channel_num):
         # TODO add channel config calculation for thermocouple
