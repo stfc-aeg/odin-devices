@@ -72,17 +72,15 @@ class LTC2986 (SPIDevice):
                  | Excitation Current | Curve | Custom Address | Custom length |
     """
     class RTD_RSense_Channel (Enum):
-        CHANNEL_NONE = (0x00 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_1 = (0x01 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_2 = (0x02 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_3 = (0x03 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_4 = (0x04 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_5 = (0x05 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_6 = (0x06 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_7 = (0x07 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_8 = (0x08 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_9 = (0x09 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
-        CHANNEL_10 = (0x0A << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH2_CH1 = (0x02 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH3_CH2 = (0x03 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH4_CH3 = (0x04 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH5_CH4 = (0x05 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH6_CH5 = (0x06 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH7_CH6 = (0x07 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH8_CH7 = (0x08 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH9_CH8 = (0x09 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
+        CH10_CH9 = (0x0A << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
 
     class RTD_Standard (Enum):
         EUROPEAN = (0x00 << _RTD_CURVE_LSB).to_bytes(4, byteorder='big')
@@ -116,6 +114,8 @@ class LTC2986 (SPIDevice):
 
         # Init SPI Device
         super(self).__init__(bus, device)
+
+        self._logger = logging.getLogger('odin_devices.LTC2986')
 
     def _transfer_ram_bytes(self, read, start_address, io_bytes):
 
@@ -265,11 +265,15 @@ class LTC2986 (SPIDevice):
 
     def add_rtd_channel(self, sensor_type: LTC2986.Sensor_Type,
                         rsense_channel: RTD_RSense_Channel,
+                        rsense_ohms: float,
                         num_wires: LTC2986.RTD_Num_Wires,
                         excitation_mode: LTC2986.RTD_Excitation_Mode,
                         excitation_current: LTC2986.RTD_Excitation_Current,
                         curve: LTC2986.RTD_Curve,
                         channel_num: int):
+        # Note that the channel number for the RTD is the HIGHEST number connected to it
+        # rsense_ohms is up to 131072.0, and will be accurate to 1/1024 Ohms.
+
         # Check the channel number is valid
         if channel_num not in range(1,10):
             raise ValueError("Channel Number must be between 1-10")
@@ -287,7 +291,13 @@ class LTC2986 (SPIDevice):
                                SENSOR_TYPE_RTD_CUSTOM]:
             raise ValueError("Sensor Type must be RTD")
 
-        # Assemble the channel config value
+        # Check that RSense resistance is in range
+        if rsense_ohms < 0 or rsense_ohms >  131072:
+            raise ValueError("RSense resistance up to 131kOhm allowed")
+
+        # TODO add other checks for input types
+
+        # Assemble the RTD channel config value
         channel_config = bytearray(4)
 
         channel_config = _OR_Bytes(channel_config, sensor_type)
@@ -297,8 +307,24 @@ class LTC2986 (SPIDevice):
         channel_config = _OR_Bytes(channel_config, excitation_current)
         channel_config = _OR_Bytes(channel_config, curve)
 
-        # Call the config assignment method
+        # Call the RTD Channel config assignment method
+        logger.info('Assigning new RTD channel with info bytes: {}'.format(channel_config))
         self._assign_channel(channel_num, channel_config)
+
+        # Calculate RSense value field from target ohms
+        rsense_value = int(rsense_ohms * 1024)
+        rsense_value_bytes = (rsense_value).to_bytes(4, byteorder='big')
+
+        # Decode the rsense channel number from the paired RTD channel setting
+        rsense_ch_num = int.from_bytes(rsense_channel, byteorder='big') >> _RTD_RSENSE_CHANNEL_LSB
+
+        # Call the RSense Channel config assignment method with combined fields
+        rsense_config = bytearray(4)
+        rsense_config = _OR_Bytes(channel_config, LTC2986.Sensor_Type.SENSOR_TYPE_SENSE_RESISTOR)
+        rsense_config = _OR_Bytes(channel_config, rsense_value_bytes)
+        logger.info('Assigning RTD sense resistor on channel {} '.format(rsense_ch_num) +
+                    'with value {} ({} ohms)'.format(rsense_value_bytes, rsense_value_bytes / 1024))
+        self._assign_channel(rsense_ch_num, rsense_config)
 
     def add_diode_channel(self, channel_num):
         # TODO add channel config calculation for diode
