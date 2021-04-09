@@ -7,9 +7,10 @@
 # - [ ] Custom Thermistors
 # - [ ] Diodes
 
-from odin_devices.spi_device import SPIDevice
+from odin_devices.spi_device import SPIDevice, SPIException
 from enum import Enum
 import time
+import logging
 
 _SPI_CMD_WRITE_RAM = bytes([0x02])
 _SPI_CMD_READ_RAM = bytes([0x03])
@@ -82,40 +83,54 @@ class LTC2986 (SPIDevice):
         CH9_CH8 = (0x09 << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
         CH10_CH9 = (0x0A << _RTD_RSENSE_CHANNEL_LSB).to_bytes(4, byteorder='big')
 
-    class RTD_Standard (Enum):
+    class RTD_Curve (Enum):
         EUROPEAN = (0x00 << _RTD_CURVE_LSB).to_bytes(4, byteorder='big')
         AMERICAN = (0x01 << _RTD_CURVE_LSB).to_bytes(4, byteorder='big')
         JAPANESE = (0x02 << _RTD_CURVE_LSB).to_bytes(4, byteorder='big')
         ITS_90 = (0x03 << _RTD_CURVE_LSB).to_bytes(4, byteorder='big')
 
     class RTD_Excitation_Current (Enum):
-        EXTERNAL = 0x00
-        CURRENT_5UA = 0x01
-        CURRENT_10UA = 0x02
-        CURRENT_25UA = 0x03
-        CURRENT_50UA = 0x04
-        CURRENT_100UA = 0x05
-        CURRENT_250UA = 0x06
-        CURRENT_500UA = 0x07
-        CURRENT_1MA = 0x08
+        EXTERNAL = (0x00 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_5UA = (0x01 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_10UA = (0x02 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_25UA = (0x03 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_50UA = (0x04 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_100UA = (0x05 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_250UA = (0x06 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_500UA = (0x07 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
+        CURRENT_1MA = (0x08 << _RTD_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
 
     class RTD_Excitation_Mode (Enum):
-        NO_ROTATION_NO_SHARING = 0x00
-        NO_ROTATION_SHARING = 0x01
-        ROTATION_SHARING = 0x02
+        NO_ROTATION_NO_SHARING = (0x00 << _RTD_EXCITATION_MODE_LSB).to_bytes(4, byteorder='big')
+        NO_ROTATION_SHARING = (0x01 << _RTD_EXCITATION_MODE_LSB).to_bytes(4, byteorder='big')
+        ROTATION_SHARING = (0x02 << _RTD_EXCITATION_MODE_LSB).to_bytes(4, byteorder='big')
 
     class RTD_Num_Wires (Enum):
-        NUM_2_WIRES = 0x00
-        NUM_3_WIRES = 0x01
-        NUM_4_WIRES = 0x02
-        NUM_4_WIRES_KELVIN_RSENSE = 0x03
+        NUM_2_WIRES = (0x00 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
+        NUM_3_WIRES = (0x01 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
+        NUM_4_WIRES = (0x02 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
+        NUM_4_WIRES_KELVIN_RSENSE = (0x03 << _RTD_NUM_WIRES_LSB).to_bytes(4, byteorder='big')
 
     def __init__(self, bus=0, device=0):
 
         # Init SPI Device
-        super(self).__init__(bus, device)
+        super().__init__(bus, device)
 
         self._logger = logging.getLogger('odin_devices.LTC2986')
+
+        self._logger.info("Created new LTC2986 on SPIDev={}.{}".format(bus, device))
+
+        # Check connection to device and that device POR is complete
+        # TODO interrupt pin could be used for this if present
+        init_complete = self._wait_for_status_done(timeout_ms=300)
+        if not init_complete:
+            latest_CSR = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
+                                                  num_bytes=1)[0]
+            self._logger.warning(
+                    "Device failed to complete init, " +
+                    "command status register read as 0x{:02X}".format(latest_CSR))
+            raise SPIException (
+                    "SPI Device failed to complete setup. Connection may be bad")
 
     def _transfer_ram_bytes(self, read, start_address, io_bytes):
 
@@ -131,8 +146,13 @@ class LTC2986 (SPIDevice):
         input_data.extend(start_address.to_bytes(2, byteorder='big'))
         input_data.extend(io_bytes)
 
-        # Get raw output data and strip prefix
-        output_data = self.transfer(input_data)[3:]
+        # Get raw output data and strip prefix, converting to/from list type for spidev
+        output_data_full = bytes(self.transfer(list(input_data)))
+        output_data = output_data_full[3:]     # Strip command and address
+
+        self._logger.debug(
+                "SPI Transfer(r={}): {} -> {} ".format(read, input_data, output_data_full) +
+                "Data Received: {}".format(output_data))
 
         return output_data
 
@@ -161,6 +181,25 @@ class LTC2986 (SPIDevice):
         channel_address = self._get_channel_assignment_address(channel_number)
         self._write_ram_bytes(channel_address, channel_assignment_bytes)
 
+    def _wait_for_status_done(self, timeout_ms, check_interval_ms=50):
+        # Read the command status register until 0x40 (done bit) is high
+        tstart = time.time()        # Epoch time in s, as a float
+        command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
+                                              num_bytes=1)[0]
+        while (command_status & 0x40) == 0:
+            time.sleep(check_interval_ms / 1000.0)
+            command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
+                                                  num_bytes=1)[0]
+
+            # Conversion timeout
+            if (time.time() - tstart) > (timeout_ms / 1000.0):
+                self._logger.warning(
+                        "Wait on done bit timed out after {}s ".format(time.time() - tstart) +
+                        " with last status value: {:02X}".format(command_status))
+                return False
+
+        return True
+
     def _convert_channels(self, channel_numbers, timeout_ms=2600):
         # Timeout is set to a predicted maximum by default. In 3-cycle mode where each conversion
         # takes 3 cycles of 82ms, the potential delay would be 2510ms for 10 channels.
@@ -183,6 +222,8 @@ class LTC2986 (SPIDevice):
             channel_mask_bytes = channel_mask.to_bytes(2, byteorder='big')
 
             # Write the mask to the multiple conversion mask register
+            self._logger.debug(
+                    "Multiple conversion mask created: 0x{}".format(channel_mask_bytes.hex()))
             self._write_ram_bytes(_REG_MULTIPLE_CONVERSION_MASK, channel_mask_bytes)
 
             # Starting a conversion with channel number 0 starts a multiple conversion
@@ -194,22 +235,13 @@ class LTC2986 (SPIDevice):
         conversion_command = bytes([_CONVERSION_CONTROL_BYTE | control_channel_number])
 
         # Start conversion
+        self._logger.debug(
+                "Writing conversion command 0x{:02X} ".format(conversion_command[0]) +
+                "to register 0x{:02x}".format(_REG_COMMAND_STATUS))
         self._write_ram_bytes(_REG_COMMAND_STATUS, conversion_command)
 
-        # Wait for conversion to complete, until timeout
-        tstart = time.time()        # Epoch time in s, as a float
-        command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
-                                              num_bytes=1)
-        while (command_status & 0x40) == 0:
-            time.sleep(0.05)
-            command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
-                                                  num_bytes=1)
-
-            # Conversion timeout
-            if (time.time() - tstart) < (timeout_ms / 1000.0):
-                return False
-
-        return True
+        # Wait for conversion to complete, unless timeout
+        return self._wait_for_status_done(timeout_ms)
 
     def _read_channel_result_temp(self, channel_number):
         # Returns both the temperature result and fault bits associated with the last conversion
@@ -248,6 +280,7 @@ class LTC2986 (SPIDevice):
         # Measure a channel by triggering a conversion, waiting for it to complete and then scaling
         # the reading data. include_raw_input adds the raw voltage/resistance to the output.
 
+        self._logger.info("Starting conversion for channel {}".format(channel_number))
         conversion_complete = self._convert_channels([channel_number])
 
         if not conversion_complete:
@@ -263,13 +296,13 @@ class LTC2986 (SPIDevice):
         # TODO add channel config calculation for thermocouple
         pass
 
-    def add_rtd_channel(self, sensor_type: LTC2986.Sensor_Type,
+    def add_rtd_channel(self, sensor_type: Sensor_Type,
                         rsense_channel: RTD_RSense_Channel,
                         rsense_ohms: float,
-                        num_wires: LTC2986.RTD_Num_Wires,
-                        excitation_mode: LTC2986.RTD_Excitation_Mode,
-                        excitation_current: LTC2986.RTD_Excitation_Current,
-                        curve: LTC2986.RTD_Curve,
+                        num_wires: RTD_Num_Wires,
+                        excitation_mode: RTD_Excitation_Mode,
+                        excitation_current: RTD_Excitation_Current,
+                        curve: RTD_Curve,
                         channel_num: int):
         # Note that the channel number for the RTD is the HIGHEST number connected to it
         # rsense_ohms is up to 131072.0, and will be accurate to 1/1024 Ohms.
@@ -279,16 +312,15 @@ class LTC2986 (SPIDevice):
             raise ValueError("Channel Number must be between 1-10")
 
         # Check the sensor type is an RTD
-        if sensor_type not in [SENSOR_TYPE_RTD_PT10,
-                               SENSOR_TYPE_RTD_PT50,
-                               SENSOR_TYPE_RTD_PT100,
-                               SENSOR_TYPE_RTD_PT200,
-                               SENSOR_TYPE_RTD_PT500,
-                               SENSOR_TYPE_LSB,
-                               SENSOR_TYPE_RTD_PT1000,
-                               SENSOR_TYPE_RTD_PT1000_375,
-                               SENSOR_TYPE_RTD_NI120,
-                               SENSOR_TYPE_RTD_CUSTOM]:
+        if sensor_type not in [LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT10,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT50,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT100,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT200,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT500,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT1000,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_PT1000_375,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_NI120,
+                               LTC2986.Sensor_Type.SENSOR_TYPE_RTD_CUSTOM]:
             raise ValueError("Sensor Type must be RTD")
 
         # Check that RSense resistance is in range
@@ -300,15 +332,16 @@ class LTC2986 (SPIDevice):
         # Assemble the RTD channel config value
         channel_config = bytearray(4)
 
-        channel_config = _OR_Bytes(channel_config, sensor_type)
-        channel_config = _OR_Bytes(channel_config, rsense_channel)
-        channel_config = _OR_Bytes(channel_config, num_wires)
-        channel_config = _OR_Bytes(channel_config, excitation_mode)
-        channel_config = _OR_Bytes(channel_config, excitation_current)
-        channel_config = _OR_Bytes(channel_config, curve)
+        channel_config = _OR_Bytes(channel_config, sensor_type.value)
+        channel_config = _OR_Bytes(channel_config, rsense_channel.value)
+        channel_config = _OR_Bytes(channel_config, num_wires.value)
+        channel_config = _OR_Bytes(channel_config, excitation_mode.value)
+        channel_config = _OR_Bytes(channel_config, excitation_current.value)
+        channel_config = _OR_Bytes(channel_config, curve.value)
 
         # Call the RTD Channel config assignment method
-        logger.info('Assigning new RTD channel with info bytes: {}'.format(channel_config))
+        self._logger.info(
+                'Assigning new RTD channel with info bytes: {}'.format(channel_config))
         self._assign_channel(channel_num, channel_config)
 
         # Calculate RSense value field from target ohms
@@ -316,14 +349,15 @@ class LTC2986 (SPIDevice):
         rsense_value_bytes = (rsense_value).to_bytes(4, byteorder='big')
 
         # Decode the rsense channel number from the paired RTD channel setting
-        rsense_ch_num = int.from_bytes(rsense_channel, byteorder='big') >> _RTD_RSENSE_CHANNEL_LSB
+        rsense_ch_num = int.from_bytes(rsense_channel.value, byteorder='big') >> _RTD_RSENSE_CHANNEL_LSB
 
         # Call the RSense Channel config assignment method with combined fields
         rsense_config = bytearray(4)
-        rsense_config = _OR_Bytes(channel_config, LTC2986.Sensor_Type.SENSOR_TYPE_SENSE_RESISTOR)
+        rsense_config = _OR_Bytes(channel_config, LTC2986.Sensor_Type.SENSOR_TYPE_SENSE_RESISTOR.value)
         rsense_config = _OR_Bytes(channel_config, rsense_value_bytes)
-        logger.info('Assigning RTD sense resistor on channel {} '.format(rsense_ch_num) +
-                    'with value {} ({} ohms)'.format(rsense_value_bytes, rsense_value_bytes / 1024))
+        self._logger.info(
+                'Assigning RTD sense resistor on channel {} '.format(rsense_ch_num) +
+                'with value {} ({} ohms)'.format(rsense_value_bytes, rsense_value / 1024))
         self._assign_channel(rsense_ch_num, rsense_config)
 
     def add_diode_channel(self, channel_num):
