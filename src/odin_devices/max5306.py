@@ -18,20 +18,29 @@ _COMMAND_SET_OUTPUT_ALL = 0b1100        # Set the DAC and input registers for al
 _COMMAND_LATCH_DAC_OUTPUTS = 0b1110     # Latch selected input register values to their output DACs
 
 class MAX5306 (SPIDevice):
-    def __init__(self, Vref: float, bus, device, bi_polar=False):
+    def __init__(self, Vref: float, bus, device, bipolar=False):
 
         # Check Vref is valid
+        try:
+            float(Vref)
+        except Exception:
+            raise TypeError(
+                    "Vref {} cannot be converted to float".format(Vref))
         if Vref > 5.5 or Vref < 0.8:
             raise ValueError("Vref is max Vdd and min 0.8v")
 
-        super(MAX5306).__init__(bus, device)
+        super().__init__(bus, device)
 
         self._Vref = Vref
-        self._is_bipolar
+        self._is_bipolar = bipolar
 
         self.reset()
 
     def _send_command(self, command: int, data: int):
+        # Check inputs are int
+        if type(command) is not int or type(data) is not int:
+            raise ValueError("command and data values should be int")
+
         # Check command and data fit in the correct number of bits
         if command > 0xF or command < 0:
             raise ValueError("Command bits ({}) must positive and fit in 4-bit field")
@@ -39,8 +48,9 @@ class MAX5306 (SPIDevice):
             raise ValueError("Command bits ({}) must be positive and fit in 12-bit field")
 
         word = ((command << 12) | data) & 0xFFFF
+        word_bytes = word.to_bytes(length=2, byteorder='big')
 
-        self.write_16(word)
+        self.write_16(word_bytes)
 
     def reset(self):
         self._send_command(_COMMAND_RESET, 0)
@@ -73,12 +83,12 @@ class MAX5306 (SPIDevice):
 
         # Calculate the value the 12-bit output DAC should be set to
         if self._is_bipolar:    # bipolar
-            dav_value = 2048 * ((float(output_voltage) / float(self._Vref)) + 1)
-            dac_value = round(dac_value, 0)
+            dac_value = 2048 * ((float(output_voltage) / float(self._Vref)) + 1)
+            dac_value = int(round(dac_value, 0))
             pass
         else:                   # unipolar
-            dac_value = (float(output_voltage) / float(self._VRef)) * 4096.0
-            dac_value = round(dac_value, 0)
+            dac_value = (float(output_voltage) / float(self._Vref)) * 4096.0
+            dac_value = int(round(dac_value, 0))
 
         # Correct values rounded to just outside limits, assuming the result is still close enough
         if dac_value == -1:
