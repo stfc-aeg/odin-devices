@@ -25,6 +25,16 @@ _POWER_SET_LSBS_SHUTDOWN3 = 0b00        # Ground output through 100kohm (default
 
 class MAX5306 (SPIDevice):
     def __init__(self, Vref: float, bus, device, bipolar=False):
+        """
+        MAX5306 Init. Vref is the reference connected to the device, which will be used to calculate
+        DAC values to reach target output values. The bipolar parameter changes the calculation for
+        output DAC value so that it will be compatible with a bipolar output stage (see the MAX5306
+        datasheet)
+
+        :param Vref:    Refernce voltage
+        :param bus:     spidev bus
+        :param device:  spidev device
+        """
 
         # Check Vref is valid
         try:
@@ -45,6 +55,13 @@ class MAX5306 (SPIDevice):
         self.reset()
 
     def _send_command(self, command: int, data: int):
+        """
+        Send a 16-bit word to the device, comprised of a 4-bit command and 12-but data field.
+
+        :param command:     4-bit command (see _COMMAND_x above)
+        :param data:        12-bit data field, contents depends on command
+        """
+
         # Check inputs are int
         if type(command) is not int or type(data) is not int:
             raise ValueError("command and data values should be int")
@@ -64,6 +81,14 @@ class MAX5306 (SPIDevice):
         self.transfer(list(word_bytes), end=2)
 
     def _set_output_power(self, output_number: int, power_mode: int):
+        """
+        Set the output power state of a given output number. This can be one of four values, where
+        one (_POWER_SET_LSBS_POWERUP) is powered up, and the others are various types of shutdown.
+
+        :param output_number:       The output number to apply the new power state to
+        :param power_mode:          2-bit code representing power mode. See _POWER_SET_LSBS_x above.
+        """
+
         # Check output number is valid
         if output_number not in range(1,9):
             raise IndexError("output_number must be an integer 1-8")
@@ -80,15 +105,42 @@ class MAX5306 (SPIDevice):
         self._send_command(_COMMAND_SET_POWER, power_mode_data)
 
     def power_off_output(self, output_number):
+        """
+        External function for setting the power off for a given output. This simplifies things by
+        using the shutdown-3 mode (output connected to ground via 100kohm resistor) since this is
+        the default state outputs are in on POR.
+
+        :param output_number:   The output to power off
+        """
         self._set_output_power(output_number, _POWER_SET_LSBS_SHUTDOWN3)
 
     def power_on_output(self, output_number):
+        """
+        External function for setting the power on for a given output. This is only needed if the
+        power_off_output() function has been called, or set_output() was called with set_power=True.
+
+        :param output_number:   The output to power on
+        """
         self._set_output_power(output_number, _POWER_SET_LSBS_POWERUP)
 
     def reset(self):
+        """
+        Reset the device (POR)
+        """
         self._send_command(_COMMAND_RESET, 0)
 
     def set_output(self, output_number: int, output_voltage: float, set_power=True):
+        """
+        Set the output DAC to output a specified voltage. If set_power is set False, the output will
+        not be powered up, and this will need doing manually with power_on_output(). The allowable
+        voltage ranges are checked based on the reference voltage Vref and whether the device is
+        configured for bipolar or unipolar operation.
+
+        :param output_number:   The output the voltage will be set for
+        :param output_voltage:  The output voltage that should be set
+        :param set_power:       (Optional) Set False so that this output is not forced on
+        """
+
         # If set_power is False, power_on will not be called for this output
 
         # Check output number is valid
