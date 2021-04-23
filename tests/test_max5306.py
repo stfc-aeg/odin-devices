@@ -21,10 +21,12 @@ class MAX5306TestFixture(object):
         self.device_unipolar = MAX5306(Test_Vref, 1, 1)
         self.device_bipolar = MAX5306(Test_Vref, 1, 1, bipolar=True)
 
-    def assert_writebytes2_any_call(self, device, value):
+    def assert_write_any_call(self, device, value):
         if device is self.device_unipolar or device is self.device_bipolar:
-            print(device.spi.writebytes2.mock_calls)
-            device.spi.writebytes2.assert_any_call(bytearray(value))
+            #print(device.spi.writebytes2.mock_calls)
+            #device.spi.writebytes2.assert_any_call(bytearray(value))
+            print(device.spi.xfer2.mock_calls)
+            device.spi.xfer2.assert_any_call(list(value))
         else:
             raise Exception("This device does not exist")
 
@@ -60,7 +62,7 @@ class TestMAX5306Device(object):
         expected_output = (test_command << 12) | test_data
         expected_output_bytes = expected_output.to_bytes(length=2, byteorder='big')
         temp_new_device._send_command(test_command, test_data)
-        temp_new_device.spi.writebytes2.assert_any_call(expected_output_bytes)
+        temp_new_device.spi.xfer2.assert_any_call(list(expected_output_bytes))
 
         # Check that a command that does not fit is caught
         with pytest.raises(ValueError):
@@ -76,9 +78,9 @@ class TestMAX5306Device(object):
 
     def test_reset_on_init(self, test_max5306_device):
         # This is actually valid if there is a call with 0b0001xxxx 0bxxxxxxxx
-        test_max5306_device.assert_writebytes2_any_call(test_max5306_device.device_bipolar,
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_bipolar,
                                                         [0b00010000, 0b00000000])
-        test_max5306_device.assert_writebytes2_any_call(test_max5306_device.device_unipolar,
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
                                                         [0b00010000, 0b00000000])
 
     def test_unipolar_set_output(self, test_max5306_device):
@@ -87,12 +89,12 @@ class TestMAX5306Device(object):
 
         # Test correct output number, correct dac value sent to input
         # This code is for DAC output 4 with DAC value 0b1000 00000000
-        test_max5306_device.assert_writebytes2_any_call(test_max5306_device.device_unipolar,
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
                                                         [0b01011000, 0b00000000])
 
         # Test correct output latched to DAC
         # This code is for DAC latch with only output 4 latched
-        test_max5306_device.assert_writebytes2_any_call(test_max5306_device.device_unipolar,
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
                                                         [0b11100000, 0b10000000])
 
         # Tests limits (should not quite reach Vref)
@@ -118,7 +120,7 @@ class TestMAX5306Device(object):
 
         # Test correct output number, correct dac value sent to output
         # This code is for DAC output 5 with DAC value 0b0111 1111 1111
-        test_max5306_device.assert_writebytes2_any_call(test_max5306_device.device_bipolar,
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_bipolar,
                                                         [0b01100111, 0b11111111])
 
         # Test limits (should not quite reach Vref, but does reach -Vref)
