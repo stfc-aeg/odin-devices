@@ -16,6 +16,12 @@ _COMMAND_INPUT_WRITETHRU__5_8 = 0b1011  # Set the input register with writethru 
 _COMMAND_SET_INPUT_ALL = 0b1101         # Set the input registers for all outputs (no latch)
 _COMMAND_SET_OUTPUT_ALL = 0b1100        # Set the DAC and input registers for all outputs
 _COMMAND_LATCH_DAC_OUTPUTS = 0b1110     # Latch selected input register values to their output DACs
+_COMMAND_SET_POWER = 0b1111             # Set power mode for given output. See _POWER_SET_LSBS_x
+
+_POWER_SET_LSBS_POWERUP = 0b11          # Power up the output
+_POWER_SET_LSBS_SHUTDOWN1 = 0b01        # Set output to high impedance
+_POWER_SET_LSBS_SHUTDOWN2 = 0b10        # Ground output through 1kohm
+_POWER_SET_LSBS_SHUTDOWN3 = 0b00        # Ground output through 100kohm (default output state)
 
 class MAX5306 (SPIDevice):
     def __init__(self, Vref: float, bus, device, bipolar=False):
@@ -34,6 +40,8 @@ class MAX5306 (SPIDevice):
         self._Vref = Vref
         self._is_bipolar = bipolar
 
+        self._logger = logging.getLogger('odin_devices.max5306@spidev={},{}'.format(bus, device))
+
         self.reset()
 
     def _send_command(self, command: int, data: int):
@@ -50,12 +58,39 @@ class MAX5306 (SPIDevice):
         word = ((command << 12) | data) & 0xFFFF
         word_bytes = word.to_bytes(length=2, byteorder='big')
 
-        self.write_16(word_bytes)
+        self._logger.debug("Writing bytes 0x{}".format(word_bytes.hex()))
+
+        #self.write_16(word_bytes)
+        self.transfer(list(word_bytes), end=2)
+
+    def _set_output_power(self, output_number: int, power_mode: int):
+        # Check output number is valid
+        if output_number not in range(1,9):
+            raise IndexError("output_number must be an integer 1-8")
+
+        # Check power_mode is valid
+        if power_mode not in [_POWER_SET_LSBS_POWERUP, _POWER_SET_LSBS_SHUTDOWN1,
+                _POWER_SET_LSBS_SHUTDOWN2, _POWER_SET_LSBS_SHUTDOWN3]:
+            raise ValueError("power_mode invalid")
+
+        # Assemble data packet
+        power_mode_data = 0b1 << (output_number + 3)
+        power_mode_data |= (power_mode << 2)
+
+        self._send_command(_COMMAND_SET_POWER, power_mode_data)
+
+    def power_off_output(self, output_number):
+        self._set_output_power(output_number, _POWER_SET_LSBS_SHUTDOWN3)
+
+    def power_on_output(self, output_number):
+        self._set_output_power(output_number, _POWER_SET_LSBS_POWERUP)
 
     def reset(self):
         self._send_command(_COMMAND_RESET, 0)
 
-    def set_output(self, output_number: int, output_voltage: float):
+    def set_output(self, output_number: int, output_voltage: float, set_power=True):
+        # If set_power is False, power_on will not be called for this output
+
         # Check output number is valid
         if output_number not in range(1,9):
             raise IndexError("output_number must be an integer 1-8")
@@ -103,6 +138,10 @@ class MAX5306 (SPIDevice):
             raise ValueError(
                     "No valid DAC value found for output {}v ".format(output_voltage) +
                     "with Vref {}v.".format(self._Vref))
+
+        # Make sure the output is powered up
+        if set_power:
+            self.power_on_output(output_number)
 
         # Load the DAC value into the input register for the selected output number
         self._send_command(_COMMAND_SET_INPUT_REG[output_number], dac_value)
