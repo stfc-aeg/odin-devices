@@ -83,6 +83,24 @@ class TestMAX5306Device(object):
         test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
                                                         [0b00010000, 0b00000000])
 
+    def test_set_power(self, test_max5306_device):
+        # check that power is set correctly for the correct outputs. Currently, only power-up
+        # and shutdown-3 (default state) are used.
+
+        # Set output power to power-up for output 2
+        test_max5306_device.device_unipolar.power_on_output(2)
+
+        # Set output power to shutdown-3 for output 3
+        test_max5306_device.device_unipolar.power_off_output(3)
+
+        # Check that correct data was written
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
+                                                  [0b11110000, 0b00101100])
+
+        # Check that correct data was written
+        test_max5306_device.assert_write_any_call(test_max5306_device.device_unipolar,
+                                                  [0b11110000, 0b01000000])
+
     def test_unipolar_set_output(self, test_max5306_device):
         # Set the output to datasheet example of Vref / 2
         test_max5306_device.device_unipolar.set_output(4, Test_Vref / 2.0)
