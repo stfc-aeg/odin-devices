@@ -1,3 +1,14 @@
+"""MAX5306 - device access class for the MAX5306 12-bit 8-channel SPI DAC.
+
+This class implements support for the MAX5306 SPI DAC, which has 8 channels with a 12-bit DAC for
+each. All channels share a Vref voltage reference.
+
+Although the MAX5306 is capable of write-thru with daisy-chained devices, this has not yet been
+implemented.
+
+Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
+"""
+
 from odin_devices.spi_device import SPIDevice, SPIException
 import logging
 
