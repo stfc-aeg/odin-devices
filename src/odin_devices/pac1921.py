@@ -1,5 +1,5 @@
 from odin_devices.i2c_device import I2CDevice
-from enum import Enum
+from enum import Enum, auto
 
 import logging
 import time
@@ -70,66 +70,16 @@ _V_RES_DEFAULT = 11
 _I_POST_FILT_EN_DEFAULT = False
 _V_POST_FILT_EN_DEFAULT = False
 
-class PAC1921_Synchronised_Array(object):
-
-    def __init__(self, device_list=None, nRead_int_pin=None, integration_time=None):
-
-        if device_list is not None:
-            for device in device_list:
-                # Add the device to the array
-                self.add_device(device)
-
-                # Check for an integration control pin if one was not supplied
-                if nRead_int_pin is None:
-                    if device._has_nRead_int_pin():
-                        nRead_int_pin = device._get_nRead_int_pin()
-
-                # Inherit integration time if any device has one and if one was not supplied
-                if integration_time is None:
-                    if device._integration_time_ms is not None:
-                        integration_time = device._integration_time_ms
-
-        if nRead_int_pin is None:
-            raise ValueError("No pin given or present in any device. nRead_int_pin is required")
-
-        self._nRead_int_pin = nRead_int_pin
-        self._integration_time_ms = integration_time
-
-    def add_device(self, device: PAC1921):
-        if type(device) is not PAC1921:
-            raise TypeError("Device should be a PAC1921 Instance")
-        if device.get_integration_mode() != INTEGRATION_MODE_PinControlled:
-            raise ValueError("Device should be configured for pin-controlled integration mode")
-        self._device_list.append(device)
-
-    def set_integration_time(self, integration_time):
-        self._integration_time_ms = integration_time
-
-    def integrate_read_devices(self):
-        # Check that the integration time has been set
-        if self._integration_time_ms is None:
-            raise Exception("Integration time is not set")
-
-        # Trigger the pin-controlled integration
-        self._trigger_pin_integration(self._integration_time_ms, self._nRead_int_pin)
-
-        # Form a list of decoded outputs
-        decoded_outputs = []
-        for device in self._device_list:
-            decoded_outputs.append(devicec._read_decode_output())
-
-        return decoded_outputs
-
 
 class PAC1921(I2CDevice):
     class _Integration_Mode (Enum):
-        FreeRun
-        PinControlled
+        FreeRun = auto()
+        PinControlled = auto()
 
     class _Measurement_Type (Enum):
-        POWER
-        VBUS
-        VSENSE
+        POWER = auto()
+        VBUS = auto()
+        VSENSE = auto()
 
     def __init__(self, i2c_address=None, address_resistance=None, name='PAC1921', nRead_int_pin=None, r_sense=None, measurement_type=None):
         #Rsense must be supplied unless the measurement is voltage
@@ -229,7 +179,7 @@ class PAC1921(I2CDevice):
         old_value = self.readU8(register)
 
         # Mask off original bits
-        mask_top = (0xFF << (start_bit + 1)) 0xFF
+        mask_top = (0xFF << (start_bit + 1)) & 0xFF
         mask_bottom = pow(2, ((start_bit + 1) - bit_width)) - 1
         mask_keep = (mask_top | mask_bottom) & 0xFF
         masked_old_value = old_value & mask_keep
@@ -418,11 +368,11 @@ class PAC1921(I2CDevice):
 
         # Check that the integration time is allowed based on i resolution (could also be v)
         if self._i_resolution == 14:
-            if integration_time_ms > 2900 or integration_time_ms < 2.7
+            if integration_time_ms > 2900 or integration_time_ms < 2.7:
                 raise ValueError(
                         "In 14-bit mode, integration time must be between 2.7-2900ms")
         else:   # 11-bit
-            if integration_time_ms > 1000 or integration_time_ms < 0.9
+            if integration_time_ms > 1000 or integration_time_ms < 0.9:
                 raise ValueError(
                         "In 11-bit mode, integration time must be between 0.9-1000ms")
 
@@ -476,3 +426,54 @@ class PAC1921(I2CDevice):
                 raise Exception("Configuration for free-run has not been completed")
 
         return self._read_decode_output()
+
+
+class PAC1921_Synchronised_Array(object):
+
+    def __init__(self, device_list=None, nRead_int_pin=None, integration_time=None):
+
+        if device_list is not None:
+            for device in device_list:
+                # Add the device to the array
+                self.add_device(device)
+
+                # Check for an integration control pin if one was not supplied
+                if nRead_int_pin is None:
+                    if device._has_nRead_int_pin():
+                        nRead_int_pin = device._get_nRead_int_pin()
+
+                # Inherit integration time if any device has one and if one was not supplied
+                if integration_time is None:
+                    if device._integration_time_ms is not None:
+                        integration_time = device._integration_time_ms
+
+        if nRead_int_pin is None:
+            raise ValueError("No pin given or present in any device. nRead_int_pin is required")
+
+        self._nRead_int_pin = nRead_int_pin
+        self._integration_time_ms = integration_time
+
+    def add_device(self, device: PAC1921):
+        if type(device) is not PAC1921:
+            raise TypeError("Device should be a PAC1921 Instance")
+        if device.get_integration_mode() != INTEGRATION_MODE_PinControlled:
+            raise ValueError("Device should be configured for pin-controlled integration mode")
+        self._device_list.append(device)
+
+    def set_integration_time(self, integration_time):
+        self._integration_time_ms = integration_time
+
+    def integrate_read_devices(self):
+        # Check that the integration time has been set
+        if self._integration_time_ms is None:
+            raise Exception("Integration time is not set")
+
+        # Trigger the pin-controlled integration
+        self._trigger_pin_integration(self._integration_time_ms, self._nRead_int_pin)
+
+        # Form a list of decoded outputs
+        decoded_outputs = []
+        for device in self._device_list:
+            decoded_outputs.append(devicec._read_decode_output())
+
+        return decoded_outputs
