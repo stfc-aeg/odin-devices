@@ -148,6 +148,7 @@ class LTC2986 (SPIDevice):
 
         # Init SPI Device
         super().__init__(bus, device)
+        self.set_mode(0)
 
         self._logger = logging.getLogger('odin_devices.LTC2986')
 
@@ -215,6 +216,7 @@ class LTC2986 (SPIDevice):
         self._write_ram_bytes(channel_address, channel_assignment_bytes)
 
     def _wait_for_status_done(self, timeout_ms, check_interval_ms=50):
+
         # Read the command status register until 0x40 (done bit) is high
         tstart = time.time()        # Epoch time in s, as a float
         command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
@@ -284,17 +286,22 @@ class LTC2986 (SPIDevice):
         raw_channel_bytes = self._read_ram_bytes(start_address=channel_start_address,
                                                  num_bytes=4)
 
+        self._logger.debug(
+                "Read raw channel {} result as {}".format(channel_number, raw_channel_bytes))
+
         # Result is in the last 24 LSBs (last 3 bytes)
         raw_result_bytes = raw_channel_bytes[1:]
 
         # Convert to a signed integer
-        result_sint = int.from_bytes(raw_result_bytes, signed=True)
+        result_sint = int.from_bytes(raw_result_bytes, byteorder='big', signed=True)
 
         # Scale the result before returning
         result = (float(result_sint) / 1024.0)
 
         # The fault bits are in the first 8 MSBs
         fault_bits = raw_channel_bytes[0]
+
+        self._logger.debug("Result as float: {}, fault bits: {:02X}".format(result, fault_bits))
 
         return (result, fault_bits)
 
@@ -313,17 +320,34 @@ class LTC2986 (SPIDevice):
         # Measure a channel by triggering a conversion, waiting for it to complete and then scaling
         # the reading data. include_raw_input adds the raw voltage/resistance to the output.
 
-        self._logger.info("Starting conversion for channel {}".format(channel_number))
+        self._logger.debug("Starting conversion for channel {}".format(channel_number))
         conversion_complete = self._convert_channels([channel_number])
 
         if not conversion_complete:
             raise TimeoutError("Conversion Complete Timed Out")
+
+        self._logger.debug("Conversion complete")
 
         if include_raw_input:
             return (self._read_channel_result_temp(channel_number),
                     self._read_channel_raw_voltage_resistance(channel_number))
         else:
             return self._read_channel_result_temp(channel_number)
+
+    def add_raw_adc_channel(self, channel_num: int, use_table=False, differential=False):
+        # TODO polish this up and add full options and checks (like use_table)
+        sensor_type = LTC2986.Sensor_Type.SENSOR_TYPE_DIRECT_ADC
+
+        # Assemble the ADC channel config value
+        channel_config = bytearray(4)
+
+        channel_config = _OR_Bytes(channel_config, sensor_type.value)
+        # TODO other values
+
+        # Call the ADC Channel config assignment method
+        self._logger.info(
+                'Assigning new ADC channel with info bytes: {}'.format(channel_config))
+        self._assign_channel(channel_num, channel_config)
 
     def add_thermocouple_channel(self, channel_num):
         # TODO add channel config calculation for thermocouple
