@@ -36,8 +36,29 @@ _DIODE_CONVERSION_CYCLES_LSB = 25
 _DIODE_RUNNING_AVG_LSB = 24
 _DIODE_EXCITATION_CURRENT_LSB = 22
 
+class _Fault_Bit_Definition(object):
+    def __init__(self, is_hardfault_bool, definition_string):
+        self.is_hardfault = is_hardfault_bool
+        self.definition = definition_string
+
+_FAULT_BIT_DEFINITIONS = {
+    0b10000000 : _Fault_Bit_Definition(True, 'Sensor Hard Fault'),
+    0b01000000 : _Fault_Bit_Definition(True, 'Hard ADC Out of Range'),
+    0b00100000 : _Fault_Bit_Definition(True, 'CJ Hard Fault'),          # Thermocouple only
+    0b00010000 : _Fault_Bit_Definition(False, 'CJ Soft Fault'),         # Thermocouple only
+    0b00001000 : _Fault_Bit_Definition(False, 'Sensor Over Range'),
+    0b00000100 : _Fault_Bit_Definition(False, 'Sensor Under Range'),
+    0b00000010 : _Fault_Bit_Definition(False, 'ADC Out of Range')
+}
+
 def _OR_Bytes(bytesa, bytesb):
     return bytes([x | y for x, y in zip(bytesa, bytesb)])
+
+def _AND_Bytes(bytesa, bytesb):
+    return bytes([x & y for x, y in zip(bytesa, bytesb)])
+
+class LTCSensorException(Exception):
+    pass
 
 class LTC2986 (SPIDevice):
     """
@@ -144,15 +165,33 @@ class LTC2986 (SPIDevice):
         CUR_40UA_160UA_320UA = (0x2 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
         CUR_80UA_320UA_640UA = (0x3 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
 
-    def __init__(self, bus=0, device=0):
+    def __init__(self, bus=0, device=0, ignore_hardfaults=False):
 
         # Init SPI Device
         super().__init__(bus, device)
         self.set_mode(0)
 
-        self._logger = logging.getLogger('odin_devices.LTC2986')
+        # Store hardfault ignore setting
+        self._ignore_hardfaults = ignore_hardfaults
+
+        self._logger = logging.getLogger('odin_devices.LTC2986' +
+                                         '@Spidev{}.{}'.format(bus, device))
 
         self._logger.info("Created new LTC2986 on SPIDev={}.{}".format(bus, device))
+
+        # Assume all channels unassigned on init
+        self._channel_assignment_data = {
+                1  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                2  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                3  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                4  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                5  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                6  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                7  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                8  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                9  : LTC2986.Sensor_Type.SENSOR_TYPE_NONE,
+                10 : LTC2986.Sensor_Type.SENSOR_TYPE_NONE
+        }
 
         # Check connection to device and that device POR is complete
         # TODO interrupt pin could be used for this if present
@@ -165,7 +204,6 @@ class LTC2986 (SPIDevice):
                     "command status register read as 0x{:02X}".format(latest_CSR))
             raise SPIException (
                     "SPI Device failed to complete setup. Connection may be bad")
-
     def _transfer_ram_bytes(self, read, start_address, io_bytes):
 
         # Check address is valid
@@ -201,19 +239,62 @@ class LTC2986 (SPIDevice):
                                  start_address=start_address,
                                  io_bytes=io_bytes)
 
-    def _get_channel_assignment_address(self, channel_number):
+    @staticmethod
+    def _get_channel_assignment_address(channel_number):
+        # Check the channel number is valid
+        if channel_number < 1 or channel_number > 10:
+            raise ValueError("Channel number {} is invalid".format(channel_number))
+
         return _CH1_ASSIGNMENT_ADDRESS + (4 * (channel_number - 1))
 
-    def _get_channel_result_address(self, channel_number):
+    @staticmethod
+    def _get_channel_result_address(channel_number):
+        # Check the channel number is valid
+        if channel_number < 1 or channel_number > 10:
+            raise ValueError("Channel number {} is invalid".format(channel_number))
+
         return _CH1_TEMP_RESULT_ADDRESS + (4 * (channel_number - 1))
+
+    def _process_fault_bits(self, fault_bits, channel_number):
+
+        hardfault_detected = False
+
+        for fault_bit_position in _FAULT_BIT_DEFINITIONS.keys():
+            if fault_bits & fault_bit_position:     # Fault detected
+                current_fault = _FAULT_BIT_DEFINITIONS[fault_bit_position]
+                if current_fault.is_hardfault:
+                    hardfault_detected = True
+                    self._logger.critical(
+                            "Hardfault detected on channel {}: {}".format(channel_number,
+                                current_fault.definition))
+                else:
+                    self._logger.warning(
+                            "Hardfault detected on channel {}: {}".format(channel_number,
+                                current_fault.definition))
+
+        if hardfault_detected and not self._ignore_hardfaults:
+            raise LTCSensorException(
+                    "Found at least one hardfault, full fault bits: {}".format(hex(fault_bits)))
 
     def _assign_channel(self, channel_number, channel_assignment_bytes):
         # Check that there are 4 bytes of data
         if len(channel_assignment_bytes) != 4:
             raise ValueError("Channel assignment bytes object must have 4 bytes")
 
+        # Write channel assignment data to device
         channel_address = self._get_channel_assignment_address(channel_number)
         self._write_ram_bytes(channel_address, channel_assignment_bytes)
+
+        # Store latest assignment
+        sensor_type_bytes = _AND_Bytes(channel_assignment_bytes, b'\xF8\x00\x00\x00')
+        self._channel_assignment_data[channel_number] = LTC2986.Sensor_Type(sensor_type_bytes)
+
+    def _get_channel_assignment(self, channel_number):
+        # Check the channel number is valid
+        if channel_number < 1 or channel_number > 10:
+            raise ValueError("Channel number {} is invalid".format(channel_number))
+
+        return self._channel_assignments[channel_number]
 
     def _wait_for_status_done(self, timeout_ms, check_interval_ms=50):
 
@@ -301,9 +382,13 @@ class LTC2986 (SPIDevice):
         # The fault bits are in the first 8 MSBs
         fault_bits = raw_channel_bytes[0]
 
-        self._logger.debug("Result as float: {}, fault bits: {:02X}".format(result, fault_bits))
+        self._logger.info("Channel {} result as float: {}".format(channel_number, result))
 
-        return (result, fault_bits)
+        # Warn if fault bits found
+        if fault_bits is not 1:     # 1 means valid
+            self._process_fault_bits(fault_bits, channel_number)
+
+        return result
 
     def _read_channel_raw_voltage_resistance(self, channel_number):
         # Returns the raw voltage or resistance reading captured during the last conversion
@@ -342,11 +427,14 @@ class LTC2986 (SPIDevice):
         channel_config = bytearray(4)
 
         channel_config = _OR_Bytes(channel_config, sensor_type.value)
+        if not differential:
+            channel_config = _OR_Bytes(channel_config, (0b1 << 26).to_bytes(4, byteorder='big'))
         # TODO other values
 
         # Call the ADC Channel config assignment method
         self._logger.info(
-                'Assigning new ADC channel with info bytes: {}'.format(channel_config))
+                'Assigning channel {} as raw ADC with info bytes: {}'.format(channel_num,
+                                                                             channel_config))
         self._assign_channel(channel_num, channel_config)
 
     def add_thermocouple_channel(self, channel_num):
@@ -398,7 +486,8 @@ class LTC2986 (SPIDevice):
 
         # Call the RTD Channel config assignment method
         self._logger.info(
-                'Assigning new RTD channel with info bytes: {}'.format(channel_config))
+                'Assigning channel {} as RTD with info bytes: {}'.format(channel_num,
+                                                                         channel_config))
         self._assign_channel(channel_num, channel_config)
 
         # Calculate RSense value field from target ohms
@@ -410,11 +499,12 @@ class LTC2986 (SPIDevice):
 
         # Call the RSense Channel config assignment method with combined fields
         rsense_config = bytearray(4)
-        rsense_config = _OR_Bytes(channel_config, LTC2986.Sensor_Type.SENSOR_TYPE_SENSE_RESISTOR.value)
-        rsense_config = _OR_Bytes(channel_config, rsense_value_bytes)
-        self._logger.info(
+        rsense_config = _OR_Bytes(rsense_config, LTC2986.Sensor_Type.SENSOR_TYPE_SENSE_RESISTOR.value)
+        rsense_config = _OR_Bytes(rsense_config, rsense_value_bytes)
+        self._logger.debug(
                 'Assigning RTD sense resistor on channel {} '.format(rsense_ch_num) +
-                'with value {} ({} ohms)'.format(rsense_value_bytes, rsense_value / 1024))
+                'with value {} ({} ohms) '.format(rsense_value_bytes, rsense_value / 1024) +
+                'and resulting info byte: {}'.format(rsense_config))
         self._assign_channel(rsense_ch_num, rsense_config)
 
     def add_diode_channel(self, endedness: Diode_Endedness,
@@ -451,7 +541,14 @@ class LTC2986 (SPIDevice):
 
         # Call the RTD Channel config assignment method
         self._logger.info(
-                'Assigning new Diode channel with info bytes: {}'.format(channel_config))
+                'Assigning channel {} as Diode with info bytes: {}'.format(channel_num,
+                                                                           channel_config))
+        self._assign_channel(channel_num, channel_config)
+
+    def add_unassigned_channel(self, channel_num):
+        channel_config = b'\x00\x00\x00\x00'
+        self._logger.info(
+                'Setting channel {} unassigned'.format(channel_num))
         self._assign_channel(channel_num, channel_config)
 
     def add_thermistor_channel(self, channel_num):
