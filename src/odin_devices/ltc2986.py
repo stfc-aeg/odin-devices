@@ -289,12 +289,12 @@ class LTC2986 (SPIDevice):
         sensor_type_bytes = _AND_Bytes(channel_assignment_bytes, b'\xF8\x00\x00\x00')
         self._channel_assignment_data[channel_number] = LTC2986.Sensor_Type(sensor_type_bytes)
 
-    def _get_channel_assignment(self, channel_number):
+    def get_channel_assignment(self, channel_number):
         # Check the channel number is valid
         if channel_number < 1 or channel_number > 10:
             raise ValueError("Channel number {} is invalid".format(channel_number))
 
-        return self._channel_assignments[channel_number]
+        return self._channel_assignment_data[channel_number]
 
     def _wait_for_status_done(self, timeout_ms, check_interval_ms=50):
 
