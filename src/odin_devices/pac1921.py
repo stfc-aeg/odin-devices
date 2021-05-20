@@ -72,16 +72,19 @@ _V_RES_DEFAULT = 11
 _I_POST_FILT_EN_DEFAULT = False
 _V_POST_FILT_EN_DEFAULT = False
 
+# Expected Identification Values
+_EXPECTED_PRODUCT_ID        = 0b01011011
+_EXPECTED_MANUFACTURER_ID   = 0b01011101
 
-class PAC1921(I2CDevice):
+class PAC1921(object):
     class _Integration_Mode (Enum):
         FreeRun = auto()
         PinControlled = auto()
 
-    class _Measurement_Type (Enum):
+    class Measurement_Type (Enum):
         POWER = auto()
         VBUS = auto()
-        VSENSE = auto()
+        CURRENT = auto()
 
     def __init__(self, i2c_address=None, address_resistance=None, name='PAC1921', nRead_int_pin=None, r_sense=None, measurement_type=None):
         #Rsense must be supplied unless the measurement is voltage
@@ -96,7 +99,8 @@ class PAC1921(I2CDevice):
 
         # Init the I2C Device
         self._i2c_address = i2c_address
-        super().__init__(self._i2c_address, debug=True)
+        self._i2c_device = I2CDevice(self._i2c_address, debug=True)
+        self._i2c_device.enable_exceptions();
 
         # Check the device is present on the I2C bus
         self._check_prodid_manufacturer()
@@ -117,7 +121,7 @@ class PAC1921(I2CDevice):
 
         # Check that the measurement type is valid
         self._measurement_type = None
-        if type(measurement_type) is PAC1921._Measurement_Type:
+        if type(measurement_type) is PAC1921.Measurement_Type:
             self.set_measurement_type(measurement_type)
         else:
             raise TypeError("Invalid measurement type given")
@@ -131,7 +135,17 @@ class PAC1921(I2CDevice):
         self._v_post_filter_en = _V_POST_FILT_EN_DEFAULT
         self._i_post_filter_en = _I_POST_FILT_EN_DEFAULT
 
+        # Place in read state so that settings can be changed before integration
+        self._nRead_int_state = False
+        if nRead_int_pin is not None:
+            self._pin_set_read()
+        else:
+            self._register_set_read()
+
         # Force config registers update to default values (there is no way to reset the device)
+        self._write_register_bitfield(7, 8, 0x00, 0)
+        self._write_register_bitfield(7, 8, 0x01, 12)
+        self._write_register_bitfield(7, 8, 0x02, 0)
         self.force_config_update()
 
         # Init progress tracking vars
@@ -139,24 +153,65 @@ class PAC1921(I2CDevice):
         self._freerun_config_complete = False
         self._integration_time_ms = None        # Will be set in pin-control config if used
 
+        self._logger.info('Device init complete')
+
     def _check_prodid_manufacturer(self):
-        product_id = self.readU8(_PRODUCT_ID_REG)
-        manufacturer_id = self.readU8(_MANUFACTURER_ID_REG)
+        try:
+            product_id = self._i2c_device.readU8(_PRODUCT_ID_REG) & 0xFF
+            manufacturer_id = self._i2c_device.readU8(_MANUFACTURER_ID_REG) & 0xFF
+        except I2CDevice.ERROR:
+            raise
 
         if product_id != 0b01011011:
-            raise Exception("Product ID {} was not valid".format(product_id))
+            raise Exception(
+                    "Product ID {} was not valid, expected {}".format(hex(product_id),
+                        hex(_EXPECTED_PRODUCT_ID)))
         if manufacturer_id != 0b01011101:
-            raise Exception("Manufacturer ID {} was not valid".format(manufacturer_id))
+            raise Exception(
+                    "Manufacturer ID {} was not valid, expected {}".format(hex(manufacturer_id),
+                        hex(_EXPECTED_MANUFACTURER_ID)))
 
     def _pin_set_integration(self):
         if self._nRead_int_pin is None:
             raise Exception("Cannot drive pin, no pin was supplied")
+
+        # Disable register read/int control
+        self._write_register_bitfield(1, 1, 0x01, 0b0)
+
+        # Set read mode
         self._nRead_int_pin.set_value(1)
+
+        self._nRead_int_state = True
 
     def _pin_set_read(self):
         if self._nRead_int_pin is None:
             raise Exception("Cannot drive pin, no pin was supplied")
+
+        # Disable register read/int control
+        self._write_register_bitfield(1, 1, 0x01, 0b0)
+
+        # Set read mode
         self._nRead_int_pin.set_value(0)
+
+        self._nRead_int_state = False
+
+    def _register_set_integration(self):
+        # Enable register read/int control
+        self._write_register_bitfield(1, 1, 0x01, 0b1)
+
+        # Set integration mode
+        self._write_register_bitfield(0, 1, 0x01, 0b1)
+
+        self._nRead_int_state = True
+
+    def _register_set_read(self):
+        # Enable register read/int control
+        self._write_register_bitfield(1, 1, 0x01, 0b1)
+
+        # Set read mode
+        self._write_register_bitfield(0, 1, 0x01, 0b0)
+
+        self._nRead_int_state = False
 
     def _trigger_pin_integration(self, integration_time_ms, integration_pin):
 
@@ -191,7 +246,7 @@ class PAC1921(I2CDevice):
             raise ValueError("Value {} does bit fit in {} bits".format(new_value, bit_width))
 
         # Read original value from register
-        old_value = self.readU8(register)
+        old_value = self._i2c_device.readU8(register)
 
         # Mask off original bits
         mask_top = (0xFF << (start_bit + 1)) & 0xFF
@@ -203,12 +258,12 @@ class PAC1921(I2CDevice):
         new_reg_value = masked_old_value | (new_value << ((start_bit + 1) - bit_width)) & 0xFF
 
         # Write newly formed value to the register
-        self.write8(register, new_reg_value)
+        self._i2c_device.write8(register, new_reg_value)
 
     def _read_decode_output(self):
 
         # Check for overflows
-        overflow_result = self.readU8(_OVERFLOW_STATUS_REG)
+        overflow_result = self._i2c_device.readU8(_OVERFLOW_STATUS_REG)
         if overflow_result & 0b100: # VSOV
             self._logger.warning("Overflow Detected! DI_GAIN may be too high.")
         if overflow_result & 0b010: # VBOV
@@ -217,34 +272,46 @@ class PAC1921(I2CDevice):
             self._logger.warning("Overflow Detected! DI_GAIN or DV_GAIN may be too high.")
 
         # Decode the relevant measurement type
-        if self._measurement_type is PAC1921._Measurement_Type.VBUS:
+        if self._measurement_type is PAC1921.Measurement_Type.VBUS:
             # Read the raw register
-            vbus_raw = self.readU16(_VBUS_RESULT_REG) >> 6
+            vbus_high = self._i2c_device.readU8(_VBUS_RESULT_REG)
+            vbus_low = self._i2c_device.readU8(_VBUS_RESULT_REG+1)
+            vbus_raw = ((vbus_high << 8) + vbus_low)
+            self._logger.debug('raw result : {}'.format(vbus_raw))
 
             # Decode the Vbus value
             vbus_lsb_volts = (32.0 / self._dv_gain) / float(1023 * pow(2,6))
+            self._logger.debug('volts per lsb: {}'.format(vbus_lsb_volts))
             vbus_result = vbus_lsb_volts * vbus_raw
 
             return vbus_result
 
-        elif self._measurement_type is PAC1921._Measurement_Type.VSENSE:
+        elif self._measurement_type is PAC1921.Measurement_Type.CURRENT:
             # Read the raw register
-            vsense_raw = self.readU16(_VSENSE_RESULT_REG) >> 6
+            vsense_high = self._i2c_device.readU8(_VSENSE_RESULT_REG)
+            vsense_low = self._i2c_device.readU8(_VSENSE_RESULT_REG+1)
+            vsense_raw = ((vsense_high << 8) + vsense_low)
+            self._logger.debug('raw result : {}'.format(vsense_raw))
 
             # Decode the Vsense value
             vsense_lsb_amps = (0.1 / (self._r_sense * self._di_gain)) / float(1023 * pow(2,6))
+            self._logger.debug('amps per lsb: {}'.format(vsense_lsb_amps))
             vsense_result = vsense_lsb_amps * vsense_raw
 
             return vsense_result
 
-        elif self._measurement_type is PAC1921._Measurement_Type.POWER:
+        elif self._measurement_type is PAC1921.Measurement_Type.POWER:
             # Read the raw register
-            power_raw = self.readU16(_POWER_RESULT_REG) >> 6
+            power_high = self._i2c_device.readU8(_POWER_RESULT_REG)
+            power_low = self._i2c_device.readU8(_POWER_RESULT_REG+1)
+            power_raw = ((power_high << 8) + power_low)
+            self._logger.debug('raw result : {}'.format(power_raw))
 
             # Decode the Power value
             ipart = 0.1 / (self._r_sense * self._di_gain)
             vpart = 32.0 / self._dv_gain
             power_lsb_watts = (ipart * vpart) / float(1023 * pow(2,6))
+            self._logger.debug('watts per lsb: {}'.format(power_lsb_watts))
             power_result = power_lsb_watts * power_raw
 
             return power_result
@@ -255,8 +322,14 @@ class PAC1921(I2CDevice):
     def _get_nRead_int_pin(self):
         return self._nRead_int_pin
 
-    def get_integration_mode(self):
-        return self._integration_mode
+    def pin_control_enabled(self):
+        return (self._integration_mode == PAC1921._Integration_Mode.PinControlled)
+
+    def get_name(self):
+        return self._name
+
+    def get_address(self):
+        return self._i2c_device.address
 
     def config_resolution_filtering(self, adc_resolution=None, post_filter_en=None):
         # Completely optional
@@ -281,6 +354,10 @@ class PAC1921(I2CDevice):
             self._i_resolution = adc_resolution
             self._v_resolution = adc_resolution
 
+            self._logger.debug(
+                    'ADC resolution config as I: {} bits, V: {} bits'.format(self._i_resolution,
+                                                                             self._v_resolution))
+
         # Set the same post filter state for I and V (and therefore P)
         if post_filter_en is not None:
             # Check input is boolean
@@ -302,6 +379,17 @@ class PAC1921(I2CDevice):
             self._i_post_filter_en = post_filter_en
             self._v_post_filter_en = post_filter_en
 
+            self._logger.debug(
+                    'Post Filter EN set to I: {}, V: {}'.format(self._i_post_filter_en,
+                                                                self._v_post_filter_en))
+
+        # If in integration mode, need to enter read mode so that settings will take effect before
+        # the next reading
+        if self._nRead_int_state:
+            self._register_set_read()
+            time.sleep(0.001)
+            self._register_set_integration()
+
     def config_gain(self, di_gain=None, dv_gain=None):
         # Completely optional
 
@@ -321,6 +409,9 @@ class PAC1921(I2CDevice):
             # Set in driver
             self._di_gain = di_gain
 
+            self._logger.debug(
+                    'DI gain set to {} (encoded as 0x{})'.format(self._di_gain, di_gain_raw))
+
         # Set the DV gain if supplied
         if dv_gain is not None:
             # Check that gain is valid
@@ -337,13 +428,23 @@ class PAC1921(I2CDevice):
             # Set in driver
             self._dv_gain = dv_gain
 
+            self._logger.debug(
+                    'DV gain set to {} (encoded as 0x{})'.format(self._dv_gain, dv_gain_raw))
+
+        # If in integration mode, need to enter read mode so that settings will take effect before
+        # the next reading
+        if self._nRead_int_state:
+            self._register_set_read()
+            time.sleep(0.001)
+            self._register_set_integration()
+
     def force_config_update(self):
         # Force a config update for the resolution, filtering and gain by writing the values stored
         # in the driver to the device.
         self.config_gain(di_gain = self._di_gain, dv_gain = self._dv_gain)
         self.config_resolution_filtering(adc_resolution=self._i_resolution,
                                          post_filter_en=self._i_post_filter_en)
-
+        self._logger.debug('Device configuration forced to mirror driver copy')
 
     def config_freerun_integration_mode(self, num_samples=None):
         # If no sample number is supplied, it will not be changed. FreeRun mode will just be set.
@@ -359,7 +460,7 @@ class PAC1921(I2CDevice):
             self._write_register_bitfield(7, 4, _SMPL_REG, sample_reg_value)
 
         # Set integration mode and measurement type in device
-        if self._measurement_type is PAC1921.Measurement_Type.VSENSE:
+        if self._measurement_type is PAC1921.Measurement_Type.CURRENT:
             combined_int_meas_field = 0b01
         elif self._measurement_type is PAC1921.Measurement_Type.VBUS:
             combined_int_meas_field = 0b10
@@ -370,13 +471,23 @@ class PAC1921(I2CDevice):
         self._pincontrol_config_complete = False
         self._freerun_config_complete = True
 
+        self._integration_mode = PAC1921._Integration_Mode.FreeRun
+
+        self._logger.info(
+                'Config for free-run integration mode with measurement type ' +
+                '{} complete'.format(self._measurement_type))
+
+        # Start the free-running integration. Will be stopped on read
+        self._register_set_integration()
+        self._logger.debug('Now entering integration mode for free-run')
+
     def config_pincontrol_integration_mode(self, integration_time_ms):
         # Check that a pin has been assigned
         if not self._has_nRead_int_pin():
             raise Exception("Pin control mode requires a nRead_int pin")
 
         # Check that power measurement is selected (the only mode that supports pin control)
-        if self._measurement_type is not PAC1921._Measurement_Type.POWER:
+        if self._measurement_type is not PAC1921.Measurement_Type.POWER:
             raise Exception(
                     "Pin control mode does not support " +
                     "measurement type: {}".format(self._measurement_type))
@@ -391,6 +502,9 @@ class PAC1921(I2CDevice):
                 raise ValueError(
                         "In 11-bit mode, integration time must be between 0.9-1000ms")
 
+        # Make sure the pin is not being overridden
+        self._write_register_bitfield(1, 1, 0x01, 0b0)
+
         # Make sure the pin is set to READ by default
         self._pin_set_read()
 
@@ -404,12 +518,18 @@ class PAC1921(I2CDevice):
         self._pincontrol_config_complete = True
         self._freerun_config_complete = False
 
-    def set_measurement_type(self, measurement_type: _Measurement_Type):
-        if type(measurement_type) is not PAC1921._Measurement_Type:
+        self._integration_mode = PAC1921._Integration_Mode.PinControlled
+
+        self._logger.info(
+                'Config for pin-controlled integration mode with integration time ' +
+                '{}ms complete'.format(integration_time_ms))
+
+    def set_measurement_type(self, measurement_type: Measurement_Type):
+        if type(measurement_type) is not PAC1921.Measurement_Type:
             raise TypeError
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
-        if measurement_type is not PAC1921._Measurement_Type.VBUS:
+        if measurement_type is not PAC1921.Measurement_Type.VBUS:
             if self._r_sense is None:
                 raise Exception(
                     "Measurement type {} requries Rsense resistor value".format(measurement_type))
@@ -423,25 +543,58 @@ class PAC1921(I2CDevice):
             self._freerun_config_complete = False
         self._measurement_type = measurement_type
 
+        self._logger.info('Measurement type set as {}'.format(measurement_type))
+
     def integrate_and_read(self):
         if self._integration_mode == PAC1921._Integration_Mode.PinControlled:
+            self._logger.info('Starting pin-controlled integration')
 
             # Check that the config function has been called
             if not self._pincontrol_config_complete:
                 # raise error for not being configured for pincontrol
                 raise Exception("Configuration for pin-control has not been completed")
 
-            # Trigger an integration on the device's pin
+            # Trigger a timed integration on the device's pin
             self._trigger_pin_integration(self._integration_time_ms, self._get_nRead_int_pin())
+            # Note: read must now take place within tsleep (1s) before erase
 
-        elif self._integration_mode == _Integration_Mode.FreeRun:
+            return self._read_decode_output()
+
+        elif self._integration_mode == PAC1921._Integration_Mode.FreeRun:
+            # By this point, integration mode should already have been entered in config
+            self._logger.info('Reading free-run integration')
 
             # Check that the config function has been called
             if not self._freerun_config_complete:
                 # raise error for not being configured for freerun
                 raise Exception("Configuration for free-run has not been completed")
 
-        return self._read_decode_output()
+            # Enter read mode to stop integration
+            self._logger.debug('Free-run integration mode ended')
+            self._register_set_read()
+            # Note: read must now take place within tsleep (1s) before erase
+
+            # Must read result immediately, before integration mode is re-entered
+            decoded_output = self._read_decode_output()
+
+            # Re-enter integration mode ready for the next reading to be taken
+            self._register_set_integration()
+            self._logger.debug('re-entered free-run integration mode for next reading')
+
+            return decoded_output
+
+    def stop_freerun_integration(self):
+        if self._integration_mode == PAC1921._Integration_Mode.FreeRun:
+            self._register_set_read()
+
+            # Config must be run again to start integration.
+            self._freerun_config_complete = False
+
+            self._logger.debug(
+                    'Free-run integration mode ended, device can now sleep. Run config to wake')
+        else:
+            # In pin-controlled mode, device will sleep by default until integrate_and_read called
+            self._logger.debug('This does nothing in pin-controlled mode')
 
 
 class PAC1921_Synchronised_Array(object):
@@ -469,12 +622,16 @@ class PAC1921_Synchronised_Array(object):
         self._nRead_int_pin = nRead_int_pin
         self._integration_time_ms = integration_time
 
+        self._logger = logging.getLogger('odin_devices.PAC1921.array')
+
     def add_device(self, device: PAC1921):
         if type(device) is not PAC1921:
             raise TypeError("Device should be a PAC1921 Instance")
-        if device.get_integration_mode() != INTEGRATION_MODE_PinControlled:
+        if not device.pin_control_enabled():
             raise ValueError("Device should be configured for pin-controlled integration mode")
         self._device_list.append(device)
+
+        self._logger.info('New device {} added to array'.format(PAC1921._name))
 
     def set_integration_time(self, integration_time):
         self._integration_time_ms = integration_time
