@@ -396,7 +396,7 @@ class PAC1921(object):
                 raise TypeError("nRead_int_pin should be of type gpiod.Line, "
                                 "either from gpiod directly or the odin_devices gpio_bus driver")
 
-        self._nRead_int_pin = nRead_int_pin
+        self._nRead_int_pin = nRead_int_pin     # Still assigns if None
 
     def pin_control_enabled(self):
         """
@@ -783,74 +783,38 @@ class PAC1921_Synchronised_Array(object):
     supports pin-control.
     """
 
-    def __init__(self, device_list=None, nRead_int_pin=None, integration_time_ms=None):
+    def __init__(self, nRead_int_pin, integration_time_ms, device_list=None):
         """
         Create a new array for pin-controlled PAC1921 devices sharing a nRead_int pin.
 
         A device list can be supplied with already instantiated PAC1921 devices. Alternatively,
         devices can be added afterwards with add_device().
 
-        This function is capable of 'inheriting' settings from supplied devices. If any of the
-        devices has a configured nRead_int_pin, there is no need to supply one to the function.
+        The nRead_int_pin and integration_time_ms settings supplied will override any individual
+        device settings set before this. Other settings will remain the same. I.E. devices that
+        have been configured with different gain settings will remain that way, and this will still
+        be handled in conversion automatically.
 
-        Similarly, if any of the devices has been configured for pin control with an integration
-        period already, the first found with an integration perid will be used.
-
-        In both cases, values supplied directly to the function will override any device settings.
-
-        :param device_list:     List of PAC1921 devices to add to the array and inherit values from
-        :param nRead_int_pin:   gpiod line for read/integration control (optional if device has pin)
-        :param integration_time_ms: Integration time in ms (optional if device already configured)
+        :param nRead_int_pin:           gpiod line for read/integration control.
+        :param integration_time_ms:     Integration time in ms.
+        :param device_list:             List of PAC1921 devices to add to the array (optional, can
+                                        be added individually after init with add_device()).
         """
+        self._device_list = []
 
         self._logger = _logging.getLogger('odin_devices.PAC1921.array')
 
-        self._integration_device = None
-        self._device_list = []
+        if type(nRead_int_pin) is not _gpiod.Line:
+            raise TypeError("nRead_int_pin should be of type gpiod.Line, "
+                            "either from gpiod directly or the odin_devices gpio_bus driver")
+
+        self._nRead_int_pin = nRead_int_pin
+
+        self.set_integration_time(integration_time_ms)
+
         if device_list is not None:
             for device in device_list:
-                # Check that the device has been configured for pin control properly, since this
-                # would normally be checked in the integrate method that is now only called for
-                # one of the devices
-                if not device._pincontrol_config_complete:
-                    # Force device to use pin control, ignore error about no pin (it is assumed
-                    # that another device will have the pin. If not, this will be caught later)
-                    try:
-                        device.config_pincontrol_integration_mode()
-                    except Exception as e:
-                        if 'requires a nRead_int pin' in e.args[0]:
-                            pass
-                        else:
-                            raise
-
-                # Add the device to the array
-                self.add_device(device)
-
-                # Ensure that the device will respond to a pin control event (disable register ctrl)
-                device._write_register_bitfield(1, 1, 0x01, 0b0)
-
-                # Check for an integration control pin if one was not supplied
-                if nRead_int_pin is None:
-                    if device._has_nRead_int_pin():
-                        self._integration_device = device
-
-                # Inherit integration time if any device has one and if one was not supplied
-                if integration_time_ms is None:
-                    if device._integration_time_ms is not None:
-                        integration_time_ms = device._integration_time_ms
-
-        # If no devices already had nRead_int pins assigned, use the one supplied
-        if self._integration_device is None:
-            if nRead_int_pin is not None:
-                self._integration_device = self._device_list[0] # Pick first device
-                self._integration_decice._set_nRead_int_pin(nRead_int_pin)  # Assign supplied pin
-            else:
-                # No pin was supplied, and no instances supplied had a pin
-                if nRead_int_pin is None and self._integration_device is None:
-                    raise ValueError(
-                            "No pin given or present in any device. nRead_int_pin is required")
-
-        self._integration_time_ms = integration_time_ms
+                self.add_device(device)     # Add the device to the array
 
     def add_device(self, device: PAC1921):
         """
@@ -861,6 +825,37 @@ class PAC1921_Synchronised_Array(object):
             raise TypeError("Device should be a PAC1921 Instance")
         if not device.pin_control_enabled():
             raise ValueError("Device should be set for pin-controlled integration mode")
+
+        # Force the device into pin control mode. The lack of a pin is ignored since only the first
+        # device in the device_list will be used to actuate it.
+        if not device._pincontrol_config_complete:
+            self._logger.debug(
+                    'Forced device {} into pin control mode'.format(device.get_name()))
+            try:
+                device.config_pincontrol_integration_mode()
+            except Exception as e:
+                if 'requires a nRead_int pin' in e.args[0]:
+                    pass
+                else:
+                    raise
+
+        # Ensure the device's integration control is not being overridden by register control mode.
+        # This would stop integration, and would not be automatically corrected as it would be
+        # normally since _pin_set_integration() is called on another instance.
+        device._write_register_bitfield(1, 1, 0x01, 0b0)
+
+        # Set the first device's nRead_int pin to the one supplied to the array
+        if len(self._device_list) == 0:
+            self._logger.debug(
+                    'Assigning nRead_int_pin to first device: {}'.format(device.get_name()))
+
+            # Set the device to use the array integration pin
+            device._set_nRead_int_pin(self._nRead_int_pin)
+
+            # Set the device to use the array integration time
+            device.config_pincontrol_integration_mode(self._integration_time_ms)
+
+        # Add the device to the array
         self._device_list.append(device)
 
         self._logger.info('New device {} added to array'.format(device._name))
@@ -870,6 +865,12 @@ class PAC1921_Synchronised_Array(object):
         Change the integration time used for the entire array.
         """
         self._integration_time_ms = integration_time
+
+        # If the first device has already been added, set the integration time
+        if len(self._device_list) > 0:
+            self._device_list[0].config_pincontrol_integration_mode(integration_time)
+
+        self._logger.info('Array integration time set as {}ms'.format(integration_time))
 
     def read_devices(self):
         """
@@ -883,8 +884,12 @@ class PAC1921_Synchronised_Array(object):
         if self._integration_time_ms is None:
             raise Exception("Integration time is not set")
 
+        # Check that there are devices in the array
+        if len(self._device_list) == 0:
+            raise Exception("No devices in array")
+
         # Trigger the pin-controlled integration on one device
-        self._integration_device._trigger_pin_integration(self._integration_time_ms)
+        self._device_list[0]._trigger_pin_integration(self._integration_time_ms)
 
         # Form a list of decoded outputs combined with names
         decoded_outputs = []
