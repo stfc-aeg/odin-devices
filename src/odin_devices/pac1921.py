@@ -521,9 +521,10 @@ class PAC1921(object):
         # Set the DV gain if supplied
         if dv_gain is not None:
             # Check that gain is valid
-            if dv_gain not in _Dx_GAIN_ENCODING.keys():
+            Dv_alllowed_values = [ g for g in _Dx_GAIN_ENCODING.keys() if g <= 32]
+            if dv_gain not in Dv_alllowed_values:
                 raise ValueError(
-                        "DV Gain not valid. Choose from {}".format(_Dx_GAIN_ENCODING.keys()))
+                        "DV Gain not valid. Choose from {}".format(Dv_alllowed_values))
 
             # Calculate bit field value
             dv_gain_raw = _Dx_GAIN_ENCODING[dv_gain]
