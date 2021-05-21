@@ -79,7 +79,7 @@ _EXPECTED_MANUFACTURER_ID   = 0b01011101
 class Measurement_Type (_Enum):
     POWER = _auto()
     VBUS = _auto()
-    CURRENT = _auto()
+    CURRENT = _auto()   # Measured via Vsense over Rsense
 
 class _Integration_Mode (_Enum):
     FreeRun = _auto()
@@ -87,8 +87,28 @@ class _Integration_Mode (_Enum):
 
 
 class PAC1921(object):
+    """
+    Class to enable the driving of the PAC1921 voltate/current/power monitor over I2C. The device
+    can be used in either free-run or pin-controlled mode. If the latter is used, a gpiod pin must
+    be supplied for nRead_int_pin (potentially supplied from odin_devices.gpio_bus).
+
+    As a bare minimum, init the device and call config_<method>_integration_mode() to set up either
+    pin-control of free-run. At this point, other settings can be configured (gain, filtering etc)
+    or calling read() will return the result of the chosen measurement.
+    """
     def __init__(self, i2c_address=None, address_resistance=None, name='PAC1921', nRead_int_pin=None, r_sense=None, measurement_type=None):
-        #Rsense must be supplied unless the measurement is voltage
+        """
+        Create a PAC1921 device instance with an associated address. If the address is unknown but
+        but the address resistance is, supply this instead (the associated I2C address will be
+        derived). If pin-control is to be used, a nRead_int_pin gpiod pin will be needed.
+
+        :param i2c_address:         Known I2C address (this or address_resistance required)
+        :param address_resistance:  ADDR_SEL resistance to gnd (this or i2c_address required)
+        :param name:                Friendly name of device. Useful if using multiple devices
+        :param nRead_int_pin:       gpiod line for pin control (required for pin-control only)
+        :param r_sense:             Rsense resistance in ohms (required for POWER, CURRENT)
+        :param measurement_type:    Measurement_Type enum for POWER, CURRENT, or VBUS
+        """
 
         # If an i2c address is not present, work one out from resistance, if supplied
         if i2c_address is None:
@@ -153,6 +173,10 @@ class PAC1921(object):
         self._logger.info('Device init complete')
 
     def _check_prodid_manufacturer(self):
+        """
+        Verifies that a PAC1921 is present at the given I2C address by reading the product and
+        manufacturer ID registers. Will raise an Excption if either is not as expected.
+        """
         try:
             product_id = self._i2c_device.readU8(_PRODUCT_ID_REG) & 0xFF
             manufacturer_id = self._i2c_device.readU8(_MANUFACTURER_ID_REG) & 0xFF
@@ -169,6 +193,10 @@ class PAC1921(object):
                         hex(_EXPECTED_MANUFACTURER_ID)))
 
     def _pin_set_integration(self):
+        """
+        Puts the device in integration mode using the nRead_int_pin. Ensures that the pin control
+        is not being overridden by the 'register override' for controlling mode.
+        """
         if self._nRead_int_pin is None:
             raise Exception("Cannot drive pin, no pin was supplied")
 
@@ -181,6 +209,10 @@ class PAC1921(object):
         self._nRead_int_state = True
 
     def _pin_set_read(self):
+        """
+        Puts the device in read mode using the nRead_int_pin. Ensures that the pin control is not
+        being overridden by the 'register override' for controlling mode.
+        """
         if self._nRead_int_pin is None:
             raise Exception("Cannot drive pin, no pin was supplied")
 
@@ -193,6 +225,10 @@ class PAC1921(object):
         self._nRead_int_state = False
 
     def _register_set_integration(self):
+        """
+        Puts the device in integration mode using the register-control override. This means it can
+        be done without an nRead_int_pin.
+        """
         # Enable register read/int control
         self._write_register_bitfield(1, 1, 0x01, 0b1)
 
@@ -202,6 +238,10 @@ class PAC1921(object):
         self._nRead_int_state = True
 
     def _register_set_read(self):
+        """
+        Puts the device in read mode using the register-control override. This means it can be done
+        without an nRead_int_pin.
+        """
         # Enable register read/int control
         self._write_register_bitfield(1, 1, 0x01, 0b1)
 
@@ -211,6 +251,13 @@ class PAC1921(object):
         self._nRead_int_state = False
 
     def _trigger_pin_integration(self, integration_time_ms):
+        """
+        Hold the device in integration mode for the period of time specified. This is used for
+        integration in pin-controlled mode only.
+        """
+        # Place the device initially in read mode
+        self._pin_set_read()
+        _time.sleep(1)
 
         # Set the pin to integrate mode
         self._pin_set_integration()
@@ -222,14 +269,27 @@ class PAC1921(object):
         self._pin_set_read()
 
     def _get_address_from_resistance(address_resistance):
+        """
+        Derive the I2C address associated with a resistance between ADDR_SEL pin and GND.
+
+        :param address_resistance:      Resistance between ADDR_SEL and GND in ohms
+        """
         if address_resistance in _ADDRESS_RESISTANCE_MAPPING.keys():
             return _ADDRESS_RESISTANCE_MAPPING[address_resistance]
         else:
             raise ValueError("Invalid address resistance supplied")
 
     def _write_register_bitfield(self, start_bit, bit_width, register, new_value):
-        # Write a selection of bits within a register. For this device, single-byte fields suffice.
+        """
+        Write a value to a specified field of bits in a register. Limited to fields that fit within
+        one 8-bit register.
 
+        :param start_bit:       Position of first bit in field, numbered: 76543210
+        :param bit_width:       Width of the field in bits
+        :param register:        Register to which the field is written. 8-bit address.
+        :param new_value:       Value to write. If it is too large to fit in specified field, an
+                                Exception will be raised.
+        """
         # Check the start bit is valid
         if start_bit > 7 or start_bit < 0:
             raise ValueError("start_bit must be in range 0-7")
@@ -258,7 +318,14 @@ class PAC1921(object):
         self._i2c_device.write8(register, new_reg_value)
 
     def _read_decode_output(self):
+        """
+        Read whatever result is in the result register for the selected measurement at this time.
+        This does not mean the measurement has actually taken place (integration should be called
+        first). Also checks for overflows reported by the device, and raises warnings if any are
+        found.
 
+        VBUS reports the result in volts, CURRENT in amps and POWER in watts.
+        """
         # Check for overflows
         overflow_result = self._i2c_device.readU8(_OVERFLOW_STATUS_REG)
         if overflow_result & 0b100: # VSOV
@@ -320,6 +387,10 @@ class PAC1921(object):
         return self._nRead_int_pin
 
     def _set_nRead_int_pin(self, nRead_int_pin):
+        """
+        Sets the internal nRead_int_pin for the device, and also checks that it is of the correct
+        type. The pin is assumed claimed by the calling program.
+        """
         if nRead_int_pin is not None:
             if type(nRead_int_pin) is not _gpiod.Line:
                 raise TypeError("nRead_int_pin should be of type gpiod.Line, "
@@ -328,17 +399,38 @@ class PAC1921(object):
         self._nRead_int_pin = nRead_int_pin
 
     def pin_control_enabled(self):
+        """
+        Returns true if the integration mode is pin-controlled. This DOES NOT confirm that pin-
+        control has been configured yet.
+        """
         return (self._integration_mode == _Integration_Mode.PinControlled)
 
     def get_name(self):
+        """
+        Return the friendly name of the device set on instantiation.
+        """
         return self._name
 
     def get_address(self):
+        """
+        Return the I2C address of the device.
+        """
         return self._i2c_device.address
 
     def config_resolution_filtering(self, adc_resolution=None, post_filter_en=None):
-        # Completely optional
+        """
+        Configure the ADC resolution and post_filter used for measuring the VBUS and VSENSE values.
+        This is optional additional configuration before integration.
 
+        The ADC resolution does not affect the number of bits of the reported results, but does mean
+        a more accurate result. Post-filtering improvs signal quality, but increases conversion time
+        for a given number of samples by 50%.
+
+        Currently both VSense and VBus settings are set the same.
+
+        :param adc_resolution:      Number of bits of measurement resolution, either 11 or 14
+        :param post_filter_en:      Enable the post filters, True or False
+        """
         # Set the same resolution for both I and V (and therefore P)
         if adc_resolution is not None:
             # Check resolution is valid, and calculate bit field value
@@ -396,8 +488,17 @@ class PAC1921(object):
             self._register_set_integration()
 
     def config_gain(self, di_gain=None, dv_gain=None):
-        # Completely optional
+        """
+        Configure the gain multiplier independendly for VBus and VSense. Optional setting to be set
+        before integration is started.
 
+        This scales the input range by dividing from 32v for VBus and 100mV for vSense. The
+        calculation adjustment will be handled automatically by the reading decode function, so set
+        this based on anticipated input range for a more precise reading.
+
+        :param di_gain:     VSense division factor. Can be 1(default), 2, 4, 8, 16, 32, 64 or 128
+        :param dv_gain:     Vbus division factor. Can be 1(default), 2, 4, 8, 16, 32, 64 or 128
+        """
         # Set the DI gain if supplied
         if di_gain is not None:
             # Check that gain is valid
@@ -444,14 +545,34 @@ class PAC1921(object):
             self._register_set_integration()
 
     def _force_config_update(self):
-        # Force a config update for the resolution, filtering and gain by writing the values stored
-        # in the driver to the device.
+        """
+        Force the settings stored in the driver to be written to the device. This is used on init
+        because there is no way to reset the device, so it will ensure 'known' settings are valid.
+        """
         self.config_gain(di_gain = self._di_gain, dv_gain = self._dv_gain)
         self.config_resolution_filtering(adc_resolution=self._i_resolution,
                                          post_filter_en=self._i_post_filter_en)
         self._logger.debug('Device configuration forced to mirror driver copy')
 
     def config_freerun_integration_mode(self, num_samples=None):
+        """
+        Initialize the device for free-run integration mode. This (or the pincontrol version) must
+        be called before the read() function can be used.
+
+        If number of samples is supplied, it will be updated from the default/previous setting. More
+        samples will take more time, up to over 1000ms minimum for power measurement with 2048
+        samples (see the datasheet Table 4-5).
+
+        Once this has been called, the device will be integrating, and the read() function can be
+        called to retrieve the most recently completed reading. This call can be made repeatedly
+        without having to reconfigure the device.
+
+        If the device needs to be taken out of integrate mode (for example to save power by allowing
+        it to enter sleep mode), call stop_freerun_integration(). After this is called, config will
+        have to be run again to restart integration.
+
+        :param num_samples:     Number of samples in each integration cycle. Powers of 2 from 1-2048
+        """
         # If no sample number is supplied, it will not be changed. FreeRun mode will just be set.
 
         # Write num sample register if provided
@@ -487,6 +608,21 @@ class PAC1921(object):
         self._logger.debug('Now entering integration mode for free-run')
 
     def config_pincontrol_integration_mode(self, integration_time_ms=500):
+        """
+        Initialize the device for pin-controlled integration mode. This (or the freerun version)
+        must be called before the Read() function can be used.
+
+        If an integration time is supplied, this is the time for which the device will have the
+        integration mode applied using the pin. If not supplied, 500ms is the default. If this
+        device is being used as part of an array, there is no need to supply an integration time,
+        as it can be used to init the array to which the device list will be fed.
+
+        Once this function is called, the read() function will perform the integration for the
+        specified time and return the result. This does not need to be called again before
+        successive measurements, unless the integration time needs changing.
+
+        :param integration_time_ms:     Integration time in ms
+        """
         # Check that a pin has been assigned
         if not self._has_nRead_int_pin():
             raise Exception("Pin control mode requires a nRead_int pin")
@@ -530,6 +666,14 @@ class PAC1921(object):
                 '{}ms complete'.format(integration_time_ms))
 
     def set_measurement_type(self, measurement_type: Measurement_Type):
+        """
+        Change the measurement type between Vbus voltage, Rsense current, and power. If the desired
+        measurement is supplied at device instantiation, no call is necessary. If the measurement
+        needs changing, this call will need to be followed by configuration of free-run or pin-
+        controlled mode.
+
+        :param measurement_type:    Measurement_Type enum CURRENT, POWER or VBUS.
+        """
         if type(measurement_type) is not Measurement_Type:
             raise TypeError
 
@@ -550,7 +694,24 @@ class PAC1921(object):
 
         self._logger.info('Measurement type set as {}'.format(measurement_type))
 
-    def integrate_and_read(self):
+    def read(self):
+        """
+        Read a result from the PAC1921 using the integration mode configured. The result will be
+        decoded as a float value, in Volts for VBus, Amps for Rsense current, or Watts for power.
+        This function can only be called after the configure_<method>_integration_mode() function
+        has been called.
+
+        If the integration mode is pin-controlled, this will automatically trigger in integration
+        for the time specified when the configuration function was called. This means it will delay
+        by that amount of time.
+
+        If the integration mode is free-run, the device will already be integrating, and the latest
+        result will be read from the device. Depending on the cycle time (see datasheet Table 4-5),
+        the result could be up to 3s old, but the return will be immediate. Integration will be
+        restarted as soon as the read is complete.
+
+        In both modes, successive reads can be made with no other calls.
+        """
         if self._integration_mode == _Integration_Mode.PinControlled:
             self._logger.info('Starting pin-controlled integration')
 
@@ -589,6 +750,13 @@ class PAC1921(object):
             return decoded_output
 
     def stop_freerun_integration(self):
+        """
+        Forcibly stop the integration in free-run mode. This places the device in READ mode
+        permanently, meaning the device will enter sleep mode after 1s and consume considerably
+        less power. This means readings will no longer be able to be taken until the configure
+        freerun function is called again. The function has no effect on pin-control mode, which
+        leaves the device in read mode by default when there is no reading being taken anyway.
+        """
         if self._integration_mode == _Integration_Mode.FreeRun:
             self._register_set_read()
 
@@ -598,13 +766,42 @@ class PAC1921(object):
             self._logger.debug(
                     'Free-run integration mode ended, device can now sleep. Run config to wake')
         else:
-            # In pin-controlled mode, device will sleep by default until integrate_and_read called
+            # In pin-controlled mode, device will sleep by default until read called
             self._logger.debug('This does nothing in pin-controlled mode')
 
 
 class PAC1921_Synchronised_Array(object):
+    """
+    Class to link several PAC1921 devices together in pin-controlled mode, where they are using the
+    same physical pin for nRead_int. This means the integration is performed once before reading
+    data from all devices. All readings will therefore be synchronised.
+
+    Devices should be configured individually (i.e. with gain settings etc) before being added to
+    the array. There is no need to have called the pin-control configuration function.
+
+    Note that all devices will be measuring power in this mode, which is the only measurement that
+    supports pin-control.
+    """
 
     def __init__(self, device_list=None, nRead_int_pin=None, integration_time_ms=None):
+        """
+        Create a new array for pin-controlled PAC1921 devices sharing a nRead_int pin.
+
+        A device list can be supplied with already instantiated PAC1921 devices. Alternatively,
+        devices can be added afterwards with add_device().
+
+        This function is capable of 'inheriting' settings from supplied devices. If any of the
+        devices has a configured nRead_int_pin, there is no need to supply one to the function.
+
+        Similarly, if any of the devices has been configured for pin control with an integration
+        period already, the first found with an integration perid will be used.
+
+        In both cases, values supplied directly to the function will override any device settings.
+
+        :param device_list:     List of PAC1921 devices to add to the array and inherit values from
+        :param nRead_int_pin:   gpiod line for read/integration control (optional if device has pin)
+        :param integration_time_ms: Integration time in ms (optional if device already configured)
+        """
 
         self._logger = _logging.getLogger('odin_devices.PAC1921.array')
 
@@ -656,18 +853,32 @@ class PAC1921_Synchronised_Array(object):
         self._integration_time_ms = integration_time_ms
 
     def add_device(self, device: PAC1921):
+        """
+        Add a device to the array. Device is checked for being a PAC1921 instance and being set for
+        pin-controlled mode.
+        """
         if type(device) is not PAC1921:
             raise TypeError("Device should be a PAC1921 Instance")
         if not device.pin_control_enabled():
-            raise ValueError("Device should be configured for pin-controlled integration mode")
+            raise ValueError("Device should be set for pin-controlled integration mode")
         self._device_list.append(device)
 
         self._logger.info('New device {} added to array'.format(device._name))
 
     def set_integration_time(self, integration_time):
+        """
+        Change the integration time used for the entire array.
+        """
         self._integration_time_ms = integration_time
 
-    def integrate_read_devices(self):
+    def read_devices(self):
+        """
+        Perform the integration and read results from all devices in turn. To avoid confusion, the
+        result is a tuple of device names and results.
+
+        Note that all devices will be measuring power in this mode, which is the only measurement that
+        supports pin-control. Results are in watts.
+        """
         # Check that the integration time has been set
         if self._integration_time_ms is None:
             raise Exception("Integration time is not set")
@@ -683,6 +894,10 @@ class PAC1921_Synchronised_Array(object):
         return (self.get_names(), decoded_outputs)
 
     def get_names(self):
+        """
+        For convenience, return the list of device names. This is in the same order as results will
+        be reported.
+        """
         names = []
         for device in self._device_list:
             names.append(device.get_name())
