@@ -1,15 +1,15 @@
-from odin_devices.i2c_device import I2CDevice
-from enum import Enum, auto
+from odin_devices.i2c_device import I2CDevice as _I2CDevice
+from enum import Enum as _Enum, auto as _auto
 
-import logging
-import time
+import logging as _logging
+import time as _time
 
 _GPIO_AVAIL = True
 try:
-    import gpiod
+    import gpiod as _gpiod
 except Exception:
         _GPIO_AVAIL = False
-        templogger = logging.getLogger('odin_devices.pac1921')
+        templogger = _logging.getLogger('odin_devices.pac1921')
         templogger.warning("No support for GPIO, FreeRun mode only")
 
 # The PAC1921 uses a resistance to ground to determine address.
@@ -76,16 +76,17 @@ _V_POST_FILT_EN_DEFAULT = False
 _EXPECTED_PRODUCT_ID        = 0b01011011
 _EXPECTED_MANUFACTURER_ID   = 0b01011101
 
+class Measurement_Type (_Enum):
+    POWER = _auto()
+    VBUS = _auto()
+    CURRENT = _auto()
+
+class _Integration_Mode (_Enum):
+    FreeRun = _auto()
+    PinControlled = _auto()
+
+
 class PAC1921(object):
-    class _Integration_Mode (Enum):
-        FreeRun = auto()
-        PinControlled = auto()
-
-    class Measurement_Type (Enum):
-        POWER = auto()
-        VBUS = auto()
-        CURRENT = auto()
-
     def __init__(self, i2c_address=None, address_resistance=None, name='PAC1921', nRead_int_pin=None, r_sense=None, measurement_type=None):
         #Rsense must be supplied unless the measurement is voltage
 
@@ -99,7 +100,7 @@ class PAC1921(object):
 
         # Init the I2C Device
         self._i2c_address = i2c_address
-        self._i2c_device = I2CDevice(self._i2c_address, debug=True)
+        self._i2c_device = _I2CDevice(self._i2c_address, debug=False)
         self._i2c_device.enable_exceptions();
 
         # Check the device is present on the I2C bus
@@ -107,27 +108,23 @@ class PAC1921(object):
 
         # Init logger
         self._name = name        # Name is used because there may be multiple monitors
-        self._logger = logging.getLogger('odin_devices.pac1921.' +
+        self._logger = _logging.getLogger('odin_devices.pac1921.' +
                                          self._name + '@' +
                                          hex(self._i2c_address))
 
-        if nRead_int_pin is not None:
-            if type(nRead_int_pin) is not gpiod.Line:
-                raise TypeError("nRead_int_pin should be of type gpiod.Line, "
-                                "either from gpiod directly or the odin_devicecs gpio_bus driver")
+        self._set_nRead_int_pin(nRead_int_pin)
 
-        self._nRead_int_pin = nRead_int_pin
         self._r_sense = r_sense
 
         # Check that the measurement type is valid
         self._measurement_type = None
-        if type(measurement_type) is PAC1921.Measurement_Type:
+        if type(measurement_type) is Measurement_Type:
             self.set_measurement_type(measurement_type)
         else:
             raise TypeError("Invalid measurement type given")
 
         # Store the POR values of the settings registers
-        self._integration_mode = PAC1921._Integration_Mode.PinControlled    # pin-ctrl default POR
+        self._integration_mode = _Integration_Mode.PinControlled    # pin-ctrl default POR
         self._dv_gain = _DV_GAIN_DEFAULT
         self._di_gain = _DI_GAIN_DEFAULT
         self._i_resolution = _I_RES_DEFAULT
@@ -146,7 +143,7 @@ class PAC1921(object):
         self._write_register_bitfield(7, 8, 0x00, 0)
         self._write_register_bitfield(7, 8, 0x01, 12)
         self._write_register_bitfield(7, 8, 0x02, 0)
-        self.force_config_update()
+        self._force_config_update()
 
         # Init progress tracking vars
         self._pincontrol_config_complete = False
@@ -159,7 +156,7 @@ class PAC1921(object):
         try:
             product_id = self._i2c_device.readU8(_PRODUCT_ID_REG) & 0xFF
             manufacturer_id = self._i2c_device.readU8(_MANUFACTURER_ID_REG) & 0xFF
-        except I2CDevice.ERROR:
+        except _I2CDevice.ERROR:
             raise
 
         if product_id != 0b01011011:
@@ -213,13 +210,13 @@ class PAC1921(object):
 
         self._nRead_int_state = False
 
-    def _trigger_pin_integration(self, integration_time_ms, integration_pin):
+    def _trigger_pin_integration(self, integration_time_ms):
 
         # Set the pin to integrate mode
         self._pin_set_integration()
 
         # Wait for time integration time to be reached
-        time.sleep(integration_time_ms / 1000.0)
+        _time.sleep(integration_time_ms / 1000.0)
 
         # Set the pin to read mode
         self._pin_set_read()
@@ -272,7 +269,7 @@ class PAC1921(object):
             self._logger.warning("Overflow Detected! DI_GAIN or DV_GAIN may be too high.")
 
         # Decode the relevant measurement type
-        if self._measurement_type is PAC1921.Measurement_Type.VBUS:
+        if self._measurement_type is Measurement_Type.VBUS:
             # Read the raw register
             vbus_high = self._i2c_device.readU8(_VBUS_RESULT_REG)
             vbus_low = self._i2c_device.readU8(_VBUS_RESULT_REG+1)
@@ -286,7 +283,7 @@ class PAC1921(object):
 
             return vbus_result
 
-        elif self._measurement_type is PAC1921.Measurement_Type.CURRENT:
+        elif self._measurement_type is Measurement_Type.CURRENT:
             # Read the raw register
             vsense_high = self._i2c_device.readU8(_VSENSE_RESULT_REG)
             vsense_low = self._i2c_device.readU8(_VSENSE_RESULT_REG+1)
@@ -300,7 +297,7 @@ class PAC1921(object):
 
             return vsense_result
 
-        elif self._measurement_type is PAC1921.Measurement_Type.POWER:
+        elif self._measurement_type is Measurement_Type.POWER:
             # Read the raw register
             power_high = self._i2c_device.readU8(_POWER_RESULT_REG)
             power_low = self._i2c_device.readU8(_POWER_RESULT_REG+1)
@@ -322,8 +319,16 @@ class PAC1921(object):
     def _get_nRead_int_pin(self):
         return self._nRead_int_pin
 
+    def _set_nRead_int_pin(self, nRead_int_pin):
+        if nRead_int_pin is not None:
+            if type(nRead_int_pin) is not _gpiod.Line:
+                raise TypeError("nRead_int_pin should be of type gpiod.Line, "
+                                "either from gpiod directly or the odin_devices gpio_bus driver")
+
+        self._nRead_int_pin = nRead_int_pin
+
     def pin_control_enabled(self):
-        return (self._integration_mode == PAC1921._Integration_Mode.PinControlled)
+        return (self._integration_mode == _Integration_Mode.PinControlled)
 
     def get_name(self):
         return self._name
@@ -354,7 +359,7 @@ class PAC1921(object):
             self._i_resolution = adc_resolution
             self._v_resolution = adc_resolution
 
-            self._logger.debug(
+            self._logger.info(
                     'ADC resolution config as I: {} bits, V: {} bits'.format(self._i_resolution,
                                                                              self._v_resolution))
 
@@ -379,7 +384,7 @@ class PAC1921(object):
             self._i_post_filter_en = post_filter_en
             self._v_post_filter_en = post_filter_en
 
-            self._logger.debug(
+            self._logger.info(
                     'Post Filter EN set to I: {}, V: {}'.format(self._i_post_filter_en,
                                                                 self._v_post_filter_en))
 
@@ -387,7 +392,7 @@ class PAC1921(object):
         # the next reading
         if self._nRead_int_state:
             self._register_set_read()
-            time.sleep(0.001)
+            _time.sleep(0.001)
             self._register_set_integration()
 
     def config_gain(self, di_gain=None, dv_gain=None):
@@ -409,7 +414,7 @@ class PAC1921(object):
             # Set in driver
             self._di_gain = di_gain
 
-            self._logger.debug(
+            self._logger.info(
                     'DI gain set to {} (encoded as 0x{})'.format(self._di_gain, di_gain_raw))
 
         # Set the DV gain if supplied
@@ -428,17 +433,17 @@ class PAC1921(object):
             # Set in driver
             self._dv_gain = dv_gain
 
-            self._logger.debug(
+            self._logger.info(
                     'DV gain set to {} (encoded as 0x{})'.format(self._dv_gain, dv_gain_raw))
 
         # If in integration mode, need to enter read mode so that settings will take effect before
         # the next reading
         if self._nRead_int_state:
             self._register_set_read()
-            time.sleep(0.001)
+            _time.sleep(0.001)
             self._register_set_integration()
 
-    def force_config_update(self):
+    def _force_config_update(self):
         # Force a config update for the resolution, filtering and gain by writing the values stored
         # in the driver to the device.
         self.config_gain(di_gain = self._di_gain, dv_gain = self._dv_gain)
@@ -460,18 +465,18 @@ class PAC1921(object):
             self._write_register_bitfield(7, 4, _SMPL_REG, sample_reg_value)
 
         # Set integration mode and measurement type in device
-        if self._measurement_type is PAC1921.Measurement_Type.CURRENT:
+        if self._measurement_type is Measurement_Type.CURRENT:
             combined_int_meas_field = 0b01
-        elif self._measurement_type is PAC1921.Measurement_Type.VBUS:
+        elif self._measurement_type is Measurement_Type.VBUS:
             combined_int_meas_field = 0b10
-        elif self._measurement_type is PAC1921.Measurement_Type.POWER:
+        elif self._measurement_type is Measurement_Type.POWER:
             combined_int_meas_field = 0b11
         self._write_register_bitfield(7, 2, 0x02, combined_int_meas_field)
 
         self._pincontrol_config_complete = False
         self._freerun_config_complete = True
 
-        self._integration_mode = PAC1921._Integration_Mode.FreeRun
+        self._integration_mode = _Integration_Mode.FreeRun
 
         self._logger.info(
                 'Config for free-run integration mode with measurement type ' +
@@ -481,13 +486,13 @@ class PAC1921(object):
         self._register_set_integration()
         self._logger.debug('Now entering integration mode for free-run')
 
-    def config_pincontrol_integration_mode(self, integration_time_ms):
+    def config_pincontrol_integration_mode(self, integration_time_ms=500):
         # Check that a pin has been assigned
         if not self._has_nRead_int_pin():
             raise Exception("Pin control mode requires a nRead_int pin")
 
         # Check that power measurement is selected (the only mode that supports pin control)
-        if self._measurement_type is not PAC1921.Measurement_Type.POWER:
+        if self._measurement_type is not Measurement_Type.POWER:
             raise Exception(
                     "Pin control mode does not support " +
                     "measurement type: {}".format(self._measurement_type))
@@ -518,18 +523,18 @@ class PAC1921(object):
         self._pincontrol_config_complete = True
         self._freerun_config_complete = False
 
-        self._integration_mode = PAC1921._Integration_Mode.PinControlled
+        self._integration_mode = _Integration_Mode.PinControlled
 
         self._logger.info(
                 'Config for pin-controlled integration mode with integration time ' +
                 '{}ms complete'.format(integration_time_ms))
 
     def set_measurement_type(self, measurement_type: Measurement_Type):
-        if type(measurement_type) is not PAC1921.Measurement_Type:
+        if type(measurement_type) is not Measurement_Type:
             raise TypeError
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
-        if measurement_type is not PAC1921.Measurement_Type.VBUS:
+        if measurement_type is not Measurement_Type.VBUS:
             if self._r_sense is None:
                 raise Exception(
                     "Measurement type {} requries Rsense resistor value".format(measurement_type))
@@ -546,7 +551,7 @@ class PAC1921(object):
         self._logger.info('Measurement type set as {}'.format(measurement_type))
 
     def integrate_and_read(self):
-        if self._integration_mode == PAC1921._Integration_Mode.PinControlled:
+        if self._integration_mode == _Integration_Mode.PinControlled:
             self._logger.info('Starting pin-controlled integration')
 
             # Check that the config function has been called
@@ -555,12 +560,12 @@ class PAC1921(object):
                 raise Exception("Configuration for pin-control has not been completed")
 
             # Trigger a timed integration on the device's pin
-            self._trigger_pin_integration(self._integration_time_ms, self._get_nRead_int_pin())
+            self._trigger_pin_integration(self._integration_time_ms, self._pin_set_read, self._pin_set_integration)
             # Note: read must now take place within tsleep (1s) before erase
 
             return self._read_decode_output()
 
-        elif self._integration_mode == PAC1921._Integration_Mode.FreeRun:
+        elif self._integration_mode == _Integration_Mode.FreeRun:
             # By this point, integration mode should already have been entered in config
             self._logger.info('Reading free-run integration')
 
@@ -584,7 +589,7 @@ class PAC1921(object):
             return decoded_output
 
     def stop_freerun_integration(self):
-        if self._integration_mode == PAC1921._Integration_Mode.FreeRun:
+        if self._integration_mode == _Integration_Mode.FreeRun:
             self._register_set_read()
 
             # Config must be run again to start integration.
@@ -599,30 +604,56 @@ class PAC1921(object):
 
 class PAC1921_Synchronised_Array(object):
 
-    def __init__(self, device_list=None, nRead_int_pin=None, integration_time=None):
+    def __init__(self, device_list=None, nRead_int_pin=None, integration_time_ms=None):
 
+        self._logger = _logging.getLogger('odin_devices.PAC1921.array')
+
+        self._integration_device = None
+        self._device_list = []
         if device_list is not None:
             for device in device_list:
+                # Check that the device has been configured for pin control properly, since this
+                # would normally be checked in the integrate method that is now only called for
+                # one of the devices
+                if not device._pincontrol_config_complete:
+                    # Force device to use pin control, ignore error about no pin (it is assumed
+                    # that another device will have the pin. If not, this will be caught later)
+                    try:
+                        device.config_pincontrol_integration_mode()
+                    except Exception as e:
+                        if 'requires a nRead_int pin' in e.args[0]:
+                            pass
+                        else:
+                            raise
+
                 # Add the device to the array
                 self.add_device(device)
+
+                # Ensure that the device will respond to a pin control event (disable register ctrl)
+                device._write_register_bitfield(1, 1, 0x01, 0b0)
 
                 # Check for an integration control pin if one was not supplied
                 if nRead_int_pin is None:
                     if device._has_nRead_int_pin():
-                        nRead_int_pin = device._get_nRead_int_pin()
+                        self._integration_device = device
 
                 # Inherit integration time if any device has one and if one was not supplied
-                if integration_time is None:
+                if integration_time_ms is None:
                     if device._integration_time_ms is not None:
-                        integration_time = device._integration_time_ms
+                        integration_time_ms = device._integration_time_ms
 
-        if nRead_int_pin is None:
-            raise ValueError("No pin given or present in any device. nRead_int_pin is required")
+        # If no devices already had nRead_int pins assigned, use the one supplied
+        if self._integration_device is None:
+            if nRead_int_pin is not None:
+                self._integration_device = self._device_list[0] # Pick first device
+                self._integration_decice._set_nRead_int_pin(nRead_int_pin)  # Assign supplied pin
+            else:
+                # No pin was supplied, and no instances supplied had a pin
+                if nRead_int_pin is None and self._integration_device is None:
+                    raise ValueError(
+                            "No pin given or present in any device. nRead_int_pin is required")
 
-        self._nRead_int_pin = nRead_int_pin
-        self._integration_time_ms = integration_time
-
-        self._logger = logging.getLogger('odin_devices.PAC1921.array')
+        self._integration_time_ms = integration_time_ms
 
     def add_device(self, device: PAC1921):
         if type(device) is not PAC1921:
@@ -631,7 +662,7 @@ class PAC1921_Synchronised_Array(object):
             raise ValueError("Device should be configured for pin-controlled integration mode")
         self._device_list.append(device)
 
-        self._logger.info('New device {} added to array'.format(PAC1921._name))
+        self._logger.info('New device {} added to array'.format(device._name))
 
     def set_integration_time(self, integration_time):
         self._integration_time_ms = integration_time
@@ -641,12 +672,18 @@ class PAC1921_Synchronised_Array(object):
         if self._integration_time_ms is None:
             raise Exception("Integration time is not set")
 
-        # Trigger the pin-controlled integration
-        self._trigger_pin_integration(self._integration_time_ms, self._nRead_int_pin)
+        # Trigger the pin-controlled integration on one device
+        self._integration_device._trigger_pin_integration(self._integration_time_ms)
 
-        # Form a list of decoded outputs
+        # Form a list of decoded outputs combined with names
         decoded_outputs = []
         for device in self._device_list:
-            decoded_outputs.append(devicec._read_decode_output())
+            decoded_outputs.append(device._read_decode_output())
 
-        return decoded_outputs
+        return (self.get_names(), decoded_outputs)
+
+    def get_names(self):
+        names = []
+        for device in self._device_list:
+            names.append(device.get_name())
+        return names
