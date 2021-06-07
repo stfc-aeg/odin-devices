@@ -225,19 +225,24 @@ class FireFly:
         vendor_name_ascii = "".join([chr(value) for value in vendor_name_array])
         return (part_number_ascii, vendor_name_ascii, vendor_OUI_array)
 
-    def get_temperature(self, direction):
+    def get_temperature(self, direction=None):
         """
         Generic function to get the temperature of the firefly transmitter or receiver.
 
         :param direction:   Selection from DIRECTION_<TX/RX>
         :return:            float temperature of specified device
         """
+        # If the supplied direction is None, but only one direction is possible for this device
+        if (direction is None and (self.direction == FireFly.DIRECTION_TX or
+                                   self.direction == FireFly.DIRECTION_RX)):
+            direction = self.direction  # Derive temperature direction from simplex device
+
         if direction == FireFly.DIRECTION_TX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
         elif direction == FireFly.DIRECTION_RX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
         else:
-            raise I2CException("Invalid direction specified")
+            raise I2CException("Invalid direction specified, and could not be derived")
 
         if len(temperature_bytes) != 2:
             raise I2CException("Failed to read temperature")
