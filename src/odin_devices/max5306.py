@@ -35,16 +35,16 @@ _POWER_SET_LSBS_SHUTDOWN2 = 0b10        # Ground output through 1kohm
 _POWER_SET_LSBS_SHUTDOWN3 = 0b00        # Ground output through 100kohm (default output state)
 
 class MAX5306 (SPIDevice):
-    def __init__(self, Vref: float, bus, device, bipolar=False):
+    def __init__(self, Vref, bus, device, bipolar=False):
         """
         MAX5306 Init. Vref is the reference connected to the device, which will be used to calculate
         DAC values to reach target output values. The bipolar parameter changes the calculation for
         output DAC value so that it will be compatible with a bipolar output stage (see the MAX5306
         datasheet)
 
-        :param Vref:    Refernce voltage
-        :param bus:     spidev bus
-        :param device:  spidev device
+        :param Vref:    float reference voltage
+        :param bus:     int spidev bus number
+        :param device:  int spidev device number
         """
 
         # Check Vref is valid
