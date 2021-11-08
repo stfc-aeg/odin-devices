@@ -8,6 +8,7 @@ if sys.version_info[0] == 3:    # pragma: no cover
 else:                           # pragma: no cover
     from mock import Mock, mock_open, MagicMock, patch
     ModuleNotFoundError = ImportError
+    FileNotFoundError = OSError     # Python 2 does not support FileNotFoundError
 
 # Create mocks
 sys.modules['gpiod'] = Mock()

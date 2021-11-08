@@ -29,6 +29,7 @@ if sys.version_info[0] == 3:        # pragma: no cover
 else:                               # pragma: no cover
     try:
         import futures
+        FileNotFoundError = OSError
     except ImportError:
         _ASYNC_AVAIL = False
         logger.warning(
