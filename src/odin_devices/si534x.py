@@ -102,7 +102,7 @@ class _SI534x(object):
 
         def write(self, data, channel_num):
             # Check channel number is valid
-            if channel_num >= self.num_channels:
+            if channel_num >= self.channel_num:
                 raise SI534xException(
                         "The channel number specified does not exist.")
 
@@ -116,7 +116,7 @@ class _SI534x(object):
 
         def read(self, channel_num):
             # Check channel number is valid
-            if channel_num >= self.num_channels:
+            if channel_num >= self.channel_num:
                 raise SI534xException(
                         "The channel number specified does not exist.")
 
