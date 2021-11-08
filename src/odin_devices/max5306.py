@@ -67,7 +67,7 @@ class MAX5306 (SPIDevice):
 
         self.reset()
 
-    def _send_command(self, command: int, data: int):
+    def _send_command(self, command, data):
         """
         Send a 16-bit word to the device, comprised of a 4-bit command and 12-but data field.
 
@@ -93,12 +93,12 @@ class MAX5306 (SPIDevice):
         #self.write_16(word_bytes)
         self.transfer(list(word_bytes), end=2)
 
-    def _set_output_power(self, output_number: int, power_mode: int):
+    def _set_output_power(self, output_number, power_mode):
         """
         Set the output power state of a given output number. This can be one of four values, where
         one (_POWER_SET_LSBS_POWERUP) is powered up, and the others are various types of shutdown.
 
-        :param output_number:       The output number to apply the new power state to
+        :param output_number:       int, Output number to apply the new power state to
         :param power_mode:          2-bit code representing power mode. See _POWER_SET_LSBS_x above.
         """
 
@@ -142,15 +142,15 @@ class MAX5306 (SPIDevice):
         """
         self._send_command(_COMMAND_RESET, 0)
 
-    def set_output(self, output_number: int, output_voltage: float, set_power=True):
+    def set_output(self, output_number, output_voltage, set_power=True):
         """
         Set the output DAC to output a specified voltage. If set_power is set False, the output will
         not be powered up, and this will need doing manually with power_on_output(). The allowable
         voltage ranges are checked based on the reference voltage Vref and whether the device is
         configured for bipolar or unipolar operation.
 
-        :param output_number:   The output the voltage will be set for
-        :param output_voltage:  The output voltage that should be set
+        :param output_number:   int, the output the voltage will be set for
+        :param output_voltage:  float, the output voltage that should be set
         :param set_power:       (Optional) Set False so that this output is not forced on
         """
 
