@@ -35,6 +35,8 @@ jobs:
       run: |
         if python -V | grep "Python 2."; then
           pip install mock
+        else
+          echo $(python -V) does not require mock
         fi
     - name: Install odin-devices
       run: |
