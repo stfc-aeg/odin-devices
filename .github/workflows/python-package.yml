@@ -30,12 +30,11 @@ jobs:
         python -m pip install flake8 pytest
         pip install pytest
         pip install pytest-cov
+        pip install unittest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Install mock if needed
       run: |
-        if pip list | grep "unittest"; then
-          echo "mock not needed"
-        else
+        if python -V | grep "Python 2."; then
           pip install mock
         fi
     - name: Install odin-devices
