@@ -169,7 +169,7 @@ class LTC2986 (SPIDevice):
 
         # Init SPI Device
         super().__init__(bus, device)
-        self.set_mode(0)
+        self.set_mode(0b01)
 
         # Store hardfault ignore setting
         self._ignore_hardfaults = ignore_hardfaults
