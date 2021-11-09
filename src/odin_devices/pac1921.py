@@ -672,7 +672,7 @@ class PAC1921(object):
                 'Config for pin-controlled integration mode with integration time ' +
                 '{}ms complete'.format(integration_time_ms))
 
-    def set_measurement_type(self, measurement_type: Measurement_Type):
+    def set_measurement_type(self, measurement_type):
         """
         Change the measurement type between Vbus voltage, Rsense current, and power. If the desired
         measurement is supplied at device instantiation, no call is necessary. If the measurement
@@ -823,7 +823,7 @@ class PAC1921_Synchronised_Array(object):
             for device in device_list:
                 self.add_device(device)     # Add the device to the array
 
-    def add_device(self, device: PAC1921):
+    def add_device(self, device):
         """
         Add a device to the array. Device is checked for being a PAC1921 instance and being set for
         pin-controlled mode.
