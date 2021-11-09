@@ -11,6 +11,7 @@ Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
 
 from odin_devices.spi_device import SPIDevice, SPIException
 import logging
+import sys
 
 # 4-bit SPI command fields
 _COMMAND_RESET = 0b0001                 # Reset all registers
@@ -34,17 +35,41 @@ _POWER_SET_LSBS_SHUTDOWN1 = 0b01        # Set output to high impedance
 _POWER_SET_LSBS_SHUTDOWN2 = 0b10        # Ground output through 1kohm
 _POWER_SET_LSBS_SHUTDOWN3 = 0b00        # Ground output through 100kohm (default output state)
 
+def _int_to_bytes_compatible(int_in, length, byteorder):
+    """ Replaces int.to_bytes since this does not exist in Python 2 """
+    if sys.version_info[0] == 3:                                    # pragma: no cover
+        return int_in.to_bytes(length, byteorder)
+    else:
+        import binascii
+        import struct
+
+        packed_bytes = struct.pack('>q', int_in)[-length:]
+        packet_bytes = packed_bytes if byteorder == 'big' else packed_bytes[::-1]
+
+        hex_string = binascii.hexlify(packet_bytes)
+        s_list = bytearray([i for i in binascii.unhexlify(hex_string)])
+        return s_list
+
+def _bytes_to_hex_compatible(bytes_in):
+    """ Replaces bytes.hex() since this does not exist in Python 2 """
+    if sys.version_info[0] == 3 and sys.version_info[1] >= 5:       # pragma: no cover
+        return bytes_in.hex()
+    else:
+        import binascii
+        return binascii.hexlify(bytes_in)
+
+
 class MAX5306 (SPIDevice):
-    def __init__(self, Vref: float, bus, device, bipolar=False):
+    def __init__(self, Vref, bus, device, bipolar=False):
         """
         MAX5306 Init. Vref is the reference connected to the device, which will be used to calculate
         DAC values to reach target output values. The bipolar parameter changes the calculation for
         output DAC value so that it will be compatible with a bipolar output stage (see the MAX5306
         datasheet)
 
-        :param Vref:    Refernce voltage
-        :param bus:     spidev bus
-        :param device:  spidev device
+        :param Vref:    float reference voltage
+        :param bus:     int spidev bus number
+        :param device:  int spidev device number
         """
 
         # Check Vref is valid
@@ -56,7 +81,7 @@ class MAX5306 (SPIDevice):
         if Vref > 5.5 or Vref < 0.8:
             raise ValueError("Vref is max Vdd and min 0.8v")
 
-        super().__init__(bus, device)
+        super(MAX5306, self).__init__(bus, device)
         self.set_cs_active_high(False)
         self.set_mode(0b01);    # Data latched on falling clock edge, idle low
 
@@ -67,7 +92,7 @@ class MAX5306 (SPIDevice):
 
         self.reset()
 
-    def _send_command(self, command: int, data: int):
+    def _send_command(self, command, data):
         """
         Send a 16-bit word to the device, comprised of a 4-bit command and 12-but data field.
 
@@ -86,19 +111,19 @@ class MAX5306 (SPIDevice):
             raise ValueError("Command bits ({}) must be positive and fit in 12-bit field")
 
         word = ((command << 12) | data) & 0xFFFF
-        word_bytes = word.to_bytes(length=2, byteorder='big')
+        word_bytes = _int_to_bytes_compatible(word, length=2, byteorder='big')
 
-        self._logger.debug("Writing bytes 0x{}".format(word_bytes.hex()))
+        self._logger.debug("Writing bytes 0x{}".format(_bytes_to_hex_compatible(word_bytes)))
 
         #self.write_16(word_bytes)
         self.transfer(list(word_bytes), end=2)
 
-    def _set_output_power(self, output_number: int, power_mode: int):
+    def _set_output_power(self, output_number, power_mode):
         """
         Set the output power state of a given output number. This can be one of four values, where
         one (_POWER_SET_LSBS_POWERUP) is powered up, and the others are various types of shutdown.
 
-        :param output_number:       The output number to apply the new power state to
+        :param output_number:       int, Output number to apply the new power state to
         :param power_mode:          2-bit code representing power mode. See _POWER_SET_LSBS_x above.
         """
 
@@ -142,15 +167,15 @@ class MAX5306 (SPIDevice):
         """
         self._send_command(_COMMAND_RESET, 0)
 
-    def set_output(self, output_number: int, output_voltage: float, set_power=True):
+    def set_output(self, output_number, output_voltage, set_power=True):
         """
         Set the output DAC to output a specified voltage. If set_power is set False, the output will
         not be powered up, and this will need doing manually with power_on_output(). The allowable
         voltage ranges are checked based on the reference voltage Vref and whether the device is
         configured for bipolar or unipolar operation.
 
-        :param output_number:   The output the voltage will be set for
-        :param output_voltage:  The output voltage that should be set
+        :param output_number:   int, the output the voltage will be set for
+        :param output_voltage:  float, the output voltage that should be set
         :param set_power:       (Optional) Set False so that this output is not forced on
         """
 

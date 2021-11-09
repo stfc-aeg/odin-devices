@@ -60,7 +60,7 @@ class TestMAX5306Device(object):
         test_command = 0b1010
         test_data = 0b011001100110
         expected_output = (test_command << 12) | test_data
-        expected_output_bytes = expected_output.to_bytes(length=2, byteorder='big')
+        expected_output_bytes = [(expected_output & 0xFF00) >> 8, expected_output & 0xFF]
         temp_new_device._send_command(test_command, test_data)
         temp_new_device.spi.xfer2.assert_any_call(list(expected_output_bytes))
 

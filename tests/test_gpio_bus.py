@@ -36,14 +36,9 @@ class TestGPIOBus():
 
     def test_imports_noconcurrent(self, test_gpio_bus):
         # remove concurrent reference so that on import it will fail
-        if sys.version_info[0] == 3:    #pragma: no cover
-            import concurrent
-            oldconcurrent = sys.modules['concurrent']
-            sys.modules['concurrent'] = None
-        else:                           #pragma: no cover
-            import futures
-            oldfutures = sys.modules['futures']
-            sys.modules['futures'] = None
+        import concurrent
+        oldconcurrent = sys.modules['concurrent']
+        sys.modules['concurrent'] = None
 
         # import with concurrent removed
         import odin_devices.gpio_bus
@@ -69,10 +64,7 @@ class TestGPIOBus():
         test_gpio_bus.gpio_bus_temp.release_all_consumed()
 
         # Restore concurrent
-        if sys.version_info[0] == 3:    #pragma: no cover
-            sys.modules['concurrent'] = oldconcurrent
-        else:                           #pragma: no cover
-            sys.modules['futures'] = oldfutures
+        sys.modules['concurrent'] = oldconcurrent
         import odin_devices.gpio_bus
         reload(odin_devices.gpio_bus)
         from odin_devices.gpio_bus import GPIO_Bus, GPIOException
