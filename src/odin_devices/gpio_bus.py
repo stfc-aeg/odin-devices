@@ -52,7 +52,7 @@ if sys.version_info[0] == 3:        # pragma: no cover
 else:                               # pragma: no cover
     FileNotFoundError = OSError     # FileNotFoundError is not defined in Python 2
     try:
-        import futures
+        import concurrent.futures as futures
     except ImportError:
         _ASYNC_AVAIL = False
         logger.warning(
