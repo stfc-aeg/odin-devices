@@ -24,29 +24,41 @@ class si534xTestFixture(object):
     def virtual_registers_en(self, en):
         if en:
             print("I2C interface now driving virtual register map")
-            self.si5345_i2c.i2c_bus.writeU8.side_effect = self.write_virtual_regmap
+            self.si5345_i2c.i2c_bus.write8.side_effect = self.write_virtual_regmap
             self.si5345_i2c.i2c_bus.readU8.side_effect = self.read_virtual_regmap
         else:
             print("I2C interface now has no effect")
 
     def read_virtual_regmap(self, register):
-        if register == 0x01:
-            # This is the page select register
-            print("REGISTER MOCK: Page select requested: ", self.virtual_page_select)
-            return self.virtual_page_select
-        else:
-            print("REGISTER MOCK: Register {} value requested: {}".format(register,
-                self.virtual_registers[self.virtual_page_select][register]))
-            return self.virtual_registers[self.virtual_page_select][register]
+        try:
+            if register == 0x01:
+                # This is the page select register
+                print("REGISTER MOCK: Page select requested: ", self.virtual_page_select)
+                return self.virtual_page_select
+            else:
+                print("REGISTER MOCK: Register {} page {} value requested: {}".format(
+                    register, self.virtual_page_select,
+                    self.virtual_registers[self.virtual_page_select][register]))
+                return self.virtual_registers[self.virtual_page_select][register]
+        except Exception as e:
+            print("Failure to read register {} from page {}".format(register, self.virtual_page_select))
+            print("Error: {}".format(e))
+            raise
 
     def write_virtual_regmap(self, register, value):
-        if register == 0x01:
-            # This is the page select register
-            print("REGISTER MOCK: Page select changed: ", value)
-            self.virtual_page_select = value
-        else:
-            print("REGISTER MOCK: Register {} changed: {}".format(register, value))
-            self.virtual_registers[self.virtual_page_select][register] = value
+        try:
+            if register == 0x01:
+                # This is the page select register
+                print("REGISTER MOCK: Page select changed: ", value)
+                self.virtual_page_select = value
+            else:
+                print("REGISTER MOCK: Register {} page {} changed: {}".format(
+                    register, self.virtual_page_select, value))
+                self.virtual_registers[self.virtual_page_select][register] = value
+        except Exception as e:
+            print("Failure to read register {} from page {}".format(register, self.virtual_page_select))
+            print("Error: {}".format(e))
+            raise
 
 @pytest.fixture(scope="class")
 def test_si534x_driver():
@@ -86,6 +98,7 @@ class TestSI534x():
         mock_file_open = mock_open()
         with patch(BUILTINS_NAME + '.open', mock_file_open):
             # Write temporary memory-based file
+            print("Iterator resister list:", list(_SI534x._regmap_generator()))
             test_si534x_driver.si5345_i2c.export_register_map('nofile.txt')
             mock_file_open.assert_called()
 
@@ -95,16 +108,20 @@ class TestSI534x():
             if not "call().write" in str(writeline):
                 continue
             tmp_file_str += str(writeline)[14:-4] + "\n"
-            print(writeline)
-        print(tmp_file_str)
+            #print(writeline)
+
+        #print("Temporary file contents:", tmp_file_str)
 
         # Change all virtual register values to 0xFF
         for page_no in test_si534x_driver.virtual_registers.keys():
             page_dict = test_si534x_driver.virtual_registers[page_no]
             for register in page_dict.keys():
+                if register == 0x01:
+                    # Do not overwrite the page select
+                    continue
                 test_si534x_driver.virtual_registers[page_no][register] = 0xFF
 
-        print(test_si534x_driver.virtual_registers)
+        #print("Virtual registers after reset:", test_si534x_driver.virtual_registers)
 
         # Write registers from 'saved' register map file (import register map)
         mock_file_open = mock_open(read_data=tmp_file_str)
@@ -114,17 +131,21 @@ class TestSI534x():
         # Check that reigsters have their values restored from file
         for page_no in test_si534x_driver.virtual_registers.keys():
             page_dict = test_si534x_driver.virtual_registers[page_no]
-            print("Checking assertions for page no {:02X}: {}".format(page_no, page_dict))
+            #print("Checking assertions for page no {:02X}: {}".format(page_no, page_dict))
             for register in page_dict.keys():
-                print("\tChecking assertion for register {:02X}".format(register))
+                if register == 0x01:
+                    # The page select register should not be checked
+                    continue
+                #print("\tChecking assertion for register {:02X}".format(register))
                 assert(test_si534x_driver.virtual_registers[page_no][register] == page_no | register)
 
         # Test that verify will raise exception if there is a failure
         test_si534x_driver.si5345_i2c.i2c_bus.readU8.side_effect = [
-                0xFF,0xFF]                              # Force smbus read to always return 0xFF
+                0xFF,0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]    # Force smbus read to always return 0xFF
         mock_file_open = mock_open(read_data=tmp_file_str)
         with patch(BUILTINS_NAME + '.open', mock_file_open):
-            with pytest.raises(SI534xCommsException, match=".*Write of byte to register.*"): # Check for exception
+            # Check for exception
+            with pytest.raises(SI534xCommsException, match=".*Write of byte to register.*"):
                 test_si534x_driver.si5345_i2c.apply_register_map('nofile.txt', verify=True)
 
         test_si534x_driver.virtual_registers_en(False)  # smbus read reset
