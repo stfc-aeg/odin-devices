@@ -1,4 +1,21 @@
+"""
+Driver for supporting the SI534x family of clock generators/jitter attenuators.
 
+This includes:
+    - SI5345:   10 output, 5-multisynth
+    - SI5344:   4 output, 4-multisynth
+    - SI5342:   2 output, 2-multisynth
+
+This driver is designed to be used alongside the ClockBuilder Pro software provided by Skyworks.
+After stepping through the software configuration, the generated register map can be uploaded
+through the driver. This data can also be read back from the device if modified.
+
+Once configured, the device's outputs can be toggled and monitored for faults.
+
+Device control is via either I2C or SPI.
+
+Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
+"""
 
 from odin_devices.i2c_device import I2CDevice
 import logging
@@ -20,6 +37,13 @@ class SI534xCommsException(SI534xException):
 
 
 class _SI534x(object):
+    """
+    Parent class for all SI534x family devices. Can be used to upload a configuration file, after
+    which the device's outputs can be monitored for faults and toggled on and off. Underlying device
+    control is either via SPI or I2C.
+
+    This class should not be used directly. Instead, instantiate SI5345, SI5344, or SI5342.
+    """
 
     class _BitField(object):
         """"
