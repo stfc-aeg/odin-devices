@@ -138,10 +138,11 @@ class PAC1921(object):
 
         # Check that the measurement type is valid
         self._measurement_type = None
-        if type(measurement_type) is Measurement_Type:
-            self.set_measurement_type(measurement_type)
-        else:
-            raise TypeError("Invalid measurement type given")
+        if measurement_type is not None:
+            if type(measurement_type) is Measurement_Type:
+                self.set_measurement_type(measurement_type)
+            else:
+                raise TypeError("Invalid measurement type given")
 
         # Store the POR values of the settings registers
         self._integration_mode = _Integration_Mode.PinControlled    # pin-ctrl default POR
@@ -378,6 +379,9 @@ class PAC1921(object):
             self._logger.debug('watts per lsb: {}'.format(power_lsb_watts))
             power_result = power_lsb_watts * power_raw
 
+        else:
+            raise ValueError("Measurement Type has not been set")
+
             return power_result
 
     def _has_nRead_int_pin(self):
@@ -593,6 +597,8 @@ class PAC1921(object):
             combined_int_meas_field = 0b10
         elif self._measurement_type is Measurement_Type.POWER:
             combined_int_meas_field = 0b11
+        else:
+            raise ValueError("Measurement Type has not been set")
         self._write_register_bitfield(7, 2, 0x02, combined_int_meas_field)
 
         self._pincontrol_config_complete = False
