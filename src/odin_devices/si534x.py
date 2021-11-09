@@ -264,8 +264,8 @@ class _SI534x(object):
             self.current_page = self._regmap_pages[self.current_page_index]
             self.current_range_index = 0
             minreg, maxrex, excl = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
-            self.current_register = minreg
-            pass
+            self.current_register = None        # value that will be returned by the iterator.
+            self.next_register = minreg
 
         def __iter__(self):
             return self
@@ -274,29 +274,37 @@ class _SI534x(object):
             return self.next()
 
         def next(self):
+            self.current_register = self.next_register
+
             current_range = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
             current_min, current_max, current_excluded = current_range
 
+            # Stop iteration if beyond valid pages
+            if self.current_page_index >= len(self._regmap_pages):
+                raise StopIteration()
+
+            self.current_page = self._regmap_pages[self.current_page_index]
+
             if self.current_register == current_max:    # Move to next range in page or next page
+                # Move to next range
                 self.current_range_index += 1
+
+                # Move to next page at range 0 if this was the last range
                 if self.current_range_index >= len(self._regmap_pages_register_ranges[self.current_page]):
-                    # Move to next page at range 0
                     self.current_page_index += 1
-                    if self.current_page_index >= len(self._regmap_pages):      # Last page finished
-                        raise StopIteration()
-                    self.current_page = self._regmap_pages[self.current_page_index]
                     self.current_range_index = 0
 
+                # Set the newly selected range information
                 minreg, maxrex, excl = self._regmap_pages_register_ranges[self.current_page][self.current_range_index]
-                self.current_register = minreg          # Get first register in range
-                return self.current_page, self.current_register
+                self.next_register = minreg             # Get first register in new range
+                return self.next()
 
             elif self.current_register in current_excluded:     # Read until non-excluded register
-                self.current_register += 1
+                self.next_register = self.current_register + 1
                 return self.next()
 
             else:                                       # Read next value normally
-                self.current_register += 1
+                self.next_register = self.current_register + 1
                 return self.current_page, self.current_register
 
     class _FaultReport(object):
@@ -393,8 +401,9 @@ class _SI534x(object):
 
     # An iterable of tuples in the form (page, register) where the pages and registers are those
     # that should be read from the device when creating a settings map with export_register_map()
-    # for later re-write with the import_register_map() function.
-    _regmap_pages_registers_iter = _regmap_generator()
+    # for later re-write with the import_register_map() function. Cast to list to prevent
+    # later consumption.
+    _regmap_pages_registers_iter = list(_regmap_generator())
 
     # The register maps to be written to the device require a preamble and postamble that write
     # registers that place the device into an acceptable start state.
@@ -915,7 +924,7 @@ class _SI534x(object):
                 if row[0][0] == '0':    # Register values are preceeded by 0x
                     # Extract register-value pairing from register map
                     page_register = int(row[0], 0)  # 0x prefix detected automatically
-                    value = int(row[1], 0)
+                    value = int(row[1].split('\\')[0], 0)   # Remove any trailing control chars
                     register = page_register & 0xFF         # Lower byte
                     page = (page_register & 0xFF00) >> 8    # Upper byte
 
@@ -948,7 +957,7 @@ class _SI534x(object):
 
             # The registers that will be read are the ones found in output register
             # maps from DSPLLsim.
-            for page, register in _SI534x._regmap_pages_registers_iter:
+            for (page, register) in _SI534x._regmap_pages_registers_iter:
 
                 # TODO potentially include any registers that read as 0 for triggers, that should
                 # not be included in a write map, or need their values changing (like SI5342 ICAL)
