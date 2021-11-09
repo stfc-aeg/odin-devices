@@ -11,6 +11,7 @@ Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
 
 from odin_devices.spi_device import SPIDevice, SPIException
 import logging
+import sys
 
 # 4-bit SPI command fields
 _COMMAND_RESET = 0b0001                 # Reset all registers
@@ -33,6 +34,30 @@ _POWER_SET_LSBS_POWERUP = 0b11          # Power up the output
 _POWER_SET_LSBS_SHUTDOWN1 = 0b01        # Set output to high impedance
 _POWER_SET_LSBS_SHUTDOWN2 = 0b10        # Ground output through 1kohm
 _POWER_SET_LSBS_SHUTDOWN3 = 0b00        # Ground output through 100kohm (default output state)
+
+def _int_to_bytes_compatible(int_in, length, byteorder):
+    """ Replaces int.to_bytes since this does not exist in Python 2 """
+    if sys.version_info[0] == 3:                                    # pragma: no cover
+        return int_in.to_bytes(length, byteorder)
+    else:
+        import binascii
+        import struct
+
+        packed_bytes = struct.pack('>q', int_in)[-length:]
+        packet_bytes = packed_bytes if byteorder == 'big' else packed_bytes[::-1]
+
+        hex_string = binascii.hexlify(packet_bytes)
+        s_list = bytearray([i for i in binascii.unhexlify(hex_string)])
+        return s_list
+
+def _bytes_to_hex_compatible(bytes_in):
+    """ Replaces bytes.hex() since this does not exist in Python 2 """
+    if sys.version_info[0] == 3 and sys.version_info[1] >= 5:       # pragma: no cover
+        return bytes_in.hex()
+    else:
+        import binascii
+        return binascii.hexlify(bytes_in)
+
 
 class MAX5306 (SPIDevice):
     def __init__(self, Vref, bus, device, bipolar=False):
@@ -86,9 +111,9 @@ class MAX5306 (SPIDevice):
             raise ValueError("Command bits ({}) must be positive and fit in 12-bit field")
 
         word = ((command << 12) | data) & 0xFFFF
-        word_bytes = word.to_bytes(length=2, byteorder='big')
+        word_bytes = _int_to_bytes_compatible(word, length=2, byteorder='big')
 
-        self._logger.debug("Writing bytes 0x{}".format(word_bytes.hex()))
+        self._logger.debug("Writing bytes 0x{}".format(_bytes_to_hex_compatible(word_bytes)))
 
         #self.write_16(word_bytes)
         self.transfer(list(word_bytes), end=2)
