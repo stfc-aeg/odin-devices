@@ -56,7 +56,7 @@ class MAX5306 (SPIDevice):
         if Vref > 5.5 or Vref < 0.8:
             raise ValueError("Vref is max Vdd and min 0.8v")
 
-        super().__init__(bus, device)
+        super(MAX5306, self).__init__(bus, device)
         self.set_cs_active_high(False)
         self.set_mode(0b01);    # Data latched on falling clock edge, idle low
 
