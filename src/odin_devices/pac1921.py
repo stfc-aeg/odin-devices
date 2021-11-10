@@ -11,7 +11,7 @@ import time as _time
 
 _GPIO_AVAIL = True
 try:
-    import gpiod as _gpiod
+    import gpiod
 except Exception:
         _GPIO_AVAIL = False
         templogger = _logging.getLogger('odin_devices.pac1921')
@@ -402,7 +402,7 @@ class PAC1921(object):
         type. The pin is assumed claimed by the calling program.
         """
         if nRead_int_pin is not None:
-            if type(nRead_int_pin) is not _gpiod.Line:
+            if not isinstance(nRead_int_pin, type(gpiod.Line)):
                 raise TypeError("nRead_int_pin should be of type gpiod.Line, "
                                 "either from gpiod directly or the odin_devices gpio_bus driver")
 
@@ -817,7 +817,7 @@ class PAC1921_Synchronised_Array(object):
 
         self._logger = _logging.getLogger('odin_devices.PAC1921.array')
 
-        if type(nRead_int_pin) is not _gpiod.Line:
+        if not isinstance(nRead_int_pin, type(gpiod.Line)):
             raise TypeError("nRead_int_pin should be of type gpiod.Line, "
                             "either from gpiod directly or the odin_devices gpio_bus driver")
 
