@@ -155,3 +155,8 @@ class TestPAC1921():
             except Exception as e:
                 print("writemock calls: {}".format(writemock.mock_calls))
                 raise
+
+            # Test that get_name and get_address functions return submitted values
+            test_pac1921.device = PAC1921(i2c_address=0x5A, name="testname")
+            assert(test_pac1921.device.get_name() == "testname")
+            assert(test_pac1921.device.get_address() == 0x5A)
