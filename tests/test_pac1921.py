@@ -4,8 +4,8 @@ Tests for PAC1921 power monitors. The driver is I2CDevice-derived.
 To Test:
     - [x] Address assignment with direct allocation and resistance
     - [x] Prodid manufacturer tests check right area and raise error on fail
-    - [ ] Invalid measurement type supplied to init raises error
-    - [ ] Not supplying a pin does not cause error, but uses register read functions
+    - [x] Invalid measurement type supplied to init raises error
+    - [x] Not supplying a pin does not cause error, but uses register read functions
     - [ ] Check read and integration mode triggers work for both pin mode an register mode
     - [ ] Register read/write functionality method is correct for bitfields (read-modify-write)
     - [ ] Functions exporting mode info is correct: pin_control_enabled, get_name, get_address...
@@ -57,21 +57,22 @@ else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
 sys.modules['smbus'] = MagicMock()
+sys.modules['gpiod.Line'] = MagicMock()
 from odin_devices.pac1921 import PAC1921
 import smbus
 from odin_devices.i2c_device import I2CDevice
+import gpiod
 
 prodid_success_mock = MagicMock()
 
 class pac1921_test_fixture(object):
     def __init__(self):
-        # Temporarily bypassed so that it does nto stop init
-        #PAC1921._check_prodid_manufacturer = Mock()
 
         with patch.object(PAC1921,'_check_prodid_manufacturer') as prodid_success_mock: # Force ID check success
             self.device = PAC1921(i2c_address = 0x5A)
 
         self.device._i2c_device = Mock()
+        self.mock_gpio_pin = gpiod.Line()            # Create mock pin
 
 @pytest.fixture(scope="class")
 def test_pac1921():
@@ -114,3 +115,43 @@ class TestPAC1921():
         with pytest.raises(Exception, match=".*Manufacturer ID.*"):
             test_pac1921.device._i2c_device.readU8.side_effect = lambda reg: {0xFD:0b01011011, 0xFE:0b01011100}[reg]
             test_pac1921.device._check_prodid_manufacturer()
+
+    def test_remaining_init_checks(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        temp_pin = MagicMock(spec=gpiod.Line)
+        temp_pin.set_value = Mock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            print("readU8 result: ", I2CDevice.readU8())
+
+            # Test that an invalid measurement type causes an error
+            with pytest.raises(TypeError):
+                test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type='Voltage')
+
+            # Test that if a pin is supplied, the device is put into read mode with pin control
+            try:
+                writemock.reset_mock()     # Reset i2c write record
+                readmock.return_value = 0xFF                    # Read from registers will always be all 1's
+                test_pac1921.device = PAC1921(i2c_address=0x5A, nRead_int_pin=temp_pin)
+                writemock.assert_any_call(1, 0b11111101)        # Assert register control was disabled (bit 1 low)
+                temp_pin.set_value.assert_called_with(0)        # Assert pin control read entered
+            except Exception as e:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
+
+            # Test that if a pin is not supplied, the device is put into read mode with register control
+            try:
+                writemock.reset_mock()     # Reset i2c write record
+                readmock.return_value = 0b01                    # Read from register will be 0b01, opposite of final
+                test_pac1921.device = PAC1921(i2c_address=0x5A)
+                writemock.assert_any_call(1, 0b00000011)        # Assert register control was enabled
+                writemock.assert_any_call(1, 0b00000000)        # Assert register control read entered
+            except Exception as e:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
