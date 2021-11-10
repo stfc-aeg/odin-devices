@@ -31,7 +31,8 @@ else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
 sys.modules['smbus'] = MagicMock()
-sys.modules['gpiod.Line'] = MagicMock()
+#sys.modules['gpiod.Line'] = MagicMock()
+sys.modules['gpiod'] = MagicMock()
 from odin_devices.firefly import FireFly
 import smbus
 from odin_devices.i2c_device import I2CDevice
@@ -49,6 +50,6 @@ def test_firefly():
 
 
 class TestFireFly():
-    def test_interface_detect(self, test_pac1921):
+    def test_interface_detect(self, test_firefly):
         pass
 
