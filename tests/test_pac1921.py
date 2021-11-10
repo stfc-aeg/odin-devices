@@ -2,8 +2,8 @@
 Tests for PAC1921 power monitors. The driver is I2CDevice-derived.
 
 To Test:
-    - [ ] Address assignment with direct allocation and resistance
-    - [ ] Prodid manufacturer tests check right area and raise error on fail
+    - [x] Address assignment with direct allocation and resistance
+    - [x] Prodid manufacturer tests check right area and raise error on fail
     - [ ] Invalid measurement type supplied to init raises error
     - [ ] Not supplying a pin does not cause error, but uses register read functions
     - [ ] Check read and integration mode triggers work for both pin mode an register mode
@@ -56,16 +56,22 @@ if sys.version_info[0] == 3:                # pragma: no cover
 else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
+sys.modules['smbus'] = MagicMock()
 from odin_devices.pac1921 import PAC1921
+import smbus
+from odin_devices.i2c_device import I2CDevice
 
+prodid_success_mock = MagicMock()
 
 class pac1921_test_fixture(object):
     def __init__(self):
         # Temporarily bypassed so that it does nto stop init
-        PAC1921._check_prodid_manufacturer = Mock()
+        #PAC1921._check_prodid_manufacturer = Mock()
 
-        self.device = PAC1921(i2c_address = 0x5A)
-        self.device.i2c_bus = Mock()
+        with patch.object(PAC1921,'_check_prodid_manufacturer') as prodid_success_mock: # Force ID check success
+            self.device = PAC1921(i2c_address = 0x5A)
+
+        self.device._i2c_device = Mock()
 
 @pytest.fixture(scope="class")
 def test_pac1921():
@@ -75,13 +81,36 @@ def test_pac1921():
 
 class TestPAC1921():
     def test_address_assignment(self, test_pac1921):
-        # Test the I2C device is created when an address is supplied directly
-        test_pac1921.device = PAC1921(i2c_address=0x5A)
-        assert(test_pac1921.device._i2c_device.address == 0x5A)
+        with patch.object(PAC1921,'_check_prodid_manufacturer') as prodid_success_mock: # Force ID check success
+            # Test the I2C device is created when an address is supplied directly
+            test_pac1921.device = PAC1921(i2c_address=0x5A)
+            assert(test_pac1921.device._i2c_device.address == 0x5A)
 
-        # Test the I2C device is created when a resistance is supplied
-        # TODO
+            # Test the I2C device is created when a resistance is supplied
+            test_pac1921.device = PAC1921(address_resistance=0)
+            assert(test_pac1921.device._i2c_device.address == 0b1001100)    # From datasheet table
+            test_pac1921.device = PAC1921(address_resistance=820)
+            assert(test_pac1921.device._i2c_device.address == 0b1001010)    # From datasheet table
+            test_pac1921.device = PAC1921(address_resistance=12000)
+            assert(test_pac1921.device._i2c_device.address == 0b0101110)    # From datasheet table
 
-        # Check that if no resistance or address is supplied that an error is raised
-        with pytest.raises(ValueError, match=".*Either an I2C address or address resistance value must be supplied.*"):
-            test_pac1921.device = PAC1921()
+            # Check that if no resistance or address is supplied that an error is raised
+            with pytest.raises(ValueError, match=".*Either an I2C address or address resistance value must be supplied.*"):
+                test_pac1921.device = PAC1921()
+
+    def test_product_manufacturer_id_check(self, test_pac1921):
+        test_pac1921.device._i2c_device.readU8 = MagicMock()
+
+        # Check that a correct ID passes
+        test_pac1921.device._i2c_device.readU8.side_effect = lambda reg: {0xFD:0b01011011, 0xFE:0b01011101}[reg]
+        test_pac1921.device._check_prodid_manufacturer()
+
+        # Check that an incorrect Product ID raises a relevant exception
+        with pytest.raises(Exception, match=".*Product ID.*"):
+            test_pac1921.device._i2c_device.readU8.side_effect = lambda reg: {0xFD:0b01011010, 0xFE:0b01011101}[reg]
+            test_pac1921.device._check_prodid_manufacturer()
+
+        # Check that an incorrect Manufacturer ID raises a relevant exception
+        with pytest.raises(Exception, match=".*Manufacturer ID.*"):
+            test_pac1921.device._i2c_device.readU8.side_effect = lambda reg: {0xFD:0b01011011, 0xFE:0b01011100}[reg]
+            test_pac1921.device._check_prodid_manufacturer()
