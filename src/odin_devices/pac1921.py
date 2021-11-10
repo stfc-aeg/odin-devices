@@ -274,6 +274,7 @@ class PAC1921(object):
         # Set the pin to read mode
         self._pin_set_read()
 
+    @staticmethod
     def _get_address_from_resistance(address_resistance):
         """
         Derive the I2C address associated with a resistance between ADDR_SEL pin and GND.
