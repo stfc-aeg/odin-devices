@@ -1,5 +1,10 @@
 from odin_devices.i2c_device import I2CDevice as _I2CDevice
-from enum import Enum as _Enum, auto as _auto
+import sys
+
+if sys.version_info[0] == 3:                # pragma: no cover
+    from enum import Enum as _Enum, auto as _auto
+else:                                       # pragma: no cover
+    from aenum import Enum as _Enum, auto as _auto
 
 import logging as _logging
 import time as _time
