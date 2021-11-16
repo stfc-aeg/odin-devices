@@ -212,3 +212,44 @@ class TestPAC1921():
                 print("set write calls: ", writemock.mock_calls)
                 raise
 
+    def test_adc_filtering_configuration(self, test_pac1921):
+        # Test the ADC resolution and postfilter activation function. Note that this will currently
+        # assume that the di and dv settings are being set in parallel, which is the current design
+        # behaviour of the driver.
+
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            test_pac1921.device = PAC1921(i2c_address=0x5A)
+
+            # Test that an invalid ADC resolution raises an error
+            with pytest.raises(ValueError):
+                test_pac1921.device.config_resolution_filtering(adc_resolution=10)
+
+            # Test that a valid ADC resolution writes the correct bits
+            # TODO
+
+            # Test that an invalid post_filter_en value raises an error
+            with pytest.raises(ValueError):
+                test_pac1921.device.config_resolution_filtering(post_filter_en=10)
+
+            # Test that enabling the post filter writes correct bytes
+            # TODO
+
+            # Test that if settings change, integration mode is re-entered automatically, or the new
+            # changes will not take effect. This is the same as above test for gain.
+            test_pac1921.device._register_set_integration()     # Set the device into integration mode
+            writemock.reset_mock()
+            readmock.return_value = 0
+            try:
+                test_pac1921.device.config_resolution_filtering(adc_resolution=11)
+                writemock.assert_any_call(1, 0b00000000)        # Called to set read mode first
+                writemock.assert_called_with(1, 0b00000001)     # Last call leaves in integration
+            except Exception:
+                print("set write calls: ", writemock.mock_calls)
+                raise
+
