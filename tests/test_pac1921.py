@@ -8,7 +8,7 @@ To Test:
     - [x] Not supplying a pin does not cause error, but uses register read functions
     - [ ] Check read and integration mode triggers work for both pin mode an register mode
     - [ ] Register read/write functionality method is correct for bitfields (read-modify-write)
-    - [ ] Functions exporting mode info is correct: pin_control_enabled, get_name, get_address...
+    - [x] Functions exporting mode info is correct: pin_control_enabled, get_name, get_address...
     - Pin Control Mode
         - [ ] Check that the integration time is held for the correct duration on trigger
         - [ ] Check that the pin is toggled on trigger
@@ -24,8 +24,8 @@ To Test:
         - [ ] Check that integration mode is re-entered in whatever mode is being used so that
                 the changes take effect
     - Gain Configuration
-        - [ ] Check that di and dv gain are set correctly, and take only valid values
-        - [ ] Check that integration mode is re-entered in whatever mode is being used so that
+        - [x] Check that di and dv gain are set correctly, and take only valid values
+        - [x] Check that integration mode is re-entered in whatever mode is being used so that
                 the changes take effect
     - [ ] Check that forcing the config update will update the chip with internally stored values
             for the ADC sampling, post filtering, dv and di gain
@@ -160,3 +160,55 @@ class TestPAC1921():
             test_pac1921.device = PAC1921(i2c_address=0x5A, name="testname")
             assert(test_pac1921.device.get_name() == "testname")
             assert(test_pac1921.device.get_address() == 0x5A)
+
+    def test_di_dv_gain_configuration(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            test_pac1921.device = PAC1921(i2c_address=0x5A)
+
+            # Test that invalid DI gain is caught
+            with pytest.raises(ValueError):
+                test_pac1921.device.config_gain(di_gain=0)
+
+            # Test that invlaid DV gain is caught (and that DV is not allowed above 32)
+            with pytest.raises(ValueError):
+                test_pac1921.device.config_gain(dv_gain=64)    # Above max for dv
+
+            # Test that setting valid DI gain sets correct bits
+            try:
+                writemock.reset_mock()
+                readmock.return_value = 0                       # mock register initial value as 0
+                test_pac1921.device.config_gain(di_gain=64)     # di gain is allowed higher than dv
+                writemock.assert_called_with(0, 0b00110000)     # Reg 00 bits 5-3 should be 0b110
+            except:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
+
+            # Test that setting valid DV gain sets correct bits
+            try:
+                writemock.reset_mock()
+                readmock.return_value = 0                       # mock register initial value as 0
+                test_pac1921.device.config_gain(dv_gain=16)
+                writemock.assert_called_with(0, 0b00000100)     # Reg 00 bits 2-0 should be 0b100
+            except:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
+
+            # Test that if gains change, integration mode is re-entered automatically, or the new
+            # changes will not take effect
+            test_pac1921.device._register_set_integration()     # Set the device into integration mode
+            writemock.reset_mock()
+            readmock.return_value = 0
+            try:
+                test_pac1921.device.config_gain(di_gain=8)
+                writemock.assert_any_call(1, 0b00000000)        # Called to set read mode first
+                writemock.assert_called_with(1, 0b00000001)     # Last call leaves in integration
+            except Exception:
+                print("set write calls: ", writemock.mock_calls)
+                raise
+

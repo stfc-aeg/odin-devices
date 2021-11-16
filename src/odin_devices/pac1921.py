@@ -507,7 +507,7 @@ class PAC1921(object):
         this based on anticipated input range for a more precise reading.
 
         :param di_gain:     VSense division factor. Can be 1(default), 2, 4, 8, 16, 32, 64 or 128
-        :param dv_gain:     Vbus division factor. Can be 1(default), 2, 4, 8, 16, 32, 64 or 128
+        :param dv_gain:     Vbus division factor. Can be 1(default), 2, 4, 8, 16, 32
         """
         # Set the DI gain if supplied
         if di_gain is not None:
