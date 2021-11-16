@@ -231,14 +231,36 @@ class TestPAC1921():
                 test_pac1921.device.config_resolution_filtering(adc_resolution=10)
 
             # Test that a valid ADC resolution writes the correct bits
-            # TODO
+            try:
+                writemock.reset_mock()
+                readmock.return_value = 0                       # mock register initial value as 0
+                test_pac1921.device.config_resolution_filtering(adc_resolution=11)
+                writemock.assert_any_call(0, 0b10000000)        # 11-bit enabled for VSense
+                writemock.assert_any_call(0, 0b01000000)        # 11-bit filter enabled for VBus
+
+                writemock.reset_mock()
+                readmock.return_value = 0b11111111              # mock register initial value as 1's
+                test_pac1921.device.config_resolution_filtering(adc_resolution=14)
+                writemock.assert_any_call(0, 0b01111111)        # 11-bit disabled for VSense
+                writemock.assert_any_call(0, 0b10111111)        # 11-bit disabled for VBus
+            except:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
 
             # Test that an invalid post_filter_en value raises an error
             with pytest.raises(ValueError):
                 test_pac1921.device.config_resolution_filtering(post_filter_en=10)
 
             # Test that enabling the post filter writes correct bytes
-            # TODO
+            try:
+                writemock.reset_mock()
+                readmock.return_value = 0                       # mock register initial value as 0
+                test_pac1921.device.config_resolution_filtering(post_filter_en=True)
+                writemock.assert_any_call(1, 0b00001000)        # Post filter enabled for VSense
+                writemock.assert_any_call(1, 0b00000100)        # Post filter enabled for VBus
+            except:
+                print("writemock calls: {}".format(writemock.mock_calls))
+                raise
 
             # Test that if settings change, integration mode is re-entered automatically, or the new
             # changes will not take effect. This is the same as above test for gain.
