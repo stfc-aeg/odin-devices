@@ -678,6 +678,15 @@ class PAC1921(object):
                 'Config for pin-controlled integration mode with integration time ' +
                 '{}ms complete'.format(integration_time_ms))
 
+    def set_rsense(self, rsense_value):
+        """
+        Set the RSense resistor value for current sensing. This can alternatively be supplied at
+        instantiation.
+
+        :param rsense_value:    Resistance of RSense, in ohms.
+        """
+        self._r_sense = float(rsense_value)
+
     def set_measurement_type(self, measurement_type):
         """
         Change the measurement type between Vbus voltage, Rsense current, and power. If the desired

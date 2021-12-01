@@ -58,7 +58,7 @@ else:                                       # pragma: no cover
 
 sys.modules['smbus'] = MagicMock()
 sys.modules['gpiod.Line'] = MagicMock()
-from odin_devices.pac1921 import PAC1921
+from odin_devices.pac1921 import PAC1921, Measurement_Type
 import smbus
 from odin_devices.i2c_device import I2CDevice
 import gpiod
@@ -78,6 +78,12 @@ class pac1921_test_fixture(object):
 def test_pac1921():
     test_driver_fixture = pac1921_test_fixture()
     yield test_driver_fixture
+
+def assert_within_percent(val_a, val_b, percentage):
+    """
+    Checks that value b is within a certain percentage difference of value a.
+    """
+    assert(abs((val_a-val_b)/val_a) <= (percentage / 100.0))
 
 
 class TestPAC1921():
@@ -274,4 +280,67 @@ class TestPAC1921():
             except Exception:
                 print("set write calls: ", writemock.mock_calls)
                 raise
+
+    def test_read_decode_output_voltage(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+
+            # Check that the VBus Measurement functions correctly
+            tmp_real_voltage = 3.0
+            tmp_dv_gain = 8
+            test_pac1921.device.config_gain(dv_gain=tmp_dv_gain)    # Set the gain internally
+            calc_1lsb_val = (32/tmp_dv_gain) / (1023*64)    # From datasheet
+            expected_result_count = int(tmp_real_voltage / calc_1lsb_val)
+            print("1LSB should be {}v when gain is {}".format(calc_1lsb_val, tmp_dv_gain))
+            print("Injected register value {} to represent {}v".format(expected_result_count, tmp_real_voltage))
+            readmock.side_effect = lambda reg: {            # Set fake register to return expected count
+                    0x10: (expected_result_count & 0xFF00) >> 8,    # Upper result
+                    0x11: expected_result_count & 0xFF,             # Lower result
+                    0x1C: 0b000}[reg]                               # Overflow status is none
+            assert_within_percent(tmp_real_voltage, test_pac1921.device._read_decode_output(), 0.01)
+            readmock.side_effect = None
+
+    def test_read_decode_output_current(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            # Create device, initially set to voltage
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+
+            # Check that changing measurement type to Current without rsense being set will fail
+            with pytest.raises(Exception, match=".*Rsense.*"):
+                test_pac1921.device.set_measurement_type(Measurement_Type.CURRENT)
+
+            # Check current
+            tmp_real_current = 0.200    # 200mA
+            tmp_sense_resistor = 0.01   # 10 mohm
+            tmp_sense_voltage = tmp_real_current * tmp_sense_resistor
+            tmp_di_gain = 8
+            test_pac1921.device.set_rsense(tmp_sense_resistor)
+            test_pac1921.device.set_measurement_type(Measurement_Type.CURRENT)
+            test_pac1921.device.config_gain(di_gain=tmp_di_gain)
+            calc_1lsb_val = (0.1/(tmp_di_gain*tmp_sense_resistor)) / (1023*64)    # From datasheet
+            expected_result_count = int(tmp_real_current / calc_1lsb_val)
+            print("1LSB should be {}A)when gain is {}".format(calc_1lsb_val,
+                                                                   tmp_di_gain))
+            print("Injected register value {} to represent {}A({}v)".format(expected_result_count,
+                                                                            tmp_real_current,
+                                                                            tmp_sense_voltage))
+            readmock.side_effect = lambda reg: {            # Set fake register to return expected count
+                    0x12: (expected_result_count & 0xFF00) >> 8,    # Upper result
+                    0x13: expected_result_count & 0xFF,             # Lower result
+                    0x1C: 0b000}[reg]                               # Overflow status is none
+            assert_within_percent(tmp_real_current, test_pac1921.device._read_decode_output(), 0.01)
+            readmock.side_effect = None
+
 
