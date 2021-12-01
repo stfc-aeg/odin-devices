@@ -295,7 +295,7 @@ class TestPAC1921():
             tmp_real_voltage = 3.0
             tmp_dv_gain = 8
             test_pac1921.device.config_gain(dv_gain=tmp_dv_gain)    # Set the gain internally
-            calc_1lsb_val = (32/tmp_dv_gain) / (1023*64)    # From datasheet
+            calc_1lsb_val = (32.0/float(tmp_dv_gain)) / float(1023*64)    # From datasheet
             expected_result_count = int(tmp_real_voltage / calc_1lsb_val)
             print("1LSB should be {}v when gain is {}".format(calc_1lsb_val, tmp_dv_gain))
             print("Injected register value {} to represent {}v".format(expected_result_count, tmp_real_voltage))
@@ -329,7 +329,7 @@ class TestPAC1921():
             test_pac1921.device.set_rsense(tmp_sense_resistor)
             test_pac1921.device.set_measurement_type(Measurement_Type.CURRENT)
             test_pac1921.device.config_gain(di_gain=tmp_di_gain)
-            calc_1lsb_val = (0.1/(tmp_di_gain*tmp_sense_resistor)) / (1023*64)    # From datasheet
+            calc_1lsb_val = (0.1/(tmp_di_gain*tmp_sense_resistor)) / float(1023*64)    # From datasheet
             expected_result_count = int(tmp_real_current / calc_1lsb_val)
             print("1LSB should be {}A)when gain is {}".format(calc_1lsb_val,
                                                                    tmp_di_gain))
