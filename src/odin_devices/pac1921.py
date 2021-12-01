@@ -81,6 +81,19 @@ _V_POST_FILT_EN_DEFAULT = False
 _EXPECTED_PRODUCT_ID        = 0b01011011
 _EXPECTED_MANUFACTURER_ID   = 0b01011101
 
+
+class OverflowException(Exception):
+    """
+    Exception thrown when the PAC1921 overflows a counter. This is thrown at readout.
+    If this occurs, the returned value would be invalid, and the best option would be
+    to scale gains properly to prevent it from happening. However, if occasional it
+    can safely be ignored (though should be handled).
+
+    Although there is already a built-in OverflowError, this was not used since it is
+    meant for indicating an overflow of internal values through arithmetic.
+    """
+    pass
+
 class Measurement_Type (_Enum):
     POWER = _auto()
     VBUS = _auto()
@@ -335,12 +348,12 @@ class PAC1921(object):
         """
         # Check for overflows
         overflow_result = self._i2c_device.readU8(_OVERFLOW_STATUS_REG)
-        if overflow_result & 0b100: # VSOV
-            self._logger.warning("Overflow Detected! DI_GAIN may be too high.")
-        if overflow_result & 0b010: # VBOV
-            self._logger.warning("Overflow Detected! DV_GAIN may be too high.")
-        if overflow_result & 0b001: # VPOV
-            self._logger.warning("Overflow Detected! DI_GAIN or DV_GAIN may be too high.")
+        if overflow_result & 0b100:     # VSOV
+            raise OverflowException("Overflow Detected! DI_GAIN may be too high.")
+        if overflow_result & 0b010:     # VBOV
+            raise OverflowException("Overflow Detected! DV_GAIN may be too high.")
+        if overflow_result & 0b001:     # VPOV
+            raise OverflowException("Overflow Detected! DI_GAIN or DV_GAIN may be too high.")
 
         # Decode the relevant measurement type
         if self._measurement_type is Measurement_Type.VBUS:

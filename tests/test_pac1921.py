@@ -58,7 +58,7 @@ else:                                       # pragma: no cover
 
 sys.modules['smbus'] = MagicMock()
 sys.modules['gpiod.Line'] = MagicMock()
-from odin_devices.pac1921 import PAC1921, Measurement_Type
+from odin_devices.pac1921 import PAC1921, Measurement_Type, OverflowException
 import smbus
 from odin_devices.i2c_device import I2CDevice
 import gpiod
@@ -343,4 +343,32 @@ class TestPAC1921():
             assert_within_percent(tmp_real_current, test_pac1921.device._read_decode_output(), 0.01)
             readmock.side_effect = None
 
+    def test_read_decode_output_overflow(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
 
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+
+            # Check VSense overflow triggers error response with DI Gain suggestion
+            with pytest.raises(OverflowException, match=".*DI_GAIN.*"):
+                readmock.side_effect = lambda reg: {            # Force return of overflow flags
+                        0x1C: 0b100}[reg]                               # Overflow status VSOV
+                test_pac1921.device._read_decode_output()
+
+            # Check VBus overflow triggers error response with DV Gain suggestion
+            with pytest.raises(OverflowException, match=".*DV_GAIN.*"):
+                readmock.side_effect = lambda reg: {            # Force return of overflow flags
+                        0x1C: 0b010}[reg]                               # Overflow status VBOV
+                test_pac1921.device._read_decode_output()
+
+            # Check VPower overflow triggers error response with DV/DI Gain suggestion
+            with pytest.raises(OverflowException) as err_info:
+                readmock.side_effect = lambda reg: {            # Force return of overflow flags
+                        0x1C: 0b001}[reg]                               # Overflow status VPOV
+                test_pac1921.device._read_decode_output()
+                assert(err_info.contains("DV_GAIN"))
+                assert(err_info.contains("DI_GAIN"))
