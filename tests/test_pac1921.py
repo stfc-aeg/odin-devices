@@ -54,7 +54,7 @@ import time
 
 if sys.version_info[0] == 3:                # pragma: no cover
     from unittest.mock import Mock, MagicMock, call, patch
-    import importlib.reload as reload
+    from importlib import reload as reload
 else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
@@ -485,10 +485,12 @@ class TestPAC1921():
                 pinset_read_mock.assert_called()
 
             # Check that integration time is the time specified (rough, judged by return time)
-            time_before_ns = time.time_ns()
+            #time_before_ns = time.time_ns()
+            time_before_s = time.time()
             test_pac1921.device.read()
-            time_after_ns = time.time_ns()
-            assert_within_percent((time_after_ns-time_before_ns)/1000000, time_target_ms, 1)
+            #time_after_ns = time.time_ns()
+            time_after_s = time.time()
+            assert_within_percent((time_after_s-time_before_s)*1000, time_target_ms, 1)
 
             # Check that the device is in read mode when readout takes place when started in read
             def assert_in_read_mode():
