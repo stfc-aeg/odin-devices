@@ -1,3 +1,32 @@
+"""
+PAC1921 - device access class for the PAC1921 Power/Current/Voltage Monitor
+
+This class implemetns support for the PAC1921 power monitor, which is capable
+of monitoring power, current and voltage on a single input line. Sampling is
+either using free-run continuous integration, or by integration throughout a
+manually controlled period defined by an input pin. This allows synchronised
+readings from several devices.
+
+General Flow:
+    1. Instantiate a PAC1921 by supplying an I2C address/resistance, type of
+        measurement, r_sense value (for current/power), and integration
+        pin if used.
+    2. Optionally adjust the ADC resolution and post filtering by calling
+        config_resolution_filtering()
+    3. Optionally adjust dv and di gain settings with config_gain()
+    4. Set the integration mode by calling config_freerun_integration_mode()
+        or config_pincontrol_integration_mode()
+    5. Take a reading with read(), which will return V, A or W as a float
+        depending on the mode. In free-run this will return immediately, but
+        in pin-control this will return after the configured integration time.
+
+Once configuration is complete, step 5 can be repeated indefinitely. If changes
+to mode or other settings are made, configuration (step 4) will need to be
+repeated.
+
+Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
+"""
+
 from odin_devices.i2c_device import I2CDevice as _I2CDevice
 import sys
 
