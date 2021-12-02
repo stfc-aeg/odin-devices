@@ -680,6 +680,12 @@ class PAC1921(object):
 
         :param integration_time_ms:     Integration time in ms
         """
+
+        # Check that pin control is possible (gpiod is available)
+        if not _GPIO_AVAIL:
+            raise RuntimeError(
+                    "gpiod module not available, pin-control not allowed. Try free-run mode.")
+
         # Check that a pin has been assigned
         if not self._has_nRead_int_pin():
             raise Exception("Pin control mode requires a nRead_int pin")

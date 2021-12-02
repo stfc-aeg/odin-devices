@@ -58,6 +58,7 @@ else:                                       # pragma: no cover
 
 sys.modules['smbus'] = MagicMock()
 sys.modules['gpiod.Line'] = MagicMock()
+import odin_devices.pac1921                 # Needed so that module can be reloaded
 from odin_devices.pac1921 import PAC1921, Measurement_Type, OverflowException
 import smbus
 from odin_devices.i2c_device import I2CDevice
@@ -498,3 +499,27 @@ class TestPAC1921():
             with pytest.raises(Exception, match="Configuration has not been completed.*"):
                 test_pac1921.device.read()
 
+    def test_no_gpiod(self, test_pac1921):
+
+        # Make sure this is the last test; it may mess with imports...
+
+        with patch.dict('sys.modules', gpiod=None):
+            # Remove gpiod module and re-run the initial include process for pac1921
+            import importlib
+            importlib.reload(odin_devices.pac1921)
+            from odin_devices.pac1921 import PAC1921 as PAC1921_tmp
+
+            writemock = MagicMock()
+            readmock = MagicMock()
+
+            with \
+                    patch.object(PAC1921_tmp, '_check_prodid_manufacturer') as prodid_success_mock, \
+                    patch.object(I2CDevice, 'write8') as writemock, \
+                    patch.object(I2CDevice, 'readU8') as readmock:
+
+                # Create the device instance
+                my_pac1921 = PAC1921_tmp(i2c_address=0x5A)
+
+                # Check that lack of gpiod throws error on pin control config
+                with pytest.raises(RuntimeError, match=".*gpiod module not available.*"):
+                    my_pac1921.config_pincontrol_integration_mode()
