@@ -435,8 +435,6 @@ class PAC1921(object):
         else:
             raise ValueError("Measurement Type has not been set")
 
-            return power_result
-
     def _has_nRead_int_pin(self):
         return (self._nRead_int_pin is not None)
 

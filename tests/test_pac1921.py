@@ -6,8 +6,7 @@ To Test:
     - [x] Prodid manufacturer tests check right area and raise error on fail
     - [x] Invalid measurement type supplied to init raises error
     - [x] Not supplying a pin does not cause error, but uses register read functions
-    - [ ] Check read and integration mode triggers work for both pin mode an register mode
-    - [ ] Register read/write functionality method is correct for bitfields (read-modify-write)
+    - [x] Register read/write functionality method is correct for bitfields (read-modify-write)
     - [x] Functions exporting mode info is correct: pin_control_enabled, get_name, get_address...
     - Pin Control Mode
         - [x] Check that the integration time is held for the correct duration on trigger
@@ -29,19 +28,19 @@ To Test:
                 the changes take effect
     - [ ] Check that forcing the config update will update the chip with internally stored values
             for the ADC sampling, post filtering, dv and di gain
-    - [ ] FreeRun Configuration
-        - [ ] Check that an invalid number of samples is caught, and a correct number of samples
+    - [x] FreeRun Configuration
+        - [x] Check that an invalid number of samples is caught, and a correct number of samples
                 results in registers being set correctly.
-        - [ ] Check that the mode is sent correctly to the device
-        - [ ] Check that the integration is actually started immediately
+        - [x] Check that the mode is sent correctly to the device
+        - [x] Check that the integration is actually started immediately
         - [x] Check that stopping free-run integration actually stops it, and stops read() from
                 being called successfully.
-    - [ ] Pin Control Config
+    - [x] Pin Control Config
         - [x] Check that lack of a read interrupt pin will result in failure
-        - [ ] Check that measurement is power
-        - [ ] Check that integration time is 'allowed' based on di or dv resolution
-        - [ ] Make sure that the system is primed in read mode by pin control
-        - [ ] Make sure that the measurement type is set, with pin control mode
+        - [x] Check that measurement is power
+        - [x] Check that integration time is 'allowed' based on di or dv resolution
+        - [x] Make sure that the system is primed in read mode by pin control
+        - [x] Make sure that the measurement type is set, with pin control mode
     - [ ] Check that setting a new measurement type means read cannot be activated until a control
             mode is configured
     - Synchronised Array
@@ -110,6 +109,10 @@ class TestPAC1921():
             test_pac1921.device = PAC1921(address_resistance=12000)
             assert(test_pac1921.device._i2c_device.address == 0b0101110)    # From datasheet table
 
+            # Test that an invalid resistance results in a raised error
+            with pytest.raises(ValueError, match=".*Invalid address resistance.*"):
+                test_pac1921.device = PAC1921(address_resistance=80)
+
             # Check that if no resistance or address is supplied that an error is raised
             with pytest.raises(ValueError, match=".*Either an I2C address or address resistance value must be supplied.*"):
                 test_pac1921.device = PAC1921()
@@ -149,6 +152,10 @@ class TestPAC1921():
             with pytest.raises(TypeError):
                 test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type='Voltage')
 
+            # Test that attempting to set an invalid pin type causes error (different to None)
+            with pytest.raises(Exception, match=".*should be of type gpiod.Line.*"):
+                test_pac1921.device = PAC1921(i2c_address=0x5A, nRead_int_pin=3)
+
             # Test that if a pin is supplied, the device is put into read mode with pin control
             try:
                 writemock.reset_mock()     # Reset i2c write record
@@ -156,6 +163,8 @@ class TestPAC1921():
                 test_pac1921.device = PAC1921(i2c_address=0x5A, nRead_int_pin=temp_pin)
                 writemock.assert_any_call(1, 0b11111101)        # Assert register control was disabled (bit 1 low)
                 temp_pin.set_value.assert_called_with(0)        # Assert pin control read entered
+
+                assert(test_pac1921.device._get_nRead_int_pin() == temp_pin)    # Make sure get pin func works
             except Exception as e:
                 print("writemock calls: {}".format(writemock.mock_calls))
                 raise
@@ -495,6 +504,9 @@ class TestPAC1921():
 
             # (Integration time is checked in the pincontrol read() test)
 
+            # Check that now pin-control is definitely selected, pin_control_enabled() is correct
+            assert(test_pac1921.device.pin_control_enabled())
+
             # Check that the system is left in read mode
             assert(not test_pac1921.device._nRead_int_state)
 
@@ -508,7 +520,9 @@ class TestPAC1921():
                 patch.object(I2CDevice, 'readU8') as readmock:
 
             # Init device with no pin in VBus mode
-            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+            test_pac1921.device = PAC1921(i2c_address=0x5A,
+                                          r_sense = 0.01,
+                                          measurement_type=Measurement_Type.VBUS)
 
             # Check that an invalid number of samples results in error
             with pytest.raises(KeyError, match=".*Number of samples.*"):
@@ -529,6 +543,14 @@ class TestPAC1921():
             writemock.reset_mock()
             test_pac1921.device.config_freerun_integration_mode(64)
             writemock.assert_any_call(0x02, 0b10000000)  # MXSL mode 0b10 is VBus free-run
+            writemock.reset_mock()
+            test_pac1921.device.set_measurement_type(Measurement_Type.CURRENT)
+            test_pac1921.device.config_freerun_integration_mode(64)
+            writemock.assert_any_call(0x02, 0b01000000)  # MXSL mode 0b01 is VSense free-run
+            writemock.reset_mock()
+            test_pac1921.device.set_measurement_type(Measurement_Type.POWER)
+            test_pac1921.device.config_freerun_integration_mode(64)
+            writemock.assert_any_call(0x02, 0b11000000)  # MXSL mode 0b11 is VPower free-run
 
             # Check that not supplying samples will result in the register not being written
             writemock.reset_mock()
