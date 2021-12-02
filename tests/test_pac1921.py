@@ -54,6 +54,7 @@ import time
 
 if sys.version_info[0] == 3:                # pragma: no cover
     from unittest.mock import Mock, MagicMock, call, patch
+    import importlib.reload as reload
 else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
@@ -570,8 +571,7 @@ class TestPAC1921():
 
         with patch.dict('sys.modules', gpiod=None):
             # Remove gpiod module and re-run the initial include process for pac1921
-            import importlib
-            importlib.reload(odin_devices.pac1921)
+            reload(odin_devices.pac1921)
             from odin_devices.pac1921 import PAC1921 as PAC1921_tmp
 
             writemock = MagicMock()
