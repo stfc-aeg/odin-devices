@@ -65,6 +65,11 @@ import gpiod
 
 prodid_success_mock = MagicMock()
 
+"""
+This is the percentage accuracy required when reporting values using a simulated register count.
+"""
+PASSING_PERCENTAGE_ACCURACY = 0.1
+
 class pac1921_test_fixture(object):
     def __init__(self):
 
@@ -83,7 +88,8 @@ def assert_within_percent(val_a, val_b, percentage):
     """
     Checks that value b is within a certain percentage difference of value a.
     """
-    assert(abs((val_a-val_b)/val_a) <= (percentage / 100.0))
+    assert abs((val_a-val_b)/val_a) <= (percentage / 100.0), \
+            "Values {}, {} differ more than {}%".format(val_a, val_b, percentage)
 
 
 class TestPAC1921():
@@ -303,7 +309,8 @@ class TestPAC1921():
                     0x10: (expected_result_count & 0xFF00) >> 8,    # Upper result
                     0x11: expected_result_count & 0xFF,             # Lower result
                     0x1C: 0b000}[reg]                               # Overflow status is none
-            assert_within_percent(tmp_real_voltage, test_pac1921.device._read_decode_output(), 0.01)
+            assert_within_percent(tmp_real_voltage, test_pac1921.device._read_decode_output(),
+                                  PASSING_PERCENTAGE_ACCURACY)
             readmock.side_effect = None
 
     def test_read_decode_output_current(self, test_pac1921):
@@ -340,8 +347,47 @@ class TestPAC1921():
                     0x12: (expected_result_count & 0xFF00) >> 8,    # Upper result
                     0x13: expected_result_count & 0xFF,             # Lower result
                     0x1C: 0b000}[reg]                               # Overflow status is none
-            assert_within_percent(tmp_real_current, test_pac1921.device._read_decode_output(), 0.01)
+            assert_within_percent(tmp_real_current, test_pac1921.device._read_decode_output(),
+                                  PASSING_PERCENTAGE_ACCURACY)
             readmock.side_effect = None
+
+    def test_read_decode_output_power(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Set experimental values to be 'measured' by PAC1921
+            real_power = 0.2  # 200mW
+
+            # Configuration values for PAC1921
+            di_gain = 8
+            dv_gain = 8
+            r_sense = 0.01
+
+            # Init the device
+            test_pac1921.device = PAC1921(i2c_address=0x5A,
+                                          measurement_type=Measurement_Type.POWER,
+                                          r_sense=r_sense)
+            test_pac1921.device.config_gain(di_gain=di_gain, dv_gain=dv_gain)
+
+            # Calculate the counter 1LSB value for this configuration
+            lsb_val_W = ((0.1/(r_sense*di_gain)) * (32.0/dv_gain)) / (1023 * 64)    # From datasheet
+
+            # Calculate the expected counter value if the input was real_power
+            counter_val = int(real_power / lsb_val_W)
+            print("Counter would be at {} to represent {}W".format(counter_val, real_power))
+
+            # Mock the register reads to report the counter value, check the returned power is correct
+            readmock.side_effect = lambda reg: {            # Set fake register to return expected count
+                    0x1D: (counter_val & 0xFF00) >> 8,    # Upper result
+                    0x1E: counter_val & 0xFF,             # Lower result
+                    0x1C: 0b000}[reg]                               # Overflow status is none
+            assert_within_percent(real_power, test_pac1921.device._read_decode_output(),
+                                  PASSING_PERCENTAGE_ACCURACY)
 
     def test_read_decode_output_overflow(self, test_pac1921):
         writemock = MagicMock()

@@ -398,6 +398,8 @@ class PAC1921(object):
             self._logger.debug('watts per lsb: {}'.format(power_lsb_watts))
             power_result = power_lsb_watts * power_raw
 
+            return power_result
+
         else:
             raise ValueError("Measurement Type has not been set")
 
