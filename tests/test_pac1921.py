@@ -10,8 +10,8 @@ To Test:
     - [ ] Register read/write functionality method is correct for bitfields (read-modify-write)
     - [x] Functions exporting mode info is correct: pin_control_enabled, get_name, get_address...
     - Pin Control Mode
-        - [ ] Check that the integration time is held for the correct duration on trigger
-        - [ ] Check that the pin is toggled on trigger
+        - [x] Check that the integration time is held for the correct duration on trigger
+        - [x] Check that the pin is toggled on trigger
     - Readout
         - [x] Check that example values (using datasheet examples) are read out correctly for
                 each mode
@@ -37,7 +37,7 @@ To Test:
         - [x] Check that stopping free-run integration actually stops it, and stops read() from
                 being called successfully.
     - [ ] Pin Control Config
-        - [ ] Check that lack of a read interrupt pin will result in failure
+        - [x] Check that lack of a read interrupt pin will result in failure
         - [ ] Check that measurement is power
         - [ ] Check that integration time is 'allowed' based on di or dv resolution
         - [ ] Make sure that the system is primed in read mode by pin control
@@ -50,6 +50,7 @@ To Test:
 
 import sys
 import pytest
+import time
 
 if sys.version_info[0] == 3:                # pragma: no cover
     from unittest.mock import Mock, MagicMock, call, patch
@@ -437,6 +438,70 @@ class TestPAC1921():
 
             with pytest.raises(ValueError, match=".*Measurement Type.*"):
                 test_pac1921.device._read_decode_output()
+
+
+    def test_config_pincontrol(self, test_pac1921):
+        #TODO
+        pass
+
+    def test_config_freerun(self, test_pac1921):
+        #TODO
+        pass
+
+    def test_read_pincontrol(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+        read_decode_mock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(PAC1921, '_read_decode_output') as read_decode_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Test that if read() is called without any configuration, error raised
+            with pytest.raises(Exception, match="Configuration has not been completed.*"):
+                test_pac1921.device.read()
+
+            # Init device, configure for pin control integration with given delay
+            time_target_ms = 1000
+            temp_pin = MagicMock(spec=gpiod.Line)
+            temp_pin.set_value = Mock()
+            test_pac1921.device = PAC1921(i2c_address=0x5A,
+                                          measurement_type=Measurement_Type.POWER,
+                                          r_sense=0.01,
+                                          nRead_int_pin=temp_pin)
+            test_pac1921.device.config_pincontrol_integration_mode(time_target_ms)
+
+            # Check that the integration mode is entered and left using pin control
+            pinset_read_mock = MagicMock()
+            pinset_int_mock = MagicMock()
+            with \
+                    patch.object(PAC1921, '_pin_set_read') as pinset_read_mock, \
+                    patch.object(PAC1921, '_pin_set_integration') as pinset_int_mock:
+                test_pac1921.device.read()
+                pinset_int_mock.assert_called()
+                pinset_read_mock.assert_called()
+
+            # Check that integration time is the time specified (rough, judged by return time)
+            time_before_ns = time.time_ns()
+            test_pac1921.device.read()
+            time_after_ns = time.time_ns()
+            assert_within_percent((time_after_ns-time_before_ns)/1000000, time_target_ms, 1)
+
+            # Check that the device is in read mode when readout takes place when started in read
+            def assert_in_read_mode():
+                assert (not test_pac1921.device._nRead_int_state), "Device was not in read mode"
+            read_decode_mock.side_effect = lambda: assert_in_read_mode()
+            test_pac1921.device._nRead_int_state = False
+            test_pac1921.device.read()
+
+            # Check that the device is in read mode when readout takes place when started in int
+            def assert_in_read_mode2():
+                assert (not test_pac1921.device._nRead_int_state), "Device was not in read mode"
+            read_decode_mock.side_effect = lambda: assert_in_read_mode2()
+            test_pac1921.device._nRead_int_state = True
+            test_pac1921.device.read()
 
 
     def test_read_freerun(self, test_pac1921):

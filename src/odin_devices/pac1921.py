@@ -304,14 +304,20 @@ class PAC1921(object):
         integration in pin-controlled mode only.
         """
         # Place the device initially in read mode
-        self._pin_set_read()
-        _time.sleep(1)
+        wakeup_time_ms = 0
+        if self._nRead_int_state:
+            # If in integration state, read must be entered
+            self._pin_set_read()
+            _time.sleep(0.01)   # Allow device to enter read state, minimum is tREAD = 9.8us (overkill)
+        else:
+            # If in read state already (default), assume device asleep
+            wakeup_time_ms = 0  # Included for completeness, but the tSLEEP_TO_INT is only 86us
 
         # Set the pin to integrate mode
         self._pin_set_integration()
 
         # Wait for time integration time to be reached
-        _time.sleep(integration_time_ms / 1000.0)
+        _time.sleep((integration_time_ms-wakeup_time_ms) / 1000.0)
 
         # Set the pin to read mode
         self._pin_set_read()
@@ -793,7 +799,7 @@ class PAC1921(object):
                 raise Exception("Configuration has not been completed (mode: pin-control (default))")
 
             # Trigger a timed integration on the device's pin
-            self._trigger_pin_integration(self._integration_time_ms, self._pin_set_read, self._pin_set_integration)
+            self._trigger_pin_integration(self._integration_time_ms)
             # Note: read must now take place within tsleep (1s) before erase
 
             return self._read_decode_output()
