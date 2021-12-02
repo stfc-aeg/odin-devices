@@ -442,8 +442,61 @@ class TestPAC1921():
 
 
     def test_config_pincontrol(self, test_pac1921):
-        #TODO
-        pass
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # (Lack of gpiod module already has a test)
+
+            # Check that lack of a supplied pin throws an error
+            test_pac1921.device = PAC1921(i2c_address=0x5A,
+                                          r_sense = 0.01,
+                                          measurement_type=Measurement_Type.POWER)
+            with pytest.raises(Exception, match=".*requires a nRead_int pin.*"):
+                test_pac1921.device.config_pincontrol_integration_mode()
+
+            # Re-configure with a pin for remaining tests
+            temp_pin = MagicMock(spec=gpiod.Line)
+            temp_pin.set_value = Mock()
+            test_pac1921.device = PAC1921(i2c_address=0x5A,
+                                          r_sense=0.01,
+                                          nRead_int_pin=temp_pin,
+                                          measurement_type=Measurement_Type.POWER)
+
+            # Check that an invalid measurement mode for pin control throws an error
+            test_pac1921.device.set_measurement_type(Measurement_Type.VBUS)
+            with pytest.raises(Exception, match=".*measurement type.*"):
+                test_pac1921.device.config_pincontrol_integration_mode()
+            test_pac1921.device.set_measurement_type(Measurement_Type.POWER)
+
+            # Check that an invalid integration time (depending on resolution) throws an error
+            test_pac1921.device.config_resolution_filtering(adc_resolution=11)
+            with pytest.raises(ValueError, match=".*11-bit.*integration time.*"):
+                # 1500ms is not allowed for 11-bit, so throws an error
+                test_pac1921.device.config_pincontrol_integration_mode(1500)
+            test_pac1921.device.config_pincontrol_integration_mode(1) # Allowed for 11-bit, not 14-bit
+            test_pac1921.device.config_resolution_filtering(adc_resolution=14)
+            with pytest.raises(ValueError, match=".*14-bit.*integration time.*"):
+                # 1ms is not allowed for 14-bit, so throws an error
+                test_pac1921.device.config_pincontrol_integration_mode(1)
+            test_pac1921.device.config_pincontrol_integration_mode(1500) # Allowed for 11-bit, not 14-bit
+
+            # Check that integration mode / measurement type are set correctly in registers
+            readmock.side_effect = lambda reg: {    # Set fake register to read as all 0
+                    0x01: 0b00000000,                   # Sample rate read as 0b0000, => 1
+                    0x02: 0b11000000}[reg]              # MXSL mode is read as VPower free-run
+            writemock.reset_mock()
+            test_pac1921.device.config_pincontrol_integration_mode()
+            writemock.assert_any_call(0x02, 0b00000000)  # MXSL mode 0b00 is VBus pin-conrolled
+
+            # (Integration time is checked in the pincontrol read() test)
+
+            # Check that the system is left in read mode
+            assert(not test_pac1921.device._nRead_int_state)
 
     def test_config_freerun(self, test_pac1921):
         writemock = MagicMock()
