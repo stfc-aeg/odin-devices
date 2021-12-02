@@ -446,8 +446,47 @@ class TestPAC1921():
         pass
 
     def test_config_freerun(self, test_pac1921):
-        #TODO
-        pass
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Init device with no pin in VBus mode
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+
+            # Check that an invalid number of samples results in error
+            with pytest.raises(KeyError, match=".*Number of samples.*"):
+                test_pac1921.device.config_freerun_integration_mode(-3)
+
+            # Check that the sample number is correctly written to registers
+            readmock.side_effect = lambda reg: {    # Set fake register to read as all 0
+                    0x01: 0b00000000,                   # Sample rate read as 0b0000, => 1
+                    0x02: 0b00000000}[reg]              # MXSL mode is read as VPower pin-control
+            writemock.reset_mock()
+            test_pac1921.device.config_freerun_integration_mode(num_samples=64)
+            writemock.assert_any_call(0x01, 0b01100000)  # Sample rate 0b0110 is 64 (datasheet)
+
+            # Check that measurement type/integration mode is written correctly to registers
+            readmock.side_effect = lambda reg: {    # Set fake register to read as all 0
+                    0x01: 0b00000000,                   # Sample rate read as 0b0000, => 1
+                    0x02: 0b00000000}[reg]              # MXSL mode is read as VPower pin-control
+            writemock.reset_mock()
+            test_pac1921.device.config_freerun_integration_mode(64)
+            writemock.assert_any_call(0x02, 0b10000000)  # MXSL mode 0b10 is VBus free-run
+
+            # Check that not supplying samples will result in the register not being written
+            writemock.reset_mock()
+            def check_samples_not_written(reg, val):
+                if (reg == 0x01):
+                    assert (val & 0b11110000) == 0, "Sample num bits were modified and shouldn't have been"
+            writemock.side_effect = lambda reg, val: check_samples_not_written(reg, val)
+            test_pac1921.device.config_freerun_integration_mode()   # Call without sample num
+
+            # Check that device is left in integration mode so sampling is immediately possible
+            assert(test_pac1921.device._nRead_int_state)
 
     def test_read_pincontrol(self, test_pac1921):
         writemock = MagicMock()
@@ -459,6 +498,8 @@ class TestPAC1921():
                 patch.object(PAC1921, '_read_decode_output') as read_decode_mock, \
                 patch.object(I2CDevice, 'write8') as writemock, \
                 patch.object(I2CDevice, 'readU8') as readmock:
+
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
 
             # Test that if read() is called without any configuration, error raised
             with pytest.raises(Exception, match="Configuration has not been completed.*"):

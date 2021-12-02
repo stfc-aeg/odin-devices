@@ -640,11 +640,11 @@ class PAC1921(object):
         if num_samples is not None:
             try:
                 sample_reg_value = _SMPL_NUM_SAMPLES_ENCODING[num_samples]
+                self._write_register_bitfield(7, 4, _SMPL_REG, sample_reg_value)
             except KeyError:
                 raise KeyError(
                         "Number of samples must be one of " +
                         "{}".format(_SMPL_NUM_SAMPLES_ENCODING.keys()))
-            self._write_register_bitfield(7, 4, _SMPL_REG, sample_reg_value)
 
         # Set integration mode and measurement type in device
         if self._measurement_type is Measurement_Type.CURRENT:
