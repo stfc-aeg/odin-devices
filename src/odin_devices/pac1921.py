@@ -755,7 +755,7 @@ class PAC1921(object):
             # Check that the config function has been called
             if not self._pincontrol_config_complete:
                 # raise error for not being configured for pincontrol
-                raise Exception("Configuration for pin-control has not been completed")
+                raise Exception("Configuration has not been completed (mode: pin-control (default))")
 
             # Trigger a timed integration on the device's pin
             self._trigger_pin_integration(self._integration_time_ms, self._pin_set_read, self._pin_set_integration)
@@ -770,7 +770,7 @@ class PAC1921(object):
             # Check that the config function has been called
             if not self._freerun_config_complete:
                 # raise error for not being configured for freerun
-                raise Exception("Configuration for free-run has not been completed")
+                raise Exception("Configuration has not been completed (mode: freerun)")
 
             # Enter read mode to stop integration
             self._logger.debug('Free-run integration mode ended')

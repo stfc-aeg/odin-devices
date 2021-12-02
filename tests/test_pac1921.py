@@ -13,15 +13,15 @@ To Test:
         - [ ] Check that the integration time is held for the correct duration on trigger
         - [ ] Check that the pin is toggled on trigger
     - Readout
-        - [ ] Check that example values (using datasheet examples) are read out correctly for
+        - [x] Check that example values (using datasheet examples) are read out correctly for
                 each mode
-        - [ ] Check that overflows are caught, and result in warnings
-        - [ ] Check that the read function cannot be called without configuring first
-        - [ ] Check that if in freerun mode, reading will re-enter integration automatically
+        - [x] Check that overflows are caught, and result in warnings
+        - [x] Check that the read function cannot be called without configuring first
+        - [x] Check that if in freerun mode, reading will re-enter integration automatically
     - ADC and Filtering Configuration
-        - [ ] Check that adc resolution is set correctly, and takes only valid values
-        - [ ] Check that post filtering is set correctly, and takes only valid values
-        - [ ] Check that integration mode is re-entered in whatever mode is being used so that
+        - [x] Check that adc resolution is set correctly, and takes only valid values
+        - [x] Check that post filtering is set correctly, and takes only valid values
+        - [x] Check that integration mode is re-entered in whatever mode is being used so that
                 the changes take effect
     - Gain Configuration
         - [x] Check that di and dv gain are set correctly, and take only valid values
@@ -34,7 +34,7 @@ To Test:
                 results in registers being set correctly.
         - [ ] Check that the mode is sent correctly to the device
         - [ ] Check that the integration is actually started immediately
-        - [ ] Check that stopping free-run integration actually stops it, and stops read() from
+        - [x] Check that stopping free-run integration actually stops it, and stops read() from
                 being called successfully.
     - [ ] Pin Control Config
         - [ ] Check that lack of a read interrupt pin will result in failure
@@ -418,3 +418,83 @@ class TestPAC1921():
                 test_pac1921.device._read_decode_output()
                 assert(err_info.contains("DV_GAIN"))
                 assert(err_info.contains("DI_GAIN"))
+
+    def test_read_decode_output_no_measurement_type(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Init device without measurement type
+            test_pac1921.device = PAC1921(i2c_address=0x5A)
+
+            # Make sure overflow is not reported
+            readmock.side_effect = lambda reg: {0x1C: 0b000}[reg]   # Overflow status is none
+
+            with pytest.raises(ValueError, match=".*Measurement Type.*"):
+                test_pac1921.device._read_decode_output()
+
+
+    def test_read_freerun(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+        read_decode_mock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(PAC1921, '_read_decode_output') as read_decode_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Init device in voltage measurement mode
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+
+            # Test that if read() is called without any configuration, error raised
+            with pytest.raises(Exception, match="Configuration has not been completed.*"):
+                test_pac1921.device.read()
+
+            # Configure the freerun read mode without changing the current sample num
+            test_pac1921.device.config_freerun_integration_mode()
+
+            # Check that the read mode is entered using register control
+            writemock.reset_mock()
+            readmock.reset_mock()
+            regset_read_mock = MagicMock()
+            with patch.object(PAC1921, '_register_set_read') as regset_read_mock:
+                test_pac1921.device.read()
+                regset_read_mock.assert_called()
+
+            # Check that read mode was entered before _read_decode_output() is called
+            def assert_in_read_mode():
+                assert (not test_pac1921.device._nRead_int_state), "Device was not in read mode"
+            read_decode_mock.side_effect = lambda: assert_in_read_mode()
+            test_pac1921.device.read()
+
+            # Check that the device is left in integration mode for sampling to continue
+            print(test_pac1921.device._nRead_int_state)
+            assert(test_pac1921.device._nRead_int_state)
+
+    def test_stop_freerun_integration(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Create device, enter freerun integration, and stop it again
+            test_pac1921.device = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+            test_pac1921.device.config_freerun_integration_mode()
+            test_pac1921.device.stop_freerun_integration()
+
+            # Check that device is placed into read mode to stop integration
+            assert(not test_pac1921.device._nRead_int_state)
+
+            # Check that the configuration is now invalid, and read() cannot be called
+            with pytest.raises(Exception, match="Configuration has not been completed.*"):
+                test_pac1921.device.read()
+
