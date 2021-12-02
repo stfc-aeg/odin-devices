@@ -186,10 +186,7 @@ class PAC1921(object):
         # Check that the measurement type is valid
         self._measurement_type = None
         if measurement_type is not None:
-            if type(measurement_type) is Measurement_Type:
-                self.set_measurement_type(measurement_type)
-            else:
-                raise TypeError("Invalid measurement type given")
+            self.set_measurement_type(measurement_type)
 
         # Store the POR values of the settings registers
         self._integration_mode = _Integration_Mode.PinControlled    # pin-ctrl default POR
@@ -753,7 +750,7 @@ class PAC1921(object):
         :param measurement_type:    Measurement_Type enum CURRENT, POWER or VBUS.
         """
         if type(measurement_type) is not Measurement_Type:
-            raise TypeError
+            raise TypeError("Invalid measurement type given")
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
         if measurement_type is not Measurement_Type.VBUS:
