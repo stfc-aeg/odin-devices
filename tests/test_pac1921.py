@@ -60,7 +60,7 @@ else:                                       # pragma: no cover
 sys.modules['smbus'] = MagicMock()
 sys.modules['gpiod.Line'] = MagicMock()
 import odin_devices.pac1921                 # Needed so that module can be reloaded
-from odin_devices.pac1921 import PAC1921, Measurement_Type, OverflowException
+from odin_devices.pac1921 import PAC1921, PAC1921_Synchronised_Array, Measurement_Type, OverflowException
 import smbus
 from odin_devices.i2c_device import I2CDevice
 import gpiod
@@ -733,9 +733,61 @@ class TestPAC1921():
             with pytest.raises(Exception, match="Configuration has not been completed.*"):
                 test_pac1921.device.read()
 
+    def test_syncarr_init(self, test_pac1921):
+        # Check that supplying an invalid pin results in failure
+        with pytest.raises(TypeError, match="nRead_int_pin should be of type gpiod.Line.*"):
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin=3, integration_time_ms=500)
+
+        # (Lack of support when gpiod is not present is tested elsewhere)
+
+    def test_syncarr_add_devices_basicchecks(self, test_pac1921):
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            temp_pin = MagicMock(spec=gpiod.Line)
+            temp_pin.set_value = Mock()
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin = temp_pin,
+                                                    integration_time_ms = 500)
+            # Check that device type is tested
+            with pytest.raises(TypeError, match=".*PAC1921.*"):
+                not_a_pac1921 = 3
+                test_array.add_device(not_a_pac1921)
+
+            # Check that device mode must be pin control
+            first_pac1921 = PAC1921(i2c_address=0x5A, measurement_type=Measurement_Type.VBUS)
+            first_pac1921.config_freerun_integration_mode()     # Put device in freerun int mode
+            with pytest.raises(Exception, match=".*pin-controlled integration.*"):
+                test_array.add_device(first_pac1921)
+
+            # Check that adding devices manually is the same as adding via init
+            first_pac1921 = PAC1921(i2c_address=0x5A, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            second_pac1921 = PAC1921(i2c_address=0x5B, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            third_pac1921 = PAC1921(i2c_address=0x5B, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+
+            init_array = PAC1921_Synchronised_Array(temp_pin, 500, [first_pac1921, second_pac1921, third_pac1921])
+            after_array = PAC1921_Synchronised_Array(temp_pin, 500)
+
+            after_array.add_device(first_pac1921)
+            after_array.add_device(second_pac1921)
+            after_array.add_device(third_pac1921)
+            assert(init_array._device_list == after_array._device_list)
+
+
+    def test_syncarr_integration(self, test_pac1921):
+        #TODO
+        pass
+
+    def test_syncarr_read(self, test_pac1921):
+        #TODO
+        pass
+
     def test_no_gpiod(self, test_pac1921):
 
-        # Make sure this is the last test; it may mess with imports...
+        # Make sure this is the last test; it WILL mess with imports...
 
         with patch.dict('sys.modules', gpiod=None):
             # Remove gpiod module and re-run the initial include process for pac1921
@@ -756,3 +808,7 @@ class TestPAC1921():
                 # Check that lack of gpiod throws error on pin control config
                 with pytest.raises(RuntimeError, match=".*gpiod module not available.*"):
                     my_pac1921.config_pincontrol_integration_mode()
+
+                # Check that lack of gpiod throws error on init of array
+                with pytest.raises(RuntimeError, match=".*gpiod module not available.*"):
+                    my_array = PAC1921_Synchronised_Array(None, 500)

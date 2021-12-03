@@ -147,7 +147,7 @@ class PAC1921(object):
     pin-control of free-run. At this point, other settings can be configured (gain, filtering etc)
     or calling read() will return the result of the chosen measurement.
     """
-    def __init__(self, i2c_address=None, address_resistance=None, name='PAC1921', nRead_int_pin=None, r_sense=None, measurement_type=None):
+    def __init__(self, i2c_address=None, address_resistance=None, name=None, nRead_int_pin=None, r_sense=None, measurement_type=None):
         """
         Create a PAC1921 device instance with an associated address. If the address is unknown but
         but the address resistance is, supply this instead (the associated I2C address will be
@@ -178,6 +178,8 @@ class PAC1921(object):
         self._check_prodid_manufacturer()
 
         # Init logger
+        if name is None:
+            name = 'PAC1921' + '@' + hex(self._i2c_address)     # Make sure name is unique
         self._name = name        # Name is used because there may be multiple monitors
         self._logger = _logging.getLogger('odin_devices.pac1921.' +
                                          self._name + '@' +
@@ -755,8 +757,9 @@ class PAC1921(object):
 
         :param measurement_type:    Measurement_Type enum CURRENT, POWER or VBUS.
         """
-        if type(measurement_type) is not Measurement_Type:
-            raise TypeError("Invalid measurement type given")
+        if not isinstance(measurement_type, Measurement_Type):
+            raise TypeError("Invalid measurement type given ({})".format(type(measurement_type)))
+        print("allowed measurement type: {}".format(type(measurement_type)))
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
         if measurement_type is not Measurement_Type.VBUS:
@@ -881,6 +884,9 @@ class PAC1921_Synchronised_Array(object):
         :param device_list:             List of PAC1921 devices to add to the array (optional, can
                                         be added individually after init with add_device()).
         """
+        if not _GPIO_AVAIL:
+            raise RuntimeError("gpiod module not available, required for pin control")
+
         self._device_list = []
 
         self._logger = _logging.getLogger('odin_devices.PAC1921.array')
