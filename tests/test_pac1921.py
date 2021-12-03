@@ -117,6 +117,56 @@ class TestPAC1921():
             with pytest.raises(ValueError, match=".*Either an I2C address or address resistance value must be supplied.*"):
                 test_pac1921.device = PAC1921()
 
+    def test_write_register_bitfield(self, test_pac1921):
+        # Tests the basic read/write of fields within individual registers
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+            # Create the device under test
+            test_pac1921.device = PAC1921(i2c_address=0x5A)
+
+            # Check that writing a whole byte to a register writes the correct value
+            writemock.reset_mock()
+            readmock.side_effect = lambda reg: {
+                    0x02: 0b00000000}[reg]      # Register 0x02 will read as 0xFF
+            test_pac1921.device._write_register_bitfield(7, 8, 0x02, 0xAA)
+            writemock.assert_called_with(0x02, 0xAA)
+
+            # Check that writing three specific bits to a register writes correctly
+            writemock.reset_mock()
+            readmock.side_effect = lambda reg: {
+                    0x02: 0b00000000}[reg]      # Register 0x02 will read as 0xFF
+            test_pac1921.device._write_register_bitfield(5, 3, 0x02, 0b101)
+            writemock.assert_called_with(0x02, 0b00101000)
+
+            # Check that writing with width greater than 8 bits or less than 1 throws an error
+            with pytest.raises(ValueError, match=".*bit_width must be in range.*"):
+                test_pac1921.device._write_register_bitfield(7, 0, 0x02, 0b101)
+            with pytest.raises(ValueError, match=".*bit_width must be in range.*"):
+                test_pac1921.device._write_register_bitfield(7, 9, 0x02, 0b101)
+
+            # Check that writing a value wider than the width throws an error
+            with pytest.raises(ValueError, match=".*Value 11 does not fit in 3 bits.*"):
+                test_pac1921.device._write_register_bitfield(5, 3, 0x02, 0b1011)
+
+            # Check that writing a width greater than the start bit allows throws an error
+            with pytest.raises(ValueError, match=".*bit_width must be in range.*"):
+                test_pac1921.device._write_register_bitfield(1, 3, 0x02, 0b101)
+
+            # Check that writing with an invalid start bit throws an error
+            with pytest.raises(ValueError, match=".*start_bit must be in range.*"):
+                test_pac1921.device._write_register_bitfield(8, 0, 0x02, 0b101)
+            with pytest.raises(ValueError, match=".*start_bit must be in range.*"):
+                test_pac1921.device._write_register_bitfield(-1, 9, 0x02, 0b101)
+
+            # Check that writing an invalid register address throws an error
+            with pytest.raises(KeyError, match=".*Register 0x99 is not valid.*"):
+                test_pac1921.device._write_register_bitfield(7, 8, 0x99, 0xFF)
+
     def test_product_manufacturer_id_check(self, test_pac1921):
         test_pac1921.device._i2c_device.readU8 = MagicMock()
 

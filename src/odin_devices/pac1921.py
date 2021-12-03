@@ -97,6 +97,10 @@ _OVERFLOW_STATUS_REG = 0x1C # Last 3 MSBs are VSOV, VBOV, VPOV
 _SMPL_REG = 0x01            # 4 bits from 7 to 4
 _PRODUCT_ID_REG = 0xFD      # Product ID should be 0b01011011
 _MANUFACTURER_ID_REG = 0xFE # Manufacturer ID should be 0b01011101
+_ALLOWED_REGISTERS = list(range(0x00, 0x02+1)) \
+                   + list(range(0x10, 0x1E+1)) \
+                   + list(range(0x21, 0x27+1)) \
+                   + list(range(0xFD, 0xFF+1))
 
 # Default POR values
 _DV_GAIN_DEFAULT = 1
@@ -352,7 +356,11 @@ class PAC1921(object):
 
         # Check the value is valid for the bit width
         if new_value > (pow(2, bit_width) - 1):
-            raise ValueError("Value {} does bit fit in {} bits".format(new_value, bit_width))
+            raise ValueError("Value {} does not fit in {} bits".format(new_value, bit_width))
+
+        # Check the register address is valid
+        if register not in _ALLOWED_REGISTERS:
+            raise KeyError("Register {} is not valid".format(hex(register)))
 
         # Read original value from register
         old_value = self._i2c_device.readU8(register)
