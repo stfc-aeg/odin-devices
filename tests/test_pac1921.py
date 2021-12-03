@@ -57,9 +57,8 @@ To Test:
                 already had assigned pins.
         - [x] Check that get_names returns valid supplied names of devices
         - Read Devices
-            - [ ] Check that lack of integration time throws an error
-            - [ ] Check that a lack of devices throws an error
-            - [ ] Check that the measurements for each device are read and associated with the
+            - [x] Check that a lack of devices throws an error
+            - [x] Check that the measurements for each device are read and associated with the
                     correct device
 
 """
@@ -800,7 +799,6 @@ class TestPAC1921():
             assert(len(init_array.get_names()) == 3)
 
     def test_syncarr_integration(self, test_pac1921):
-
         writemock = MagicMock()
         readmock = MagicMock()
 
@@ -871,8 +869,48 @@ class TestPAC1921():
                 test_array.set_integration_time(10000)
 
     def test_syncarr_read(self, test_pac1921):
-        #TODO
-        pass
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with \
+                patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            # Prevent reports of overflows and r/w errors on device reads
+            readmock.side_effect = lambda reg: {            # Force return of overflow flags
+                    0x00: 0,                                        # Read config as 0
+                    0x01: 0,                                        # Read config as 0
+                    0x02: 0,                                        # Read config as 0
+                    0x1C: 0b000}[reg]                               # Overflow status None
+
+            # Check that a lack of devices throws a error
+            temp_array_pin = MagicMock(spec=gpiod.Line)
+            temp_array_pin.set_value = Mock()
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin=temp_array_pin,
+                                                    integration_time_ms=500,
+                                                    device_list=None)
+            with pytest.raises(Exception, match=".*No devices.*"):
+                test_array.read_devices()
+
+            # Check that measurements from each device are reported and associated with the correct device
+            dev1_read_mock = Mock(); dev1_read_mock.return_value = 1.0
+            dev2_read_mock = Mock(); dev2_read_mock.return_value = 2.0
+            dev3_read_mock = Mock(); dev3_read_mock.return_value = 3.0
+            test_device1 = PAC1921(i2c_address=0x5A, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            test_device2 = PAC1921(i2c_address=0x5B, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            test_device3 = PAC1921(i2c_address=0x5C, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            test_device1._read_decode_output = dev1_read_mock
+            test_device2._read_decode_output = dev2_read_mock
+            test_device3._read_decode_output = dev3_read_mock
+            test_array.add_device(test_device1)
+            test_array.add_device(test_device2)
+            test_array.add_device(test_device3)
+            names_out, readout = test_array.read_devices()
+            print(names_out, readout)
+            assert(readout[names_out.index(test_device1.get_name())] == 1.0)
+            assert(readout[names_out.index(test_device2.get_name())] == 2.0)
+            assert(readout[names_out.index(test_device3.get_name())] == 3.0)
 
     def test_no_gpiod(self, test_pac1921):
 
