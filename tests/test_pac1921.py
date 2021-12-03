@@ -44,7 +44,24 @@ To Test:
     - [ ] Check that setting a new measurement type means read cannot be activated until a control
             mode is configured
     - Synchronised Array
-        - [ ]
+        - [x] Check that devices can be added to the array both at init and with add_device
+            - [x] Check that the device type is checked
+            - [x] Check that the device must be in pin control mode
+        - Integration
+            - [x] Check that the array integration time has taken effect
+            - [x] Check that if integration time is supplied at init and devices are added later,
+                it still takes effect
+            - [x] Check that an invalid integration time is caught
+            - [x] Check that set_integration_time() function successfully changes the integration time
+            - [x] Check that the correct pin is used for integration (array one), even if the pins
+                already had assigned pins.
+        - [x] Check that get_names returns valid supplied names of devices
+        - Read Devices
+            - [ ] Check that lack of integration time throws an error
+            - [ ] Check that a lack of devices throws an error
+            - [ ] Check that the measurements for each device are read and associated with the
+                    correct device
+
 """
 
 import sys
@@ -776,10 +793,82 @@ class TestPAC1921():
             after_array.add_device(third_pac1921)
             assert(init_array._device_list == after_array._device_list)
 
+            # Check that get_names matches supplied names for devices
+            assert(first_pac1921._name in init_array.get_names())
+            assert(second_pac1921._name in init_array.get_names())
+            assert(third_pac1921._name in init_array.get_names())
+            assert(len(init_array.get_names()) == 3)
 
     def test_syncarr_integration(self, test_pac1921):
-        #TODO
-        pass
+
+        writemock = MagicMock()
+        readmock = MagicMock()
+
+        with patch.object(PAC1921, '_check_prodid_manufacturer') as prodid_success_mock, \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readU8') as readmock:
+
+            temp_array_pin = MagicMock(spec=gpiod.Line)
+            temp_array_pin.set_value = Mock()
+
+            # Prevent reports of overflows and r/w errors on device reads
+            readmock.side_effect = lambda reg: {            # Force return of overflow flags
+                    0x00: 0,                                        # Read config as 0
+                    0x01: 0,                                        # Read config as 0
+                    0x02: 0,                                        # Read config as 0
+                    0x1D: 0,                                        # Result as 0 (irrelevant)
+                    0x1E: 0,                                        # Result as 0 (irrelevant)
+                    0x1C: 0b000}[reg]                               # Overflow status None
+
+            # Check that the array integration time supplied at init affects the function duration
+            time_target_ms = 900
+            test_device = PAC1921(i2c_address=0x5A, r_sense=0.01, measurement_type=Measurement_Type.POWER)
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin=temp_array_pin,
+                                                    integration_time_ms=time_target_ms,
+                                                    device_list=[test_device])
+            time_before_s = time.time()
+            test_array.read_devices()
+            time_after_s = time.time()
+            assert_within_percent((time_after_s-time_before_s)*1000, time_target_ms, 1)
+
+            # Check that the integration time adjustment function updates the function time
+            test_array.set_integration_time(300)
+            time_before_s = time.time()
+            test_array.read_devices()
+            time_after_s = time.time()
+            assert_within_percent((time_after_s-time_before_s)*1000, 300, 1)
+
+            # Check that if pins are supplied after init they still inherit the desired duration
+            time_target_ms = 900
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin=temp_array_pin,
+                                                    integration_time_ms=time_target_ms,
+                                                    device_list=None)
+            test_array.add_device(test_device)      # Device will have default integration time 500ms
+            time_before_s = time.time()
+            test_array.read_devices()
+            time_after_s = time.time()
+            assert_within_percent((time_after_s-time_before_s)*1000, time_target_ms, 1)
+
+            # Check that the correct pin is used for integration, no matter what pins were assigned
+            # previously to the devices
+            temp_WRONG_pin = MagicMock(spec=gpiod.Line)
+            temp_WRONG_pin.set_value = Mock()
+            test_device = PAC1921(i2c_address=0x5A, r_sense=0.01, nRead_int_pin=temp_WRONG_pin,
+                                  measurement_type=Measurement_Type.POWER)
+            test_array = PAC1921_Synchronised_Array(nRead_int_pin=temp_array_pin,
+                                                    integration_time_ms=time_target_ms,
+                                                    device_list=[test_device])
+            temp_array_pin.reset_mock()
+            temp_WRONG_pin.reset_mock()
+            test_array.read_devices()
+            temp_array_pin.set_value.assert_any_call(1)     # Correct pin was toggled
+            temp_array_pin.set_value.assert_any_call(0)
+            temp_WRONG_pin.set_value.assert_not_called()    # Wrong pin was not moved
+
+            # Check that supplying an incorrect integration time will still be caught (mechanism tested
+            # in more depth elsewhere)
+            with pytest.raises(ValueError):
+                test_array.set_integration_time(10000)
 
     def test_syncarr_read(self, test_pac1921):
         #TODO
