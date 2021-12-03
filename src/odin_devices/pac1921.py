@@ -967,9 +967,6 @@ class PAC1921_Synchronised_Array(object):
         Note that all devices will be measuring power in this mode, which is the only measurement that
         supports pin-control. Results are in watts.
         """
-        # Check that the integration time has been set
-        if self._integration_time_ms is None:
-            raise Exception("Integration time is not set")
 
         # Check that there are devices in the array
         if len(self._device_list) == 0:
