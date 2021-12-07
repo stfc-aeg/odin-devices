@@ -479,10 +479,61 @@ class TestFireFly():
             assert(test_firefly.num_channels == 4)
 
     def test_channel_enable_qsfp(self, test_firefly):
-        pass
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+
+            # Disable all channels by default (has already been tested)
+            test_firefly = FireFly()
+
+            # Selectively enable channel 1(ch1 is first channel for QSFP)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_01)
+            assert(test_firefly.num_channels == 4)      # This test is valid for 4-channel devices
+            assert(mock_registers_QSFP['lower'][86] & 0b1111 == 0b1110)         # Tx Disable bits
+
+            # Selectively enable channels 1 and 3 combined (ch1 is first channel for QSFP)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_01 | FireFly.CHANNEL_03)
+            assert(test_firefly.num_channels == 4)      # This test is valid for 4-channel devices
+            assert(mock_registers_QSFP['lower'][86] & 0b1111 == 0b1010)         # Tx Disable bits
 
     def test_channel_enable_cxp(self, test_firefly):
-        pass
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+
+            # Disable all channels by default (has already been tested)
+            test_firefly = FireFly()
+
+            # Selectively enable channel 1(ch1 is second channel for QSFP)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_01)
+            assert(test_firefly.num_channels == 12)      # This test is valid for 12-channel devices
+            assert(mock_registers_CXP['lower'][52] & 0b1111 == 0b1111)
+            assert(mock_registers_CXP['lower'][53] == 0b11111101)
+
+            # Selectively enable channels 1 and 3 combined (ch1 is first channel for QSFP)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_01 | FireFly.CHANNEL_09)
+            assert(mock_registers_CXP['lower'][52] & 0b1111 == 0b1101)
+            assert(mock_registers_CXP['lower'][53] == 0b11111101)
 
     def test_channel_enable_readback_qsfp(self, test_firefly):
         pass
