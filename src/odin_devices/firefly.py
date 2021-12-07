@@ -78,7 +78,7 @@ class FireFly:
         self._log = logging.getLogger(loggername)
         self._log.info("Init FireFly with base address 0x%02x" % base_address)
 
-        INTERFACE_Detect = self._get_interface(select_line, 0x50)
+        INTERFACE_Detect = FireFly._get_interface(select_line, 0x50, self._log)
 
         if INTERFACE_Detect == FireFly.INTERFACE_QSFP:
             self._interface = _interface_QSFP(loggername+".QSFP+", base_address, select_line)
@@ -104,9 +104,10 @@ class FireFly:
         temp_tx = self.get_temperature(FireFly.DIRECTION_TX)
         self._log.info("Tx Temperature: {}".format(temp_tx))
 
-    def _get_interface(self, select_line, default_address):
+    @staticmethod
+    def _get_interface(select_line, default_address, log_instance=None):
         # Assuming the device is currently on the default address, and OUI is 0x40C880
-        tempbus = smbus.SMBus(1)
+        tempdevice = I2CDevice(default_address)
 
         if select_line is not None:
             # Check GPIO control is available
@@ -127,19 +128,21 @@ class FireFly:
             select_line.set_value(0)
 
         # Force the page to 0x00
-        tempbus.write_byte_data(default_address, 127, 0x00)
+        tempdevice.write8(127, 0x00)
         # Read bytes 168, 169, 170
-        cxp_oui = tempbus.read_i2c_block_data(default_address, 168, 3)
+        cxp_oui = tempdevice.readList(168, 3)
         # Read bytes 165, 166, 167
-        qsfp_oui = tempbus.read_i2c_block_data(default_address, 165, 3)
+        qsfp_oui = tempdevice.readList(165, 3)
+        print(cxp_oui, qsfp_oui)
 
         if select_line is not None:
             # GPIO select line high
             select_line.set_value(1)
 
-        self._log.debug(
-                "Reading OUI fields from device at {}: CXP OUI {}, QSFP OUI {}".format(
-                    default_address, cxp_oui,qsfp_oui))
+        if log_instance is not None:
+            log_instance.debug(
+                    "Reading OUI fields from device at {}: CXP OUI {}, QSFP OUI {}".format(
+                        default_address, cxp_oui,qsfp_oui))
 
         if cxp_oui == [0x04, 0xC8, 0x80]:
             # OUI found correctly, must be CXP device
@@ -150,7 +153,8 @@ class FireFly:
         else:
             # Given that Samtec does not 'officially' support the OUI field for 4 channel devices,
             # it is possible it would not be present. In that case, we assume QSFP is being used.
-            self._log.warning("OUI not found, but assuming QSFP device is present")
+            if log_instance is not None:
+                log_instance.warning("OUI not found, but assuming QSFP device is present")
             return FireFly.INTERFACE_QSFP
 
     def _check_pn_fields(self, pn_str):
