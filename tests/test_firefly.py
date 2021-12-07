@@ -67,6 +67,7 @@ TX_EXAMPLE_PN =  [ord(x) for x in list('T0414xxx0114    ')]  # https://suddendoc
 
 def model_I2C_readList(register, length):
     global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
+    length = int(length)
     outlist = []
     for reg in range(register, register+length):
         outlist.append(model_I2C_readU8(reg))
