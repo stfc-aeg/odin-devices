@@ -36,7 +36,7 @@ def _array_to_int(array_in):
     return out_value
 
 
-class FireFly:
+class FireFly(object):
     DIRECTION_TX = 1        # Definition used in driver only
     DIRECTION_RX = 0        # Definition used in driver only
     DIRECTION_DUPLEX = 2    # Definition used in driver only
@@ -343,7 +343,7 @@ class FireFly:
 
         return channels_disabled
 
-class _Field:
+class _Field(object):
     """
     Class capable of storing data to encode fields that span multiple bytes or only segments of a
     few bits within a byte. Note that 'length' is in bits.
@@ -358,7 +358,7 @@ class _Field:
         return (self.startbit - (self.length - 1))
 
 
-class _FireFly_Interface:
+class _FireFly_Interface(object):
     """
     Generic class to be extended by alternative interfaces (and memory maps) for the FireFly.
     Currently this supports automatic detection and interaction with devices that report compliance
