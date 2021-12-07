@@ -530,8 +530,8 @@ class _interface_CXP(_FireFly_Interface):
         self._init_select(base_address)     # May modify _base_address
 
         # CXP uses seperate 'devices' for Tx/Rx operations
-        self._tx_device = I2CDevice(base_address)
-        self._rx_device = I2CDevice(base_address + 4)
+        self._tx_device = I2CDevice(self._base_address)
+        self._rx_device = I2CDevice(self._base_address + 4)
 
     def _init_select(self, chosen_address):
         """
@@ -561,6 +561,7 @@ class _interface_CXP(_FireFly_Interface):
         # Write address field with initial settings for select line
         self._tx_device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
         self.write_field(self.FLD_I2C_Address, [chosen_address])
+        self._base_address = chosen_address
         self._tx_device = None              # Will be properly assigned later
 
     def _select_device(self):
