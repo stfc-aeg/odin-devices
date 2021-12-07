@@ -244,14 +244,17 @@ class FireFly(object):
         if direction == FireFly.DIRECTION_TX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
         elif direction == FireFly.DIRECTION_RX:
-            temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
+            temperature_bytes = self._interface.read_field(self._interface.FLD_Rx_Temperature)
         else:
             raise I2CException("Invalid direction specified, and could not be derived")
 
-        if len(temperature_bytes) != 2:
-            raise I2CException("Failed to read temperature")
+        if len(temperature_bytes) != 1:
+            raise I2CException("Failed to read temperature, got {}".format(temperature_bytes))
 
-        output_temp = temperature_bytes[0] + temperature_bytes[1] * (float(1) / float(256))
+        # Perform 8-bit 2's compliment conversion
+        output_temp = (temperature_bytes[0] & 0b01111111) + \
+            (-128 if ((temperature_bytes[0] & 0b10000000) != 0) else 0)
+
         return output_temp
 
     def disable_tx_channels(self, channels_combined):
@@ -502,8 +505,8 @@ class _interface_CXP(_FireFly_Interface):
     FLD_Vendor_Name = _Field_CXP(152, True, 0x00, (16*8)-1, 16*8)       # 16-byte ASCII field
     FLD_Vendor_OUI = _Field_CXP(168, True, 0x00, (3*8)-1, 3*8)          # 3-byte IEEE UID (SFF-8024)
 
-    FLD_Tx_Temperature = _Field_CXP(22, True, 0x00, (2*8)-1, 2*8)       # Tx 2-byte temperature
-    FLD_Rx_Temperature = _Field_CXP(22, False, 0x00, (2*8)-1, 2*8)      # Rx 2-byte temperature
+    FLD_Tx_Temperature = _Field_CXP(22, True, 0x00, (1*8)-1, 1*8)       # Tx 2-byte temperature
+    FLD_Rx_Temperature = _Field_CXP(22, False, 0x00, (1*8)-1, 1*8)      # Rx 2-byte temperature
 
     FLD_Tx_Channel_Disable = _Field_CXP(52, True, 0x00, 11, 12)         # Tx channel disable
 
@@ -645,8 +648,8 @@ class _interface_QSFP(_FireFly_Interface):
     FLD_Vendor_Name = _Field_QSFP(148, 0x00, (16*8)-1, 16*8)            # 16-byte ASCII field
     FLD_Vendor_OUI = _Field_QSFP(165, 0x00, (3*8)-1, 3*8)               # 3-byte IEEE UID (SFF-8024)
 
-    FLD_Tx_Temperature = _Field_QSFP(22, 0x00, (2*8)-1, 2*8)        # 2-byte shared temperature
-    FLD_Rx_Temperature = _Field_QSFP(22, 0x00, (2*8)-1, 2*8)        # 2-byte shared temperature
+    FLD_Tx_Temperature = _Field_QSFP(22, 0x00, (1*8)-1, 1*8)        # 2-byte shared temperature
+    FLD_Rx_Temperature = _Field_QSFP(22, 0x00, (1*8)-1, 1*8)        # 2-byte shared temperature
 
     FLD_Tx_Channel_Disable = _Field_QSFP(86, 0x00, 3, 4)            # Tx channel disable
 
