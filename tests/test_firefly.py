@@ -37,7 +37,7 @@ sys.modules['gpiod'] = MagicMock()
 from odin_devices.firefly import FireFly, _interface_QSFP, _interface_CXP
 import smbus
 #from smbus import SMBus
-from odin_devices.i2c_device import I2CDevice
+from odin_devices.i2c_device import I2CDevice, I2CException
 import gpiod
 
 
@@ -60,7 +60,7 @@ mock_registers_QSFP_PS = 0
 mock_registers_areCXP = True
 
 QSFP_EXAMPLE_PN = [ord(x) for x in list('B0414xxx0x1xxx  ')]    # 4-channel duplex 14Gbps
-CXP_EXAMPLE_PN  = [ord(x) for x in list('T1214xxx0x1xxx  ')]    # 12-channel Tx 14Gbps
+CXP_EXAMPLE_PN  = [ord(x) for x in list('B1214xxx0x1xxx  ')]    # 12-channel duplex 14Gbps
 TXRX_EXAMPLE_PN = [ord(x) for x in list('B0414xxx0114    ')]  # https://suddendocs.samtec.com/catalog_english/ecuo.pdf
 TX_EXAMPLE_PN =  [ord(x) for x in list('T0414xxx0114    ')]  # https://suddendocs.samtec.com/catalog_english/ecuo.pdf
 
@@ -357,8 +357,85 @@ class TestFireFly():
             assert(mock_registers_CXP['lower'][52] & 0b1111 == 0b1111)      # Tx 08-11 Disable bits
             assert(mock_registers_CXP['lower'][53] == 0b11111111)           # Tx 00-07 Disable bits
 
-    def test_temp_reporting(self, test_firefly):
-        pass
+    def test_tx_temp_reporting_qsfp(self, test_firefly):
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+
+            # Store temperature 40C in CXP device Tx/Rx and read result
+            mock_registers_QSFP['lower'][22] = 0b00101000        # 2's compliment 8-bit
+            test_firefly = FireFly()
+            assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == 40.0)
+
+            # Check that the 2's comliment works by reading a negative back
+            mock_registers_QSFP['lower'][22] = 0b10000000        # 2's compliment 8-bit
+            test_firefly = FireFly()
+            assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == -128.0)
+
+    def test_tx_temp_reporting_cxp(self, test_firefly):
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+
+            # Store temperature 40C in CXP device Tx and read result
+            mock_registers_CXP['lower'][22] = 0b00101000        # 2's compliment 8-bit
+            test_firefly = FireFly()
+            assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == 40.0)
+
+            # Store temperature 40C in CXP device Rx (same register, different I2C address)
+            mock_registers_CXP['lower'][22] = 0b00101000        # 2's compliment 8-bit
+            test_firefly = FireFly()
+            assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == 40.0)
+
+            # Check that the 2's comliment works by reading a negative back
+            mock_registers_CXP['lower'][22] = 0b10000000        # 2's compliment 8-bit
+            test_firefly = FireFly()
+            assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == -128.0)
+
+            # Check that a duplex device supplied with no direction raises an error
+            mock_registers_reset()          # reset the register systems, PS is 0
+            test_firefly = FireFly()
+            assert(test_firefly.direction == FireFly.DIRECTION_DUPLEX)  # Test valid for duplex
+            with pytest.raises(I2CException, match=".*Invalid direction.*could not be derived.*"):
+                test_firefly.get_temperature()
+
+            # Check that a simplex device can infer direction
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_registers_CXP['upper'][0][171] = ord('T') # Force PN to reflect Tx only device
+            test_firefly = FireFly()
+            assert(test_firefly.direction == FireFly.DIRECTION_TX)  # Test valid for Tx only
+            mock_read_field = MagicMock()
+            with patch.object(_interface_CXP, 'read_field') as mock_read_field:
+                mock_read_field.return_value = [30]
+                test_firefly.get_temperature()
+                print(mock_read_field.mock_calls)
+
+                # Assert that the Tx version was read
+                mock_read_field.assert_called_with(_interface_CXP.FLD_Tx_Temperature)
+
+                # Assert that the Rx version was not read
+                assert(call(_interface_CXP.FLD_Tx_Temperature) in mock_read_field.mock_calls)
+                assert(call(_interface_CXP.FLD_Rx_Temperature) not in mock_read_field.mock_calls)
 
     def test_device_info_report(self, test_firefly):
         pass
