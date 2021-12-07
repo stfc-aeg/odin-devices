@@ -387,7 +387,7 @@ class _FireFly_Interface(object):
             field.startbit,field.length,field.register))
 
         # Read byte values from starting register onwards
-        num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
+        num_full_bytes = int(math.ceil((field.length + field.get_endbit()) / float(8)))
         raw_register_values = i2c_device.readList(field.register, num_full_bytes)
 
         # Check resulting I2C read format and length
@@ -459,7 +459,7 @@ class _FireFly_Interface(object):
         self._log.debug("\tApplied output: {:x}".format(new_value))
 
         # Convert an array of bytes, and write
-        num_full_bytes = math.ceil((field.length + field.get_endbit()) / float(8))
+        num_full_bytes = int(math.ceil((field.length + field.get_endbit()) / float(8)))
         new_value_array = _int_to_array(new_value, num_full_bytes)
         i2c_device.writeList(field.register, new_value_array)   # Perform write
         self._log.debug("\tWrite list: {}".format(new_value_array))
