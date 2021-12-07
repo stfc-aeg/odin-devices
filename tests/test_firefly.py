@@ -158,5 +158,163 @@ mock_I2C_readU8 = MagicMock()
 
 class TestFireFly():
     def test_interface_detect(self, test_firefly):
+        """
+        Check the interface detection process, which will be performed to determine
+        if the device is QSFP+ or CXP. To perform this test, the select line needs to be used.
+        """
+
+        # Create relevant mocks
+        writemock = MagicMock()
+        readmock = MagicMock()
+        temp_pin = MagicMock(spec=gpiod.Line)
+        temp_pin.set_value = Mock()
+        temp_pin.is_requested = Mock(); temp_pin.is_requested.return_value = True
+        with \
+                patch.object(I2CDevice, 'write8') as writemock, \
+                patch.object(I2CDevice, 'readList') as readmock:
+
+            # Check that the correct OUI address is read, using the correct write-read pattern
+            writemock.reset_mock()
+            readmock.reset_mock()
+            FireFly._get_interface(select_line=temp_pin, default_address=0x50)
+            writemock.assert_called_with(127, 0)        # Writes page 0 to page select byte
+            readmock.assert_any_call(165, 3)            # Reads OUI bytes for QSFP+
+            readmock.assert_any_call(168, 3)            # Reads OUI bytes for CXP
+
+            # Check that reading the OUI for a QSFP+ device will result in identification
+            readmock.side_effect = lambda reg, ln: {        # Set fake register to return expected count
+                        165: [0x04, 0xC8, 0x80],        # QSFP+ OUI is Samtek
+                        168: [0, 0, 0]}[reg]            # QSFP first 3 digits of PN)
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+
+            # Check that reading the OUI for a CXP device will result in identification
+            readmock.side_effect = lambda reg, ln: {        # Set fake register to return expected count
+                        165: [0, 0, 0],                 # CXP end of vendor name in ASCII
+                        168: [0x04, 0xC8, 0x80]}[reg]   # CXP OUI is Samtek
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_CXP)
+
+            # Check that an invalid value for both, return QSFP (may be 4-channel QSFP+, which does
+            # not officially support the OUI
+            readmock.side_effect = lambda reg, ln: [0, 0, 0]    # Return unexpected value
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+
+        # Check that the mocking model for different types also works
+        print("Testing the mocked registers:")
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems
+
+            mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_CXP)
+
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+
+    def test_page_switching_qsfp(self, test_firefly):
+        # Check that selecting a field accessible on page 1 results in the page being changed
+        # Since the mocking already simulates pages, this can be checked by placing data on the
+        # virtual upper page 01 only to see if it is received correctly.
+
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+            test_firefly = FireFly()
+
+            # Write to the I2C Address field, which is on upper page 2 using current interface
+            test_firefly._interface.write_field(test_firefly._interface.FLD_I2C_Address, [0xAA])
+
+            assert(mock_registers_QSFP['lower'][127] == 2)  # Check PS is now 2
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+
+            mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+            test_firefly = FireFly()
+
+            # Write to the I2C Address field, which is on upper page 2 using current interface
+            test_firefly._interface.write_field(test_firefly._interface.FLD_I2C_Address, [0xAA])
+
+            assert(mock_registers_CXP['lower'][127] == 2)  # Check PS is now 2
+
+    def test_base_address_reassignment_qsfp(self, test_firefly):
+        pass
+
+    def test_base_address_reassignment_cxp(self, test_firefly):
+        pass
+
+    def test_initial_channel_disable(self, test_firefly):
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+            test_firefly = FireFly()
+
+            # Check that the Tx channels have been left in a disabled state assuming 4 channels
+            assert(test_firefly.num_channels == 4)      # This test is valid for 4-channel devices
+            assert(mock_registers_QSFP['lower'][86] & 0b1111 == 0b1111)         # Tx Disable bits
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+
+            mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+            test_firefly = FireFly()
+
+            # Check that the Tx channels have been left in a disabled state assuming 4 channels
+            assert(test_firefly.num_channels == 12)      # This test is valid for 4-channel devices
+            assert(mock_registers_CXP['lower'][52] & 0b1111 == 0b1111)      # Tx 08-11 Disable bits
+            assert(mock_registers_CXP['lower'][53] == 0b11111111)           # Tx 00-07 Disable bits
+
+    def test_temp_reporting(self, test_firefly):
+        pass
+
+    def test_device_info_report(self, test_firefly):
+        pass
+
+    def test_channel_enable_qsfp(self, test_firefly):
+        pass
+
+    def test_channel_enable_cxp(self, test_firefly):
+        pass
+
+    def test_channel_enable_readback_qsfp(self, test_firefly):
+        pass
+
+    def test_channel_enable_readback_cxp(self, test_firefly):
+        pass
+
+    def test_gpio_not_present(self, test_firefly):
+        # Check that lack of GPIO will cause error
+        #TODO
+
+        # Check that other line errrors trigger errors
+        #TODO
         pass
 
