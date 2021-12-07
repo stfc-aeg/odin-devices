@@ -671,7 +671,7 @@ class _interface_QSFP(_FireFly_Interface):
         self._address = address
         self._init_select(address)          # May modify _address
 
-        self._device = I2CDevice(address)
+        self._device = I2CDevice(self._address)
         self._device.enable_exceptions()#TODO remove
 
     def _init_select(self, chosen_address):
@@ -687,20 +687,17 @@ class _interface_QSFP(_FireFly_Interface):
             self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
-        if chosen_address == 0x00:
-            # This is the rest value, and the device is assumed to be reset when this is run.
-            return
-
         # Apply extra address-specific measures
         if chosen_address == 0x00 or 0x7F < chosen_address < 0xFF:
             # Revert to default behaviour, where address is 0x50 when selectL pulled low
             self._log.warning("Device will be responding to 0x50, not {}".format(chosen_address))
-            self._base_address = 0x50
+            self._address = 0x50
             return
 
         # Write address field with initial settings for select line
         self._device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
         self.write_field(self.FLD_I2C_Address, [chosen_address])
+        self._address = chosen_address
         self._device = None              # Will be properly assigned later
         # Otherwise chosen address will be used when selectL pulled low
 

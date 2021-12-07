@@ -257,7 +257,33 @@ class TestFireFly():
             assert(mock_registers_CXP['lower'][127] == 2)  # Check PS is now 2
 
     def test_base_address_reassignment_qsfp(self, test_firefly):
-        pass
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
+            mock_registers_reset()          # reset the register systems, PS is 0
+
+            # Check that with no arguments, the base address is 0x50
+            test_firefly = FireFly()
+            assert(test_firefly._interface._device.address == 0x50)
+
+            # Check that if a base address in correct range is set, it takes effect
+            mock_registers_reset()          # reset the register systems, PS is 0
+            test_firefly = FireFly(base_address=0x60)
+            assert(test_firefly._interface._device.address == 0x60)
+
+            # Check that if a base address out of range is set, the address stays the same
+            mock_registers_reset()          # reset the register systems, PS is 0
+            test_firefly = FireFly(base_address=0x90)
+            assert(test_firefly._interface._device.address == 0x50)
 
     def test_base_address_reassignment_cxp(self, test_firefly):
         pass
