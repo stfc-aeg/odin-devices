@@ -515,6 +515,10 @@ class TestFireFly():
             with pytest.raises(Exception):
                 test_firefly.enable_tx_channels(FireFly.CHANNEL_05)
 
+            # Check setting valid channels at limits does not cause an error
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_01)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_04)
+
     def test_channel_enable_cxp(self, test_firefly):
         with \
                 patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
@@ -543,6 +547,10 @@ class TestFireFly():
             test_firefly.enable_tx_channels(FireFly.CHANNEL_01 | FireFly.CHANNEL_09)
             assert(mock_registers_CXP['lower'][52] & 0b1111 == 0b1101)
             assert(mock_registers_CXP['lower'][53] == 0b11111101)
+
+            # Check setting valid channels at limits does not cause an error
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_00)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_11)
 
     def test_channel_enable_readback_qsfp(self, test_firefly):
         with \

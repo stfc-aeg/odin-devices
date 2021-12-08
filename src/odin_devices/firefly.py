@@ -265,16 +265,13 @@ class FireFly(object):
         # if channels are being set directly (i.e. not with CHANNEL_ALL
         min_allowed_channelfield = 0b1 << self._interface.channel_no_offset
         max_allowed_channelfield = (0b1 <<
-                                    (self._interface.channel_no_offset + self.num_channels + 1)
+                                    (self._interface.channel_no_offset + self.num_channels)
                                     ) - 1
         if ((channels_combined < min_allowed_channelfield) or
                 (channels_combined > max_allowed_channelfield)) and \
                 channels_combined != FireFly.CHANNEL_ALL:
             raise Exception(
                     "Combined value ({}) must be between: {}-{}".format(channels_combined,
-                                                                        min_allowed_channelfield,
-                                                                        max_allowed_channelfield))
-        print("channels combined {} was allowed, limits {}-{}".format(channels_combined,
                                                                         min_allowed_channelfield,
                                                                         max_allowed_channelfield))
 
