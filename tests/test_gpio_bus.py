@@ -1,6 +1,7 @@
 
 import sys
 import pytest
+import time
 
 if sys.version_info[0] == 3:    # pragma: no cover
     from unittest.mock import Mock, mock_open, MagicMock, patch
@@ -383,7 +384,7 @@ class TestGPIOBus():
         callback_function_2.assert_not_called()         # Make sure callback not called yet
         mockline1.event_wait.return_value = True        # TRIGGER pin1 event
         mockline2.event_wait.return_value = True        # TRIGGER pin2 event
-        print(callback_function_2)
+        time.sleep(0.05)                                # Allow time for event to trigger async
         test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(0)
         test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(1)
 
@@ -401,7 +402,9 @@ class TestGPIOBus():
                 GPIO_Bus.EV_REQ_FALLING, callback_function_1)
         # (No event triggered)
         test_gpio_bus.gpio_bus_temp.remove_pin_event_callback(0)    # Remove callback
+        time.sleep(0.05)                                # Allow time for event to trigger async
         callback_function_1.assert_not_called()                     # Check event not called
         mockline1.event_wait.return_value = True                    # Trigger falling event
+        time.sleep(0.05)                                # Allow time for event to trigger async
         callback_function_1.assert_not_called()                     # Check event not called
 
