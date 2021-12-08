@@ -8,7 +8,7 @@ logger = logging.getLogger('odin_devices.FireFly')
 
 _GPIO_AVAIL = True
 try:
-    import odin_devices.gpio_bus
+    import gpiod
 except Exception:
     _GPIO_AVAIL = False
     logger.warning("No support for GPIO, cannot use CS line")

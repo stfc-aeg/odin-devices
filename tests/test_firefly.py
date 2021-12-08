@@ -34,6 +34,7 @@ else:                                       # pragma: no cover
 sys.modules['smbus'] = MagicMock()
 #sys.modules['gpiod.Line'] = MagicMock()
 sys.modules['gpiod'] = MagicMock()
+import odin_devices.firefly                 # Needed so that module can be reloaded
 from odin_devices.firefly import FireFly, _interface_QSFP, _interface_CXP
 import smbus
 #from smbus import SMBus
@@ -399,8 +400,13 @@ class TestFireFly():
             temp_pin.set_value.assert_called_with(0)        # Check select is low
 
             # Check that if a pin is not requested already when passed in, an error is thrown
-            #TODO
-            pass
+            temp_pin.is_requested.return_value = False
+            with pytest.raises(Exception, match=".*GPIO Line.*not requested.*user.*"):
+                test_firefly = FireFly(select_line=temp_pin)
+
+            # Check if pin is not a gpiod pin (direct or from gpio_bus) an error is raised
+            with pytest.raises(Exception, match=".*line was not a valid object.*"):
+                test_firefly = FireFly(select_line='notaline')
 
     def test_initial_channel_disable(self, test_firefly):
         with \
@@ -688,10 +694,31 @@ class TestFireFly():
                     True,  False,   True,  True])     # 8, 9, 10, 11
 
     def test_gpio_not_present(self, test_firefly):
-        # Check that lack of GPIO will cause error
-        #TODO
 
-        # Check that other line errrors trigger errors
-        #TODO
-        pass
+        # Make sure this is the last test; it WILL mess with imports...
 
+        with patch.dict('sys.modules', gpiod=None):
+            # Remove gpiod module and re-run the initial include process for pac1921
+            reload(odin_devices.firefly)
+            from odin_devices.firefly import FireFly as FireFly_tmp
+
+            with \
+                    patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                    patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                    patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                    patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+                # Set up the mocks
+                mock_I2C_readList.side_effect = model_I2C_readList
+                mock_I2C_writeList.side_effect = model_I2C_writeList
+                mock_I2C_write8.side_effect = model_I2C_write8
+                mock_I2C_readU8.side_effect = model_I2C_readU8
+
+                mock_registers_reset()          # reset the register systems, PS is 0
+                mock_I2C_SwitchDeviceCXP()     # Model a CXP device
+
+                # Check that instantiation without select line does not throw an error
+                test_firefly = FireFly()
+
+                # Check that instantiation with a select line will thrown an error
+                with pytest.raises(Exception, match=".*GPIO control is not available.*"):
+                    test_firefly = FireFly(select_line='test')
