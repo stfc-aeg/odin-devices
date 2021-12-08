@@ -248,9 +248,6 @@ class FireFly(object):
         else:
             raise I2CException("Invalid direction specified, and could not be derived")
 
-        if len(temperature_bytes) != 1:
-            raise I2CException("Failed to read temperature, got {}".format(temperature_bytes))
-
         # Perform 8-bit 2's compliment conversion
         output_temp = (temperature_bytes[0] & 0b01111111) + \
             (-128 if ((temperature_bytes[0] & 0b10000000) != 0) else 0)
