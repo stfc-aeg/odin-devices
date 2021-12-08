@@ -257,6 +257,27 @@ class FireFly(object):
 
         return output_temp
 
+    def get_time_at_temp_info(self, direction=None):
+        pass
+
+    def _check_channel_combination_in_range(self, channels_combined):
+        # Check that the channel bits are valid for the number of channels & offset, but only
+        # if channels are being set directly (i.e. not with CHANNEL_ALL
+        min_allowed_channelfield = 0b1 << self._interface.channel_no_offset
+        max_allowed_channelfield = (0b1 <<
+                                    (self._interface.channel_no_offset + self.num_channels + 1)
+                                    ) - 1
+        if ((channels_combined < min_allowed_channelfield) or
+                (channels_combined > max_allowed_channelfield)) and \
+                channels_combined != FireFly.CHANNEL_ALL:
+            raise Exception(
+                    "Combined value ({}) must be between: {}-{}".format(channels_combined,
+                                                                        min_allowed_channelfield,
+                                                                        max_allowed_channelfield))
+        print("channels combined {} was allowed, limits {}-{}".format(channels_combined,
+                                                                        min_allowed_channelfield,
+                                                                        max_allowed_channelfield))
+
     def disable_tx_channels(self, channels_combined):
         """
         Generic function to disable a specified selection of transmitter channels, with chosen
@@ -267,6 +288,8 @@ class FireFly(object):
 
         :param channels_combined:   ORed channels: CHANNEL_<00-11> or CHANNEL_ALL
         """
+
+        self._check_channel_combination_in_range(channels_combined)
 
         # Shift the channels in case interface starts numbering at 1...
         channels_combined = channels_combined >> self._interface.channel_no_offset
@@ -294,6 +317,8 @@ class FireFly(object):
 
         :param channels_combined:   ORed channels: CHANNEL_<00-11> or CHANNEL_ALL
         """
+
+        self._check_channel_combination_in_range(channels_combined)
 
         # Shift the channels in case interface starts numbering at 1...
         channels_combined = channels_combined >> self._interface.channel_no_offset

@@ -112,6 +112,9 @@ def model_I2C_writeList(register, values):
     for i in range(0, len(values)):
         reg = register + i
         model_I2C_write8(reg, values[i])
+    print('writing {} to register starting {}'.format(values, register))
+    print('\tmode is CXP? {}'.format('Yes' if mock_registers_areCXP else 'No'))
+    print("\tFull register map: {}".format(mock_registers_CXP if mock_registers_areCXP else mock_registers_QSFP))
 
 
 def mock_I2C_SwitchDeviceQSFP():
@@ -505,6 +508,12 @@ class TestFireFly():
             test_firefly.enable_tx_channels(FireFly.CHANNEL_01 | FireFly.CHANNEL_03)
             assert(test_firefly.num_channels == 4)      # This test is valid for 4-channel devices
             assert(mock_registers_QSFP['lower'][86] & 0b1111 == 0b1010)         # Tx Disable bits
+
+            # Check setting an invalid channel triggers an error
+            with pytest.raises(Exception):
+                test_firefly.enable_tx_channels(FireFly.CHANNEL_00)
+            with pytest.raises(Exception):
+                test_firefly.enable_tx_channels(FireFly.CHANNEL_05)
 
     def test_channel_enable_cxp(self, test_firefly):
         with \
