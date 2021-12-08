@@ -355,8 +355,8 @@ class TestFireFly():
 
             # Check that if a base address in range 0x40-0x7E, address set is used
             mock_registers_reset()          # reset the register systems, PS is 0
-            test_firefly = FireFly(base_address=0x90)
-            assert(test_firefly._interface._tx_device.address == 0x90)
+            test_firefly = FireFly(base_address=0x60)
+            assert(test_firefly._interface._tx_device.address == 0x60)
 
             # Check that the Rx address is 4 above (when 7-bit) the Tx one
             mock_registers_reset()          # reset the register systems, PS is 0
@@ -365,7 +365,42 @@ class TestFireFly():
                    test_firefly._interface._tx_device.address + 4)
 
     def test_pin_control(self, test_firefly):
-        pass
+        temp_pin = MagicMock(spec=gpiod.Line)
+        temp_pin.set_value = Mock()
+        temp_pin.is_requested = Mock(); temp_pin.is_requested.return_value = True
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceCXP()      # Model a CXP device
+
+            # Check that if a pin is supplied it is actuated on I2C usage
+            test_firefly = FireFly(select_line=temp_pin)
+            temp_pin.reset_mock()
+            test_firefly.get_temperature(FireFly.DIRECTION_TX)
+            temp_pin.set_value.assert_any_call(0)           # Was called with 0
+            temp_pin.set_value.assert_called_with(1)        # Last call was 1
+
+            # Check that polarity is correct (selectL)
+            test_firefly._interface._select_device()        # Get in selected state initially
+            temp_pin.reset_mock()
+            test_firefly._interface._deselect_device()
+            temp_pin.set_value.assert_called_with(1)        # Check deselect is high
+            temp_pin.reset_mock()
+            test_firefly._interface._select_device()
+            temp_pin.set_value.assert_called_with(0)        # Check select is low
+
+            # Check that if a pin is not requested already when passed in, an error is thrown
+            #TODO
+            pass
 
     def test_initial_channel_disable(self, test_firefly):
         with \

@@ -544,7 +544,7 @@ class _interface_CXP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_version_control = _Field_CXP(0x03, True, 0x00, 7, 8)
 
-    def __init__(self, loggername, base_address = 0x00, select_line = None):
+    def __init__(self, loggername, base_address=0x00, select_line=None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
@@ -554,8 +554,7 @@ class _interface_CXP(_FireFly_Interface):
 
         # Set up select line use for the given address
         self._select_line = select_line
-        if base_address == None:
-            base_address = 0x00 # Default
+
         self._base_address = base_address
         self._init_select(base_address)     # May modify _base_address
 
@@ -687,7 +686,7 @@ class _interface_QSFP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_revision_compliance = _Field_QSFP(0x01, 0x00, 7, 8)
 
-    def __init__(self, loggername, address = 0x00, select_line = None):
+    def __init__(self, loggername, address=0x00, select_line=None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
@@ -697,8 +696,7 @@ class _interface_QSFP(_FireFly_Interface):
 
         # Set up select line use for the given address
         self._select_line = select_line
-        if address == None:
-            address = 0x00      # Default
+
         self._address = address
         self._init_select(address)          # May modify _address
 
