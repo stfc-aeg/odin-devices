@@ -481,6 +481,24 @@ class TestFireFly():
             assert(test_firefly.data_rate_Gbps == 25)
             assert(test_firefly.num_channels == 4)
 
+            # Check that an unsupported num of channels raises an error
+            pn_unsupported_channels = 'B0625xxx0x1xxx  '    # 6-channel (not real)
+            I2CDevice.writeList(168, [ord(x) for x in pn_unsupported_channels])     # Insert info
+            with pytest.raises(Exception, match=".*Unsupported number of channels: 06.*"):
+                test_firefly = FireFly()
+
+            # Check that an invalid direction raises an error
+            pn_invalid_direction = 'P0425xxx0x1xxx  '       # 'P' direction (not real)
+            I2CDevice.writeList(168, [ord(x) for x in pn_invalid_direction])        # Insert info
+            with pytest.raises(Exception, match=".*Data direction P in part number field not recognised.*"):
+                test_firefly = FireFly()
+
+            # Check that invalid static padding fields raise an error (these never change)
+            pn_invalid_static_bits = 'B0425xxx1x0xxx  '       # Static bits 0, 1 swapped
+            I2CDevice.writeList(168, [ord(x) for x in pn_invalid_static_bits])      # Insert info
+            with pytest.raises(Exception, match=".*Invalid PN static field.*"):
+                test_firefly = FireFly()
+
     def test_channel_enable_qsfp(self, test_firefly):
         with \
                 patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
