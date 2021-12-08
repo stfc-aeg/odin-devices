@@ -205,10 +205,6 @@ class TestFireFly():
                         168: [0x04, 0xC8, 0x80]}[reg]   # CXP OUI is Samtek
             assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_CXP)
 
-            # Check that an invalid value for both, return QSFP (may be 4-channel QSFP+, which does
-            # not officially support the OUI
-            readmock.side_effect = lambda reg, ln: [0, 0, 0]    # Return unexpected value
-            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
 
         # Check that the mocking model for different types also works
         print("Testing the mocked registers:")
@@ -230,6 +226,40 @@ class TestFireFly():
 
             mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
             assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+
+            # Check that an invalid value for both, raise an error
+            global mock_registers_QSFP
+            mock_registers_QSFP = {'lower':{}, 'upper':{0:{}, 1:{}, 2:{}, 3:{}}}    # Clear all registers
+            with pytest.raises(Exception, match=".*Was unable to determine interface type automatically.*"):
+                test_firefly = FireFly()
+            mock_registers_reset()          # reset the register systems (just in case)
+
+    def test_manual_interface_type(self, test_firefly):
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems
+
+            # Check that a manual interface will override an automatic one if specified
+            mock_autodetect = MagicMock()
+            with patch.object(FireFly, '_get_interface') as mock_autodetect:
+                mock_autodetect.return_value = FireFly.INTERFACE_CXP    # Force auto to return CXP
+                mock_I2C_SwitchDeviceQSFP()                             # Model a QSFP device
+                test_firefly = FireFly(Interface_Type=FireFly.INTERFACE_QSFP)   # Force QSFP
+                assert(isinstance(test_firefly._interface, _interface_QSFP))
+                assert(not isinstance(test_firefly._interface, _interface_CXP))
+
+            # Check that an invalid manually specified interface type will raise an error
+            with pytest.raises(Exception, match=".*Manually specified interface type was invalid.*"):
+                test_firefly = FireFly(Interface_Type='foo')
 
     def test_page_switching_qsfp(self, test_firefly):
         # Check that selecting a field accessible on page 1 results in the page being changed

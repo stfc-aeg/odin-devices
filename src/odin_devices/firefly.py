@@ -60,7 +60,7 @@ class FireFly(object):
 
     _LOGGER_BASENAME = "odin_devices.FireFly"
 
-    def __init__(self, base_address = 0x00, select_line = None):
+    def __init__(self, Interface_Type=None, base_address=0x00, select_line=None):
         """
         Create an instance of a generic FireFly device. The interface type will be determined
         automatically, as will the number of channels. Devices are assumed to be in POR, and at
@@ -68,6 +68,8 @@ class FireFly(object):
         switch to. Select lines are also supported, but if ignored it is assumed that the device
         is the only one present on the bus and has its select line pulled low.
 
+        :param Interface_Type:  Type of interface to use, FireFly.INTERFACE_CXP/QSFP. In most cases
+                                should be able to omit this and have it detected automatically.
         :param base_address:    Address that will be set for future communication. Omit for default
         :param select_line:     GPIO line to use for active-low chip select, if used. This should be
                                 a line provided by odin_devices.gpio_bus or directly via gpiod.
@@ -78,16 +80,24 @@ class FireFly(object):
         self._log = logging.getLogger(loggername)
         self._log.info("Init FireFly with base address 0x%02x" % base_address)
 
-        INTERFACE_Detect = FireFly._get_interface(select_line, 0x50, self._log)
+        # Determine interface type automatically or use manually chosen one if supplied
+        if Interface_Type is None:      # Detect interface automatically (default)
+            INTERFACE_Detect = FireFly._get_interface(select_line, 0x50, self._log)
+            if INTERFACE_Detect is None:    # Automatic detection failed
+                raise I2CException("Was unable to determine interface type automatically, " +
+                                   "try specifying Interface_Type manually.")
+        elif Interface_Type in [FireFly.INTERFACE_CXP, FireFly.INTERFACE_QSFP]:
+            INTERFACE_Detect = Interface_Type
+        else:
+            raise I2CException("Manually specified interface type was invalid")
 
+        # Instantiate the interface based on above manual/automatic select
         if INTERFACE_Detect == FireFly.INTERFACE_QSFP:
             self._interface = _interface_QSFP(loggername+".QSFP+", base_address, select_line)
             self._log.info("Interface detected as QSFP+ based")
         elif INTERFACE_Detect == FireFly.INTERFACE_CXP:
             self._interface = _interface_CXP(loggername+".CXP", base_address, select_line)
             self._log.info("Interface detected as CXP based")
-        else:
-            raise I2CException("Unsupported SFF interface class: {}".format(SFF_identifier))
 
         # From here onwards, interface and address specific functions can be called through
         # self._interface.???(), and address, register and select line usage will be handled.
@@ -151,11 +161,9 @@ class FireFly(object):
             # OUI found correctly, must be QSFP interface
             return FireFly.INTERFACE_QSFP
         else:
-            # Given that Samtec does not 'officially' support the OUI field for 4 channel devices,
-            # it is possible it would not be present. In that case, we assume QSFP is being used.
             if log_instance is not None:
-                log_instance.warning("OUI not found, but assuming QSFP device is present")
-            return FireFly.INTERFACE_QSFP
+                log_instance.critical("OUI not found during automatic detection")
+            return None
 
     def _check_pn_fields(self, pn_str):
         """
