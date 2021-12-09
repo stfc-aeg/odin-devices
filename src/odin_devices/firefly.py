@@ -506,6 +506,16 @@ class _FireFly_Interface(object):
 
         time.sleep(0.040)       # Write operations (especially upper02) should be separated by 40ms
 
+    def _select_device(self):
+        if self._select_line is not None:
+            # pull select line low
+            self._select_line.set_value(0)
+
+    def _deselect_device(self):
+        if self._select_line is not None:
+            # pull select line high
+            self._select_line.set_value(1)
+
 
 class _interface_CXP(_FireFly_Interface):
     """
@@ -592,16 +602,6 @@ class _interface_CXP(_FireFly_Interface):
         self.write_field(self.FLD_I2C_Address, [chosen_address])
         self._base_address = chosen_address
         self._tx_device = None              # Will be properly assigned later
-
-    def _select_device(self):
-        if self._select_line is not None:
-            # pull select line low
-            self._select_line.set_value(0)
-
-    def _deselect_device(self):
-        if self._select_line is not None:
-            # pull select line high
-            self._select_line.set_value(1)
 
     def write_field(self, field, value):
         """
@@ -729,16 +729,6 @@ class _interface_QSFP(_FireFly_Interface):
         self._address = chosen_address
         self._device = None              # Will be properly assigned later
         # Otherwise chosen address will be used when selectL pulled low
-
-    def _select_device(self):
-        if self._select_line is not None:
-            # pull select line low
-            self._select_line.set_value(0)
-
-    def _deselect_device(self):
-        if self._select_line is not None:
-            # pull select line high
-            self._select_line.set_value(1)
 
     def write_field(self, field, value):
         """
