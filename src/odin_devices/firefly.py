@@ -475,8 +475,11 @@ class _FireFly_Interface(object):
         # Align new value with register bytes
         value = value << field.get_endbit()
 
-        # Read old value, align with register bytes, with superclass
-        old_values = super(type(self), self).read_field(field, i2c_device)
+        # Read old value, align with register bytes
+        try:
+            old_values = super(type(self), self).read_field(field, i2c_device)
+        except AttributeError:
+            old_values = self.read_field(field, i2c_device)     # Probably called directly
         old_value = _array_to_int(old_values) << field.get_endbit()
         self._log.debug("\tOld register value: {:x}".format(old_value))
 
@@ -500,10 +503,14 @@ class _FireFly_Interface(object):
 
         # Verify
         if verify:
-            verify_value = self.read_field(field, i2c_device)
+            try:
+                verify_value = super(type(self), self).read_field(field, i2c_device)
+            except AttributeError:
+                verify_value = self.read_field(field, i2c_device)   # Probably called directly
+            verify_value_int = _array_to_int(verify_value)
             self._log.debug("Verifying value written ({:b}) against re-read: {:b}".format(
-                value,verify_value))
-            if verify_value != value:
+                value, verify_value_int))
+            if verify_value_int != value:
                 raise I2CException(
                         "Value {} was not successfully written to Field {}".format(
                             value, field))

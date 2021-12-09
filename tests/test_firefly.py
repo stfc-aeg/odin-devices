@@ -353,6 +353,50 @@ class TestFireFly():
                 patch.object(I2CDevice, 'readList') as tmp_mock_readList:
             pass
 
+            test_generic_interface = _FireFly_Interface(0, None)
+            test_i2cdevice = I2CDevice(0x50)
+
+            # Check that writing a byte works
+            tmp_mock_writeList.reset_mock()
+            tmp_mock_readList.side_effect = lambda reg, ln: [0x00]  # Used when reading old value
+            tmp_field = _Field(register=0x00, startbit=7, length=8)
+            test_generic_interface.write_field(tmp_field, [0xAA], test_i2cdevice)
+            tmp_mock_writeList.assert_called_with(0x00, [0xAA])
+
+            # Check that writing a subsection of a byte works
+            tmp_mock_writeList.reset_mock()
+            tmp_field = _Field(register=0x00, startbit=6, length=3)
+            tmp_mock_readList.side_effect = lambda reg, ln: [0x00]  # Initial value 0
+            test_generic_interface.write_field(tmp_field, [0b101], test_i2cdevice)
+            tmp_mock_writeList.assert_called_with(0x00, [0b01010000])
+
+            # Check that writing a selection of bits over a byte boundary works
+            tmp_mock_writeList.reset_mock()
+            tmp_field = _Field(register=0x00, startbit=11, length=8)
+            tmp_mock_readList.side_effect = lambda reg, ln: [0x00, 0x00]  # Initial values 0
+            test_generic_interface.write_field(tmp_field, [0b10101010], test_i2cdevice)
+            tmp_mock_writeList.assert_called_with(0x00, [0b00001010, 0b10100000])
+
+            # Check that if the value does not fit inside the specified field an error is raised
+            tmp_mock_writeList.reset_mock()
+            tmp_field = _Field(register=0x00, startbit=3, length=4)
+            tmp_mock_readList.side_effect = lambda reg, ln: [0x00]  # Initial value 0
+            with pytest.raises(I2CException, match=".*Value 255 does not fit.*length 4.*"):
+                test_generic_interface.write_field(tmp_field, [0b11111111], test_i2cdevice)
+
+            # Check that the verify passes on success
+            tmp_mock_writeList.reset_mock()
+            tmp_mock_readList.side_effect = lambda reg, ln: [0xAA]  # Readback will return 0xAA
+            tmp_field = _Field(register=0x00, startbit=7, length=8)
+            test_generic_interface.write_field(tmp_field, [0xAA], test_i2cdevice, verify=True)
+
+            # Check that the verify raises an error on failure
+            tmp_mock_writeList.reset_mock()
+            tmp_mock_readList.side_effect = lambda reg, ln: [0x00]  # Readback will return 0x00
+            tmp_field = _Field(register=0x00, startbit=7, length=8)
+            with pytest.raises(I2CException, match=".*Value.*was not successfully written.*"):
+                test_generic_interface.write_field(tmp_field, [0xAA], test_i2cdevice, verify=True)
+
     def test_base_address_reassignment_qsfp(self, test_firefly):
         with \
                 patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
