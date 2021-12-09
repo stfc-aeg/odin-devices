@@ -399,8 +399,7 @@ class _FireFly_Interface(object):
     FireFly instance, which will have ownership of one type of interface (detected automatically).
     """
 
-    def __init__(self, SFF_ID, channel_no_offset, loggername):
-        self.SFF_ID = SFF_ID
+    def __init__(self, channel_no_offset, loggername):
         self.channel_no_offset = channel_no_offset
         self._log = logging.getLogger(loggername)
 
@@ -425,7 +424,9 @@ class _FireFly_Interface(object):
                 raise I2CException("Failed to read byte list from I2C Device")
         if (len(raw_register_values) != num_full_bytes):
                 raise I2CException("Number of bytes read incorrect. "
-                    "Expected {}, got {}".format(len(raw_register_values), num_full_bytes))
+                    "Expected {}, got {}: {}".format(num_full_bytes,
+                                                     len(raw_register_values),
+                                                     raw_register_values))
 
         # Convert to a single value
         out_value = _array_to_int(raw_register_values)
@@ -444,7 +445,10 @@ class _FireFly_Interface(object):
         out_value = out_value >> field.get_endbit()
         self._log.debug("\tShifted output:{:x}".format(out_value))
 
-        return _int_to_array(out_value, num_full_bytes)
+        # Calculate the number of bytes needed for output
+        num_output_bytes = int(math.ceil(field.length / 8.0))
+
+        return _int_to_array(out_value, num_output_bytes)
 
     def write_field(self, field, values, i2c_device, verify=False):
         """
@@ -559,8 +563,7 @@ class _interface_CXP(_FireFly_Interface):
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
-        _FireFly_Interface.__init__(self, None,     # TODO Currently unknown SFF ID (vendor)
-                                    0, loggername)      # Channels start at 00
+        _FireFly_Interface.__init__(self, 0, loggername)        # Channels start at 00
 
         # Set up select line use for the given address
         self._select_line = select_line
@@ -691,8 +694,7 @@ class _interface_QSFP(_FireFly_Interface):
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
         """
-        _FireFly_Interface.__init__(self, 0x81,     # Vendor-specific QSFP+
-                                    1, loggername)      # Channels start at 1 for some reason...
+        _FireFly_Interface.__init__(self, 1, loggername)    # Channels start at 1 for some reason...
 
         # Set up select line use for the given address
         self._select_line = select_line

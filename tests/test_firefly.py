@@ -35,7 +35,7 @@ sys.modules['smbus'] = MagicMock()
 #sys.modules['gpiod.Line'] = MagicMock()
 sys.modules['gpiod'] = MagicMock()
 import odin_devices.firefly                 # Needed so that module can be reloaded
-from odin_devices.firefly import FireFly, _interface_QSFP, _interface_CXP
+from odin_devices.firefly import FireFly, _interface_QSFP, _interface_CXP, _FireFly_Interface, _Field
 import smbus
 #from smbus import SMBus
 from odin_devices.i2c_device import I2CDevice, I2CException
@@ -297,6 +297,61 @@ class TestFireFly():
             test_firefly._interface.write_field(test_firefly._interface.FLD_I2C_Address, [0xAA])
 
             assert(mock_registers_CXP['lower'][127] == 2)  # Check PS is now 2
+
+    def test_field_read(self, test_firefly):
+        # These functions have been tested indirectly already, but these are to double-check
+        # any untested functionality. The superfunction will be tested, which will sidestep the
+        # page selection logic.
+        tmp_mock_readList = MagicMock()
+        with \
+                patch.object(I2CDevice, 'readList') as tmp_mock_readList:
+
+            test_generic_interface = _FireFly_Interface(0, None)
+            test_i2cdevice = I2CDevice(0x50)
+
+            # Check that reading a byte works normally
+            tmp_mock_readList.side_effect = lambda reg, num: [0xAA]
+            tmp_field = _Field(register=0x00, startbit=7, length=8)
+            assert(test_generic_interface.read_field(tmp_field, test_i2cdevice) == [0xAA])
+
+            # Check that reading a subsection of a byte works normally
+            tmp_mock_readList.side_effect = lambda reg, num: [0xAA]
+            tmp_field.startbit = 6
+            tmp_field.length = 3
+            result = test_generic_interface.read_field(tmp_field, test_i2cdevice)
+            print(result)
+            assert(result == [0b010])       # 0b10101010 bits 6-4 are 0b010
+
+            # Check that reading a selection of bits over a byte boundary works
+            tmp_mock_readList.side_effect = lambda reg, num: [0b00000111, 0b11100000]
+            tmp_field.startbit = 11
+            tmp_field.length = 8
+            result = test_generic_interface.read_field(tmp_field, test_i2cdevice)
+            assert(result == [0b01111110])
+
+            # Check that if the I2CDevice returns nothing, an error is raised
+            tmp_mock_readList.side_effect = None
+            with pytest.raises(I2CException, match=".*Failed to read byte.*"):
+                result = test_generic_interface.read_field(tmp_field, test_i2cdevice)
+
+            # Check that if the number of full bytes returned is not as expected, an error is raised
+            tmp_mock_readList.side_effect = lambda reg, num: [1, 2]
+            tmp_field.startbit = 2
+            tmp_field.length = 1
+            with pytest.raises(I2CException,
+                               match=".*Number of bytes read incorrect.*Expected 1, got 2.*"):
+                result = test_generic_interface.read_field(tmp_field, test_i2cdevice)
+
+    def test_field_write(self, test_firefly):
+        # These functions have been tested indirectly already, but these are to double-check
+        # any untested functionality. The superfunction will be tested, which will sidestep the
+        # page selection logic.
+        tmp_mock_readList = MagicMock()
+        tmp_mock_writeList = MagicMock()
+        with \
+                patch.object(I2CDevice, 'writeList') as tmp_mock_writeList, \
+                patch.object(I2CDevice, 'readList') as tmp_mock_readList:
+            pass
 
     def test_base_address_reassignment_qsfp(self, test_firefly):
         with \
