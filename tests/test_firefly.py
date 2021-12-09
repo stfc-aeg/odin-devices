@@ -693,6 +693,33 @@ class TestFireFly():
                     True,  True,    True,  True,      # 4, 5, 6, 7
                     True,  False,   True,  True])     # 8, 9, 10, 11
 
+    def tests_channel_enable_readback_field_qsfp(self, test_firefly):
+        # This function essentially does the same thing as above, but presents the
+        # result differently.
+        with \
+                patch.object(I2CDevice, 'write8') as mock_I2C_write8, \
+                patch.object(I2CDevice, 'readU8') as mock_I2C_readU8, \
+                patch.object(I2CDevice, 'writeList') as mock_I2C_writeList, \
+                patch.object(I2CDevice, 'readList') as mock_I2C_readList:
+            # Set up the mocks
+            mock_I2C_readList.side_effect = model_I2C_readList
+            mock_I2C_writeList.side_effect = model_I2C_writeList
+            mock_I2C_write8.side_effect = model_I2C_write8
+            mock_I2C_readU8.side_effect = model_I2C_readU8
+
+            mock_registers_reset()          # reset the register systems, PS is 0
+            mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device (4 channel, offset 1)
+
+            # Disable all channels by default (has already been tested)
+            test_firefly = FireFly()
+
+            # Selectively enable channels 1 and 3 combined (ch1 is first channel for QSFP)
+            test_firefly.enable_tx_channels(FireFly.CHANNEL_ALL)
+            test_firefly.disable_tx_channels(FireFly.CHANNEL_01 | FireFly.CHANNEL_03)
+
+            # Check the reported result, True is disabled
+            assert(test_firefly.get_disabled_tx_channels_field() == (FireFly.CHANNEL_01 | FireFly.CHANNEL_03))
+
     def test_gpio_not_present(self, test_firefly):
 
         # Make sure this is the last test; it WILL mess with imports...

@@ -338,7 +338,7 @@ class FireFly(object):
         self._interface.write_field(self._interface.FLD_Tx_Channel_Disable,
                                     _int_to_array(new_value, len(old_values)))
 
-    def _get_disabled_tx_channels_field(self):
+    def get_disabled_tx_channels_field(self):
         """
         Return a combined bitfield representing transmitter channels that have been disabled for
         the device. Note that depending on the encoding of channel names, this might be a shifted
@@ -351,7 +351,7 @@ class FireFly(object):
         output_value = _array_to_int(byte_values)
 
         # Shift the channels in case the interface starts numbering at 1...
-        output_value << self._interface.channel_no_offset
+        output_value = output_value << self._interface.channel_no_offset
 
         return output_value
 
