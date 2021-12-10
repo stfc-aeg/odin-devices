@@ -8,8 +8,8 @@ Currently, this driver has been written to target 4-channel QSFP+ devices and 12
 devices. The interface used is detected automatically, but if there is an issue with this, it can
 also be specified manually.
 
-The register maps for QSFP+ and CXP (as well as Samtec's implementation) vary. Refer to FireFly™
-Optical ECUO 14G x4 Data Sheet, FireFly™ Optical 14G x12 Data Sheet and as a general reference
+The register maps for QSFP+ and CXP (as well as Samtec's implementation) vary. Refer to FireFly 
+Optical ECUO 14G x4 Data Sheet, FireFly Optical 14G x12 Data Sheet and as a general reference
 InfiniBand Architecture Specification Volume 2 Release 1.3.
 
 Note that the FireFly expects a select line to be used if more than one is present on the same bus.
