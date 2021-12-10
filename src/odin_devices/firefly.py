@@ -1,3 +1,22 @@
+"""
+Samtec Firefly - device access class for the I2C control interface fir Samtec FireFly flyover
+systems. This control interface allows channels to be enabled and disabled, as well as recovering
+some diagnostic information such as internal case temperature.
+
+The FireFly is controlled using either QSFP+ or CXP specifications, depending on the part used.
+Currently, this driver has been written to target 4-channel QSFP+ devices and 12-channel CXP
+devices. The interface used is detected automatically, but if there is an issue with this, it can
+also be specified manually.
+
+The register maps for QSFP+ and CXP (as well as Samtec's implementation) vary. Refer to FireFly™
+Optical ECUO 14G x4 Data Sheet, FireFly™ Optical 14G x12 Data Sheet and as a general reference
+InfiniBand Architecture Specification Volume 2 Release 1.3.
+
+Note that the FireFly expects a select line to be used if more than one is present on the same bus.
+
+Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
+"""
+
 from odin_devices.i2c_device import I2CDevice, I2CException
 import smbus
 import math
@@ -37,6 +56,14 @@ def _array_to_int(array_in):
 
 
 class FireFly(object):
+    """
+    Outer class for user instantiation of a FireFly device. If one device is being used, no args
+    should be required. If using multiple units, a select line will be needed. See __init__ for
+    more information.
+
+    The interface type (QSFP+ or CXP) should be determined automatically.
+    """
+
     DIRECTION_TX = 1        # Definition used in driver only
     DIRECTION_RX = 0        # Definition used in driver only
     DIRECTION_DUPLEX = 2    # Definition used in driver only
@@ -116,6 +143,18 @@ class FireFly(object):
 
     @staticmethod
     def _get_interface(select_line, default_address, log_instance=None):
+        """
+        Attempt to automatically determine the interface type (QSFP+ or CXP) that is being used by
+        the FireFly device at a given I2C address, using a given select line (if used).
+
+        :param select_line:     gpiod Line being used for CS. Provide with gpio_bus or gpiod.
+        :param default_address: The address to use when attempting to communicate. Most likely this
+                                is the default (0x50) since the device has not been configured.
+        :param log_instance:    Because this is a static method, the self._log must be passed in
+                                for logging to work.
+        :return:                Interface type (FireFly.INTERFACE_*) or None if it could not be
+                                determined automatically.
+        """
         # Assuming the device is currently on the default address, and OUI is 0x40C880
         tempdevice = I2CDevice(default_address)
 
@@ -143,7 +182,6 @@ class FireFly(object):
         cxp_oui = tempdevice.readList(168, 3)
         # Read bytes 165, 166, 167
         qsfp_oui = tempdevice.readList(165, 3)
-        print(cxp_oui, qsfp_oui)
 
         if select_line is not None:
             # GPIO select line high
@@ -266,8 +304,13 @@ class FireFly(object):
         pass
 
     def _check_channel_combination_in_range(self, channels_combined):
-        # Check that the channel bits are valid for the number of channels & offset, but only
-        # if channels are being set directly (i.e. not with CHANNEL_ALL
+        """
+        Check that the channel bits are valid for the number of channels & offset, but only if
+        if channels are being set directly (i.e. not with CHANNEL_ALL). An exception will be
+        raised on failure, otherwise no side effect.
+
+        :param channels_combined:       Combined (ORed) field of channels to be tested
+        """
         min_allowed_channelfield = 0b1 << self._interface.channel_no_offset
         max_allowed_channelfield = (0b1 <<
                                     (self._interface.channel_no_offset + self.num_channels)
@@ -379,12 +422,23 @@ class _Field(object):
     few bits within a byte. Note that 'length' is in bits.
     """
     def __init__(self, register, startbit, length, write_only=False):
+        """
+        :param register:        The register within which the field starts (lowest address)
+        :param startbit:        The bit position to start at within the full range of bytes that
+                                will be read. For example, if reading the last 12 bits from a two
+                                byte field, startbit=11.
+        :param length:          Length of the field from startbit in bits.
+        :param write_only:      Specifies that the field will not respond with valid values if read.
+        """
         self.register = register
         self.startbit = startbit
         self.length = length
         self.write_only = write_only
 
     def get_endbit(self):
+        """
+        Calculates the postition of the last bit in a field using the length and startbit position.
+        """
         return (self.startbit - (self.length - 1))
 
 
@@ -400,6 +454,12 @@ class _FireFly_Interface(object):
     """
 
     def __init__(self, channel_no_offset, loggername):
+        """
+        :param channel_no_offset:       The channel numbering offset from 0 that the interface
+                                        uses. For example, QSFP+ starts at channel 1, and so has an
+                                        offset of 1.
+        :param loggername:              Name to use when creating the logger.
+        """
         self.channel_no_offset = channel_no_offset
         self._log = logging.getLogger(loggername)
 
@@ -543,6 +603,15 @@ class _interface_CXP(_FireFly_Interface):
         CXP interface separates the functionality).
         """
         def __init__(self, register, is_tx, page, startbit, length, write_only=False):
+            """
+            :param register:        See _Field
+            :param is_tx:           True if the field is for the transmitter register map.
+            :param page:            The page number the register(s) reside in. this is only relevant
+                                    for registers in the upper page (>127).
+            :param startbit:        See _Field
+            :param length:          See _Field
+            :param write_only:      See _Field
+            """
             _Field.__init__(self, register, startbit, length, write_only)
             # CXP-specific attributes
             self.is_tx = is_tx
@@ -675,6 +744,14 @@ class _interface_QSFP(_FireFly_Interface):
         Nested bit field class to access fields within the QSFP+ memory map. This includes pages.
         """
         def __init__(self, register, page, startbit, length, write_only=False):
+            """
+            :param register:        See _Field
+            :param page:            The page number the register(s) reside in. this is only relevant
+                                    for registers in the upper page (>127).
+            :param startbit:        See _Field
+            :param length:          See _Field
+            :param write_only:      See _Field
+            """
             _Field.__init__(self, register, startbit, length, write_only)
             # QSFP+ specific attributes
             self.page = page            # This is only needed for upper pages
