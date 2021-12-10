@@ -2,13 +2,15 @@ import sys
 import pytest
 
 if sys.version_info[0] == 3:    # pragma: no cover
-    from unittest.mock import Mock, mock_open, patch
+    from unittest.mock import Mock, MagicMock, mock_open, patch
     BUILTINS_NAME = 'builtins'
 else:                           # pramga: no cover
-    from mock import Mock, mock_open, patch
+    from mock import Mock, MagicMock, mock_open, patch
     BUILTINS_NAME = '__builtin__'
 
 sys.modules['smbus'] = Mock()
+sys.modules['gpiod.Line'] = MagicMock()
+import gpiod
 sys.modules['logging'] = Mock() # Track calls to logger.warning
 from odin_devices.si534x import _SI534x, SI5344, SI5345, SI5342, SI534xCommsException
 from odin_devices.i2c_device import I2CException
@@ -228,6 +230,8 @@ class TestSI534x():
         assert(fault_report.oof_input_flag == [False, False, False, False])
         assert(fault_report.has_fault() is False)
         assert(fault_report.had_fault() is False)
+        assert('No currently active faults' in fault_report.__repr__())
+        assert('No currently flagged faults' in fault_report.__repr__())
 
         # With a current fault, check that the correct fault is reported
         test_si534x_driver.virtual_registers[0x00][0x0C] = 0b00000010   # LOS XTAL active
@@ -235,28 +239,64 @@ class TestSI534x():
         test_si534x_driver.virtual_registers[0x00][0x0D] = 0b00000100   # LOS 2 active
         test_si534x_driver.virtual_registers[0x00][0x12] = 0b00000100   # LOS 2 FLG active
         fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
-        print(fault_report)
-        print(test_si534x_driver.si5345_i2c._fault_los_xtal_status.read())
         assert(fault_report.los_xtal_status is True)
         assert(fault_report.los_xtal_flag is True)
         assert(fault_report.los_input_status == [False, False, True, False])
         assert(fault_report.los_input_flag == [False, False, True, False])
         assert(fault_report.has_fault() is True)
         assert(fault_report.had_fault() is True)
+        assert('Faults Active' in fault_report.__repr__())
+        assert('Faults Flagged' in fault_report.__repr__())
 
         # With a past (flagged) fault, check that the correct fault is reported
-        #TODO
-
-        # Check that the fault printout contains the correct information
-        #TODO
-
-        # Check that if using pins, the fault report is blank and the registers are not read
-        #TODO
-
-        # Check that if using pins, and LOL/nINT is active, registers are read
-        #TODO
+        test_si534x_driver.virtual_registers[0x00][0x0C] = 0b00000000   # LOS XTAL active
+        test_si534x_driver.virtual_registers[0x00][0x11] = 0b00000010   # LOS XTAL FLG active
+        test_si534x_driver.virtual_registers[0x00][0x0D] = 0b00000000   # LOS 2 active
+        test_si534x_driver.virtual_registers[0x00][0x12] = 0b00000100   # LOS 2 FLG active
+        fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+        assert(fault_report.los_xtal_status is False)
+        assert(fault_report.los_xtal_flag is True)
+        assert(fault_report.los_input_status == [False, False, False, False])
+        assert(fault_report.los_input_flag == [False, False, True, False])
+        assert(fault_report.has_fault() is False)
+        assert(fault_report.had_fault() is True)
+        assert('No currently active faults' in fault_report.__repr__())
+        assert('Faults Flagged' in fault_report.__repr__())
 
         test_si534x_driver.virtual_registers_en(False)
+
+
+        # Create a new device for testing behaviour with fault pins
+        tmp_lolpin = MagicMock(spec=gpiod.Line)
+        tmp_lolpin.set_value = Mock()
+        tmp_lolpin.get_value = Mock()
+        tmp_intpin = MagicMock(spec=gpiod.Line)
+        tmp_intpin.set_value = Mock()
+        tmp_intpin.get_value = Mock()
+        tmp_pin_device = SI5345(i2c_address=0xAA, LOL_Line=tmp_lolpin, INT_Line=tmp_intpin)
+        test_si534x_driver.virtual_registers_en(True, tmp_pin_device)
+
+        # Check that if using inactive pins, the fault report is blank and the registers are not read
+        test_si534x_driver.si5345_i2c.i2c_bus.readU8.reset_mock()
+        tmp_lolpin.get_value.side_effect = lambda: 1        # Low nLOL pin means interrupt
+        tmp_intpin.get_value.side_effect = lambda: 1        # Low nINT pin means interrupt
+        tmp_pin_device.get_fault_report(attempt_use_pins=True)
+        tmp_pin_device.i2c_bus.readU8.assert_not_called()
+
+        # Check that if using pins, and LOL/nINT is active, registers are read
+        test_si534x_driver.si5345_i2c.i2c_bus.readU8.reset_mock()
+        tmp_lolpin.get_value.side_effect = lambda: 0        # Low nLOL pin means interrupt
+        tmp_intpin.get_value.side_effect = lambda: 1        # Low nINT pin means interrupt
+        tmp_pin_device.get_fault_report(attempt_use_pins=True)
+        tmp_pin_device.i2c_bus.readU8.assert_called()           # Called when LOL indicated
+
+        test_si534x_driver.si5345_i2c.i2c_bus.readU8.reset_mock()
+        tmp_lolpin.get_value.side_effect = lambda: 1        # Low nLOL pin means interrupt
+        tmp_intpin.get_value.side_effect = lambda: 0        # Low nINT pin means interrupt
+        tmp_pin_device.get_fault_report(attempt_use_pins=True)
+        tmp_pin_device.i2c_bus.readU8.assert_called()           # Called when INT indicated
+
+        test_si534x_driver.virtual_registers_en(False, tmp_pin_device)
 
     def test_clear_fault_flag(self, test_si534x_driver):
         pass

@@ -844,11 +844,11 @@ class _SI534x(object):
         pins_checked = False
         if self._LOL_Pin is not None and attempt_use_pins:
             pins_checked = True
-            if self._LOL_Pin.read_value() == 0:   # If the pin is active (low)
+            if self._LOL_Pin.get_value() == 0:   # If the pin is active (low)
                 pinfault_found = True
         if self._INT_Pin is not None and attempt_use_pins:
             pins_checked = True
-            if self._INT_Pin.read_value() == 0:   # If the pin is active (high)
+            if self._INT_Pin.get_value() == 0:   # If the pin is active (low)
                 pinfault_found = True
 
         # Only return false if the pins were actually used and neither found a fault
