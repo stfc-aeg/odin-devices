@@ -226,10 +226,44 @@ class TestSI534x():
         pass
 
     def test_set_channel_output_enabled(self, test_si534x_driver):
-        pass
+        # Channel mapped fields have been tested already.
+
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Check that SI5345 adjusts channel-mapped registers by offset correctly
+        test_si534x_driver.virtual_registers[0x01][0x21] = 0                    # Bit not set for ch5
+        test_si534x_driver.si5345_i2c._output_driver_cfg_OE.write(0b1, 5)       # Enable channel 5
+        assert(test_si534x_driver.virtual_registers[0x01][0x21] & 0b10 > 0)     # Bit was set for ch5
+
+        # Check that setting a channel to enabled works
+        test_si534x_driver.virtual_registers[0x01][0x08] = 0                    # Bit not set for ch0
+        test_si534x_driver.si5345_i2c.set_channel_output_enabled(0, True)       # Enable channel 0
+        assert(test_si534x_driver.virtual_registers[0x01][0x08] & 0b10 > 0)     # Bit was set for ch0
+
+        # Check that disabling the channel works
+        test_si534x_driver.si5345_i2c.set_channel_output_enabled(0, False)      # Disable channel 0
+        assert(test_si534x_driver.virtual_registers[0x01][0x08] & 0b10 == 0)    # Bit not set for ch0
+
+        # Check that if the all-channel-disable is active, enabling a channel disables it
+        test_si534x_driver.virtual_registers[0x01][0x21] = 0                    # Bit not set for ch5
+        test_si534x_driver.virtual_registers[0x01][0x02] = 0    # OUTALL_DISABLE_LOW disable all drivers
+        test_si534x_driver.si5345_i2c.set_channel_output_enabled(0, True)       # Enable channel 0
+        assert(test_si534x_driver.virtual_registers[0x01][0x02] & 0b1 == 1)     # Drivers enabled 
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_get_channel_output_enabled(self, test_si534x_driver):
-        pass
+        # This assumes the above test has passed
+
+        test_si534x_driver.virtual_registers_en(True)
+
+        test_si534x_driver.si5345_i2c.set_channel_output_enabled(0, True)       # Enable channel 0
+        assert(test_si534x_driver.si5345_i2c.get_channel_output_enabled(0))
+
+        test_si534x_driver.si5345_i2c.set_channel_output_enabled(0, False)       # Disable channel 0
+        assert(not test_si534x_driver.si5345_i2c.get_channel_output_enabled(0))
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_increment_decrement_multisynth(self, test_si534x_driver):
         pass
