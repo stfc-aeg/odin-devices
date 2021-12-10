@@ -17,15 +17,17 @@ class si534xTestFixture(object):
 
     def __init__(self):
         self.si5345_i2c = SI5345(i2c_address = 0xAA)
-        self.virtual_registers = {}
+        self.virtual_registers = {0:{}, 1:{}, 2:{}, 3:{}, 4:{}, 5:{}, 6:{}, 7:{}, 8:{}, 9:{}, 0xA:{}, 0xB:{}}
         self.virtual_page_select = 0x00
-        self.si5345_i2c.i2c_bus = Mock()
 
-    def virtual_registers_en(self, en):
+    def virtual_registers_en(self, en, device=None):
+        if device is None:
+            device = self.si5345_i2c 
         if en:
             print("I2C interface now driving virtual register map")
-            self.si5345_i2c.i2c_bus.write8.side_effect = self.write_virtual_regmap
-            self.si5345_i2c.i2c_bus.readU8.side_effect = self.read_virtual_regmap
+            device.i2c_bus = Mock()
+            device.i2c_bus.write8.side_effect = self.write_virtual_regmap
+            device.i2c_bus.readU8.side_effect = self.read_virtual_regmap
         else:
             print("I2C interface now has no effect")
 
@@ -41,9 +43,10 @@ class si534xTestFixture(object):
                     self.virtual_registers[self.virtual_page_select][register]))
                 return self.virtual_registers[self.virtual_page_select][register]
         except Exception as e:
-            print("Failure to read register {} from page {}".format(register, self.virtual_page_select))
+            print("Failure to read register {} from page {}, returning 0".format(register,
+                                                                                 self.virtual_page_select))
             print("Error: {}".format(e))
-            raise
+            return 0
 
     def write_virtual_regmap(self, register, value):
         try:
@@ -77,7 +80,28 @@ class TestSI534x():
         pass
 
     def test_channelmap_register_addressing(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Check that SI5345 adjusts channel-mapped registers by offset correctly
+        test_si534x_driver.virtual_registers[0x01][0x08] = 0                    # Bit not set for ch0
+        test_si534x_driver.si5345_i2c._output_driver_cfg_OE.write(0b1, 0)       # Enable channel 0
+        assert(test_si534x_driver.virtual_registers[0x01][0x08] & 0b10 > 0)     # Bit was set for ch0
+        test_si534x_driver.virtual_registers[0x01][0x21] = 0                    # Bit not set for ch5
+        test_si534x_driver.si5345_i2c._output_driver_cfg_OE.write(0b1, 5)       # Enable channel 5
+        assert(test_si534x_driver.virtual_registers[0x01][0x21] & 0b10 > 0)     # Bit was set for ch5
+
+        test_si534x_driver.virtual_registers_en(False)
+
+        # Check that SI5344 register numbering is adjusted and positioned correctly, since SI5344
+        # channel 0 is at address 0x0112, equaivalent to SI5345 channel 2
+        test_si5344 = SI5344(i2c_address=0xAA)      # Use same virtual register map
+        test_si534x_driver.virtual_registers_en(True, test_si5344)
+
+        test_si534x_driver.virtual_registers[0x01][0x12] = 0                    # Bit not set for ch0
+        test_si5344._output_driver_cfg_OE.write(0b1, 0)                         # Enable channel 0
+        assert(test_si534x_driver.virtual_registers[0x01][0x12] & 0b10 > 0)     # Bit was set for ch0
+
+        test_si534x_driver.virtual_registers_en(False, test_si5344)
 
     def test_multisynthmap_register_addressing(self, test_si534x_driver):
         pass
@@ -150,5 +174,65 @@ class TestSI534x():
 
         test_si534x_driver.virtual_registers_en(False)  # smbus read reset
 
+    def test_instantiate_different_devices(self, test_si534x_driver):
+        device_si5345 = SI5345(i2c_address = 0xAA)
+        assert(device_si5345._num_multisynths == 5)
+        assert(device_si5345._num_channels == 10)
 
-#TODO add tests for device function functions...
+        device_si5344 = SI5344(i2c_address = 0xAA)
+        assert(device_si5344._num_multisynths == 4)
+        assert(device_si5344._num_channels == 4)
+
+        device_si5342 = SI5342(i2c_address = 0xAA)
+        assert(device_si5342._num_multisynths == 2)
+        assert(device_si5342._num_channels == 2)
+
+    def test_multisynth_channel_translation(self, test_si534x_driver):
+        # This is a conversion that uses dynamic channel-multisynth allocations set by registers
+        # within the device, so is more complex than it might seem. Uses output crosspoint switch.
+
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Set registers to represent multisynth 0 <-> out 1 and multisynth 1 <-> out 0
+        test_si534x_driver.virtual_registers[0x01][0x0B] = 1    # OUT0_MUX_SEL: out 0 <-> MUX N1
+        test_si534x_driver.virtual_registers[0x01][0x10] = 0    # OUT1_MUX_SEL: out 1 <-> MUX N0
+
+        # Check that the readout matches when getting multisynth from channel
+        assert(test_si534x_driver.si5345_i2c.get_multisynth_from_channel(0) == 1)
+        assert(test_si534x_driver.si5345_i2c.get_multisynth_from_channel(1) == 0)
+
+        # Check that the readout matches when getting channel(s) from multisynth
+        assert(1 in test_si534x_driver.si5345_i2c.get_channels_from_multisynth(0))
+        assert(0 in test_si534x_driver.si5345_i2c.get_channels_from_multisynth(1))
+
+        test_si534x_driver.virtual_registers_en(False)
+
+    def test_has_fault(self, test_si534x_driver):
+        pass
+
+    def test_had_fault(self, test_si534x_driver):
+        pass
+
+    def test_fault_printout(self, test_si534x_driver):
+        pass
+
+    def test_clear_fault_flag(self, test_si534x_driver):
+        pass
+
+    def test_get_fault_report(self, test_si534x_driver):
+        pass
+
+    def test_reset(self, test_si534x_driver):
+        pass
+
+    def test_set_channel_output_enabled(self, test_si534x_driver):
+        pass
+
+    def test_get_channel_output_enabled(self, test_si534x_driver):
+        pass
+
+    def test_increment_decrement_multisynth(self, test_si534x_driver):
+        pass
+
+    def test_increment_decrement_channel(self, test_si534x_driver):
+        pass

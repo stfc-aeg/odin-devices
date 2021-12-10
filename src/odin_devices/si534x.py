@@ -133,7 +133,7 @@ class _SI534x(object):
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
             channel_offset = self.channel_width * self.channel_positions[channel_num]
-            self.start_register += self.channel_width * channel_offset
+            self.start_register += channel_offset
 
             # Call normal _BitField write function
             super(_SI534x._Channel_BitField, self).write(data)
@@ -147,7 +147,7 @@ class _SI534x(object):
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
             channel_offset = self.channel_width * self.channel_positions[channel_num]
-            self.start_register += self.channel_width * channel_offset
+            self.start_register += channel_offset
 
             # Call normal _BitField read function
             return super(_SI534x._Channel_BitField, self).read()
