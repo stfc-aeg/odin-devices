@@ -38,7 +38,7 @@ class si534xTestFixture(object):
                 print("REGISTER MOCK: Page select requested: ", self.virtual_page_select)
                 return self.virtual_page_select
             else:
-                print("REGISTER MOCK: Register {} page {} value requested: {}".format(
+                print("REGISTER MOCK: Register 0x{:02X} page {} value requested: {}".format(
                     register, self.virtual_page_select,
                     self.virtual_registers[self.virtual_page_select][register]))
                 return self.virtual_registers[self.virtual_page_select][register]
@@ -55,7 +55,7 @@ class si534xTestFixture(object):
                 print("REGISTER MOCK: Page select changed: ", value)
                 self.virtual_page_select = value
             else:
-                print("REGISTER MOCK: Register {} page {} changed: {}".format(
+                print("REGISTER MOCK: Register 0x{:02X} page {} changed: {}".format(
                     register, self.virtual_page_select, value))
                 self.virtual_registers[self.virtual_page_select][register] = value
         except Exception as e:
@@ -207,19 +207,58 @@ class TestSI534x():
 
         test_si534x_driver.virtual_registers_en(False)
 
-    def test_has_fault(self, test_si534x_driver):
-        pass
+    def test_get_fault_report(self, test_si534x_driver):
+        test_si534x_driver.virtual_registers_en(True)
 
-    def test_had_fault(self, test_si534x_driver):
-        pass
+        # Without faults, check that the fault report is clear
+        test_si534x_driver.virtual_registers[0x00][0x0D] = 0b00000000   # LOS, OOF 0-3 inactive
+        test_si534x_driver.virtual_registers[0x00][0x12] = 0b00000000   # LOS, OOF FLG inactive
+        test_si534x_driver.virtual_registers[0x00][0x0C] = 0b00000000   # LOS XTAL inactive
+        test_si534x_driver.virtual_registers[0x00][0x11] = 0b00000000   # LOS XTAL FLG inactive
+        test_si534x_driver.virtual_registers[0x00][0x0E] = 0b00000000   # LOL inactive
+        test_si534x_driver.virtual_registers[0x00][0x13] = 0b00000000   # LOL FLG inactive
+        fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+        assert(fault_report.lol_status is False)
+        assert(fault_report.lol_flag is False)
+        assert(fault_report.los_xtal_status is False)
+        assert(fault_report.los_xtal_flag is False)
+        assert(fault_report.los_input_status == [False, False, False, False])
+        assert(fault_report.los_input_flag == [False, False, False, False])
+        assert(fault_report.oof_input_status == [False, False, False, False])
+        assert(fault_report.oof_input_flag == [False, False, False, False])
+        assert(fault_report.has_fault() is False)
+        assert(fault_report.had_fault() is False)
 
-    def test_fault_printout(self, test_si534x_driver):
-        pass
+        # With a current fault, check that the correct fault is reported
+        test_si534x_driver.virtual_registers[0x00][0x0C] = 0b00000010   # LOS XTAL active
+        test_si534x_driver.virtual_registers[0x00][0x11] = 0b00000010   # LOS XTAL FLG active
+        test_si534x_driver.virtual_registers[0x00][0x0D] = 0b00000100   # LOS 2 active
+        test_si534x_driver.virtual_registers[0x00][0x12] = 0b00000100   # LOS 2 FLG active
+        fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+        print(fault_report)
+        print(test_si534x_driver.si5345_i2c._fault_los_xtal_status.read())
+        assert(fault_report.los_xtal_status is True)
+        assert(fault_report.los_xtal_flag is True)
+        assert(fault_report.los_input_status == [False, False, True, False])
+        assert(fault_report.los_input_flag == [False, False, True, False])
+        assert(fault_report.has_fault() is True)
+        assert(fault_report.had_fault() is True)
+
+        # With a past (flagged) fault, check that the correct fault is reported
+        #TODO
+
+        # Check that the fault printout contains the correct information
+        #TODO
+
+        # Check that if using pins, the fault report is blank and the registers are not read
+        #TODO
+
+        # Check that if using pins, and LOL/nINT is active, registers are read
+        #TODO
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_clear_fault_flag(self, test_si534x_driver):
-        pass
-
-    def test_get_fault_report(self, test_si534x_driver):
         pass
 
     def test_reset(self, test_si534x_driver):

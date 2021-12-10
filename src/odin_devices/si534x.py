@@ -344,8 +344,8 @@ class _SI534x(object):
             for input_no in range(0, 4):
                 self.los_input_status[input_no] = (los_status & (0b1 << input_no)) > 0
                 self.los_input_flag[input_no] = (los_flag & (0b1 << input_no)) > 0
-                self.oof_input_status[input_no] = (los_status & (0b1 << input_no)) > 0
-                self.oof_input_flag[input_no] = (los_flag & (0b1 << input_no)) > 0
+                self.oof_input_status[input_no] = (oof_status & (0b1 << input_no)) > 0
+                self.oof_input_flag[input_no] = (oof_flag & (0b1 << input_no)) > 0
 
         def has_fault(self):
             """
@@ -367,7 +367,7 @@ class _SI534x(object):
 
             :return Boolean. True if any flag was found in this report.
             """
-            if (self.lol_flag or self.los_flag or (True in self.los_input_flag)
+            if (self.lol_flag or self.los_xtal_flag or (True in self.los_input_flag)
                     or (True in self.oof_input_flag)):
                 return True
             else:
@@ -515,7 +515,7 @@ class _SI534x(object):
                                                    parent_device = self)
         self._fault_los_xtal_flag = _SI534x._BitField(page=0x00,
                                                  start_register = 0x11,
-                                                 start_bit_pos = 3, bit_width = 1,
+                                                 start_bit_pos = 1, bit_width = 1,
                                                  parent_device = self)
         self._fault_oof_status = _SI534x._BitField(page=0x00,
                                                    start_register = 0x0D,
