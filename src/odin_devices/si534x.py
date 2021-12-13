@@ -774,6 +774,8 @@ class _SI534x(object):
             channels_on_multisynth = self.get_channels_from_multisynth(multisynth_number)
 
             for affected_channel in channels_on_multisynth:
+                if affected_channel is channel_number:
+                    continue
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
                     self.logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
@@ -801,6 +803,8 @@ class _SI534x(object):
             channels_on_multisynth = self.get_channels_from_multisynth(multisynth_number)
 
             for affected_channel in channels_on_multisynth:
+                if affected_channel is channel_number:
+                    continue
                 if self.get_channel_output_enabled:     # Only warn for channels that are enabled
                     self.logger.warning(
                             "This channel shares a multisynth with ch {}.".format(affected_channel)
@@ -1011,7 +1015,8 @@ class SI5345 (_SI534x):
     """
     def __init__(self, i2c_address=None, spi_device=None,
                  LOL_Line=None, INT_Line=None):
-        super(SI5345, self).__init__([0, 1, 2, 3, 4, 5, 6, 7, 8, 9],    # All channels
+        # Note: Channel 9 config is where you would expect channel 10 to be if there was one.
+        super(SI5345, self).__init__([0, 1, 2, 3, 4, 5, 6, 7, 8, 10],    # All channels
                                      5,             # 5 Multisynths, 0.5 per channel
                                      i2c_address, spi_device,
                                      LOL_Line, INT_Line)

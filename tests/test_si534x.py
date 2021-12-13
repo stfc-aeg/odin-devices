@@ -499,4 +499,54 @@ class TestSI534x():
         test_si534x_driver.virtual_registers_en(False)
 
     def test_increment_decrement_channel(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+
+        logger_mock = Mock()
+
+        # Set up so that only output 1 is connected to multisynth 1 (others on multisynth 0)
+        test_si534x_driver.virtual_registers[0x01][0x0B] = 0    # OUT0_MUX_SEL: out 0 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x10] = 1    # OUT1_MUX_SEL: out 1 <-> MUX N1
+        test_si534x_driver.virtual_registers[0x01][0x15] = 0    # OUT2_MUX_SEL: out 2 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x1A] = 0    # OUT3_MUX_SEL: out 3 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x1F] = 0    # OUT4_MUX_SEL: out 4 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x24] = 0    # OUT5_MUX_SEL: out 5 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x29] = 0    # OUT6_MUX_SEL: out 6 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x2E] = 0    # OUT7_MUX_SEL: out 7 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x33] = 0    # OUT8_MUX_SEL: out 8 <-> MUX N0
+        test_si534x_driver.virtual_registers[0x01][0x3D] = 0    # OUT9_MUX_SEL: out 9 <-> MUX N0
+
+        # Check that incrementing channel 1 increments the correct multisynth
+        test_si534x_driver.virtual_registers[0x03][0x39] = 0                    # init
+        test_si534x_driver.si5345_i2c.increment_channel_frequency(1)        # Increment ch1
+        assert(test_si534x_driver.virtual_registers[0x03][0x39] == 0b11101) # Masking for synth 1
+
+        # Check that decrementing channel 1 decrements the correct multisynth
+        test_si534x_driver.virtual_registers[0x03][0x39] = 0                    # init
+        test_si534x_driver.si5345_i2c.decrement_channel_frequency(1)        # Decrement ch1
+        assert(test_si534x_driver.virtual_registers[0x03][0x39] == 0b11101) # Masking for synth 1
+
+        # Check that no shared channels are found
+        with patch.object(test_si534x_driver.si5345_i2c.logger, 'warning') as logger_mock:
+            logger_mock.reset_mock()
+            test_si534x_driver.si5345_i2c.decrement_channel_frequency(1)  # Decrement ch1
+            print(logger_mock.mock_calls)
+            logger_mock.assert_not_called()
+
+        # Also connect channel 0 to multisynth 1
+        test_si534x_driver.virtual_registers[0x01][0x0B] = 1    # OUT0_MUX_SEL: out 0 <-> MUX N1
+
+        # Check that driver warns channel 0 (if enabled) will be affected
+        with patch.object(test_si534x_driver.si5345_i2c.logger, 'warning') as logger_mock:
+            logger_mock.reset_mock()
+            test_si534x_driver.si5345_i2c.decrement_channel_frequency(1)        # Decrement ch1
+            print(logger_mock.mock_calls)
+            logger_mock.assert_called()
+
+        # Check that calling with ignore_affected_channels removes the warning/check
+        with patch.object(test_si534x_driver.si5345_i2c.logger, 'warning') as logger_mock:
+            logger_mock.reset_mock()
+            test_si534x_driver.si5345_i2c.decrement_channel_frequency(1, True)  # Decrement ch1
+            print(logger_mock.mock_calls)
+            logger_mock.assert_not_called()
+
+        test_si534x_driver.virtual_registers_en(True)
