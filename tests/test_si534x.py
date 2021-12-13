@@ -9,7 +9,8 @@ else:                           # pramga: no cover
     BUILTINS_NAME = '__builtin__'
 
 sys.modules['smbus'] = Mock()
-sys.modules['gpiod.Line'] = MagicMock()
+#sys.modules['gpiod.Line'] = MagicMock()
+sys.modules['gpiod'] = MagicMock()
 import gpiod
 sys.modules['logging'] = Mock() # Track calls to logger.warning
 from odin_devices.si534x import _SI534x, SI5344, SI5345, SI5342, SI534xCommsException
@@ -299,7 +300,81 @@ class TestSI534x():
         test_si534x_driver.virtual_registers_en(False, tmp_pin_device)
 
     def test_clear_fault_flag(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Adapt register write mock so that only writing 0's takes effect (clears flags)
+        tmp_clear_bits_mock = Mock()
+        def tmp_clear_bits_mock_write8 (register, value):
+            if register == 127: test_si534x_driver.write_virtual_regmap(register, value)    # Page Sel
+            oldval = test_si534x_driver.read_virtual_regmap(register)
+            test_si534x_driver.write_virtual_regmap(register, oldval & value)        # It works, trust me
+
+        def set_all_flags_high():
+            test_si534x_driver.virtual_registers[0x00][0x12] = 0b11111111   # LOS, OOF FLG inactive
+            test_si534x_driver.virtual_registers[0x00][0x11] = 0b00000010   # LOS XTAL FLG inactive
+            test_si534x_driver.virtual_registers[0x00][0x13] = 0b00000010   # LOL FLG inactive
+
+        with patch.object(test_si534x_driver.si5345_i2c.i2c_bus, 'write8') as tmp_clear_bits_mock:
+            tmp_clear_bits_mock.side_effect = tmp_clear_bits_mock_write8
+
+            # Check clear of all flags results in all flag bits being written 0
+            set_all_flags_high()
+
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+            assert(fault_report.had_fault())                                # Check setup correct
+
+            test_si534x_driver.si5345_i2c.clear_fault_flag(ALL=True)        # Clear the faults
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+
+            print("Fault register contents (should be clear):\n\t0x12:{}\n\t0x11:{}\n\t0x13:{}".format(
+                test_si534x_driver.virtual_registers[0x00][0x12],
+                test_si534x_driver.virtual_registers[0x00][0x11],
+                test_si534x_driver.virtual_registers[0x00][0x13]))
+            assert(not fault_report.had_fault())                            # Check faults were cleared
+
+            # Check LOL Clear
+            set_all_flags_high()
+            test_si534x_driver.si5345_i2c.clear_fault_flag(LOL=True)
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+            print(fault_report)                             # Print will show state on fail
+            assert(not fault_report.lol_flag)               # LOL should have been cleared
+            assert(False not in fault_report.oof_input_flag)    # All OOF should still be active
+            assert(False not in fault_report.los_input_flag)    # All LOS should still be active
+            assert(fault_report.los_xtal_flag)                  # XTAL LOS should still be active
+
+            # Check OOF 2 Clear
+            set_all_flags_high()
+            test_si534x_driver.si5345_i2c.clear_fault_flag(OOF2=True)
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+            print(fault_report)                             # Print will show state on fail
+            assert(not fault_report.oof_input_flag[2])      # OOF 2 should have been cleared
+            assert(fault_report.oof_input_flag[3])          # OOF 3 should still be active
+            assert(False not in fault_report.los_input_flag)    # All LOS should still be active
+            assert(fault_report.los_xtal_flag)                  # XTAL LOS should still be active
+            assert(fault_report.lol_flag)                   # LOL should still be active
+
+            # Check LOS 2 Clear
+            set_all_flags_high()
+            test_si534x_driver.si5345_i2c.clear_fault_flag(LOS2=True)
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+            print(fault_report)                             # Print will show state on fail
+            assert(not fault_report.los_input_flag[2])      # LOS 2 should have been cleared
+            assert(fault_report.los_input_flag[3])          # LOS 3 should still be active
+            assert(False not in fault_report.oof_input_flag)    # All OOF should still be active
+            assert(fault_report.los_xtal_flag)                  # XTAL LOS should still be active
+            assert(fault_report.lol_flag)                   # LOL should still be active
+
+            # Check XTAL LOS Clear
+            set_all_flags_high()
+            test_si534x_driver.si5345_i2c.clear_fault_flag(LOSXTAL=True)
+            fault_report = test_si534x_driver.si5345_i2c.get_fault_report()
+            print(fault_report)                             # Print will show state on fail
+            assert(not fault_report.los_xtal_flag)              # XTAL LOS should have been cleared
+            assert(False not in fault_report.oof_input_flag)    # All OOF should still be active
+            assert(False not in fault_report.los_input_flag)    # All LOS should still be active
+            assert(fault_report.lol_flag)                       # LOL should still be active
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_reset(self, test_si534x_driver):
         pass
