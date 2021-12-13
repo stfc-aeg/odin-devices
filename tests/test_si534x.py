@@ -107,7 +107,25 @@ class TestSI534x():
         test_si534x_driver.virtual_registers_en(False, test_si5344)
 
     def test_multisynthmap_register_addressing(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Check that writing to the first multisynth works
+        test_si534x_driver.si5345_i2c._multisynth_freq_step_word.write(0xAABBCCDDEEFF, 0)
+        assert(test_si534x_driver.virtual_registers[0x03][0x3B] == 0xAA)        # Top of N0_FSTEP_W
+        assert(test_si534x_driver.virtual_registers[0x03][0x40] == 0xFF)        # End of N0_FSTEP_W
+
+        # Check that reading from the first multisynth works
+        assert(test_si534x_driver.si5345_i2c._multisynth_freq_step_word.read(0) == 0xAABBCCDDEEFF)
+
+        # Check that writing the same field offsets correctly to multisynth 3
+        test_si534x_driver.si5345_i2c._multisynth_freq_step_word.write(0xFFEEDDCCBBAA, 3)
+        assert(test_si534x_driver.virtual_registers[0x03][0x4D] == 0xFF)        # Top of N3_FSTEP_W
+        assert(test_si534x_driver.virtual_registers[0x03][0x52] == 0xAA)        # End of N3_FSTEP_W
+
+        # Check that reading the same field offsets correctly to multisyth 3
+        assert(test_si534x_driver.si5345_i2c._multisynth_freq_step_word.read(3) == 0xFFEEDDCCBBAA)
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_regmap_file_rw(self, test_si534x_driver):
         test_si534x_driver.virtual_registers_en(True)

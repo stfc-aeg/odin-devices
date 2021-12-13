@@ -114,8 +114,11 @@ class _SI534x(object):
             """
 
             # Init shared fields using superclass
-            super(_SI534x._Channel_BitField, self).__init__(page, first_channel_register,
-                                                            start_bit_pos, bit_width, parent_device)
+            super(_SI534x._Channel_BitField, self).__init__(page=page,
+                                                            start_register=first_channel_register,
+                                                            start_bit_pos=start_bit_pos,
+                                                            bit_width=bit_width,
+                                                            parent_device=parent_device)
 
             # Init additional channel-specific fields
             self.channel_positions = channel_positions
@@ -174,11 +177,14 @@ class _SI534x(object):
             """
 
             # Init shared fields using superclass
-            super(_SI534x._MultiSynth_BitField, self).__init__(page, synth0_register, start_bit_pos,
-                                                               bit_width, parent_device)
+            super(_SI534x._MultiSynth_BitField, self).__init__(page=page,
+                                                               start_register=synth0_register,
+                                                               start_bit_pos=start_bit_pos,
+                                                               bit_width=bit_width,
+                                                               parent_device=parent_device)
 
             # Init additional multisynth-specific fields
-            self.num_multisyths = num_multisynths
+            self.num_multisynths = num_multisynths
             self.synth_width = synth_width
             self.synth0_register = synth0_register  # Static first synth register position 0 offset
             # start_register now becomes a dynamic value, set per multisynth on read/writes
@@ -186,7 +192,7 @@ class _SI534x(object):
         def write(self, data, synth_num):   # Check synth number is valid
             if synth_num >= self.num_multisynths:
                 raise SI534xException(
-                        "The multisynth number specified does not exist.")
+                        "The multisynth number specified ({}) does not exist.".format(synth_num))
 
             # Temporarily offset the _BitField start register
             self.start_register = self.synth0_register
@@ -199,7 +205,7 @@ class _SI534x(object):
             # Check channel number is valid
             if synth_num >= self.num_multisynths:
                 raise SI534xException(
-                        "The multisynth number specified does not exist.")
+                        "The multisynth number specified ({}) does not exist.".format(synth_num))
 
             # Temporarily offset the _BitField start register
             self.start_register = self.synth0_register
@@ -548,6 +554,12 @@ class _SI534x(object):
                                                                        channel_positions = channel_positions,
                                                                        channel_width = 0x05)
         # TODO define multisynth-mapped fields
+        self._multisynth_freq_step_word = _SI534x._MultiSynth_BitField(page=0x03,
+                                                                       synth0_register=0x3B,
+                                                                       start_bit_pos=(6*8)-1, bit_width=6*8,
+                                                                       parent_device=self,
+                                                                       num_multisynths=num_multisynths,
+                                                                       synth_width=0x06)    # Included as example
 
     """
     Interface-agnostic Field Read/Write Functions:
@@ -590,7 +602,7 @@ class _SI534x(object):
 
         # Read original contents of registers as a value
         num_full_bytes = int((width_bits-1)/8) + 1
-        old_full_bytes_value = self._read_paged_register_field(page, start_register, 7,
+        old_full_bytes_value = self._read_paged_register_field(page, start_register, (num_full_bytes*8)-1,
                                                                num_full_bytes*8)
 
         # Mask original contents value and combine with new value
