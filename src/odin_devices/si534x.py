@@ -131,7 +131,7 @@ class _SI534x(object):
             # Check channel number is valid
             if channel_num >= self.channel_num:
                 raise SI534xException(
-                        "The channel number specified does not exist.")
+                        "The channel number specified ({}) does not exist.".format(channel_num))
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register
@@ -145,7 +145,7 @@ class _SI534x(object):
             # Check channel number is valid
             if channel_num >= self.channel_num:
                 raise SI534xException(
-                        "The channel number specified does not exist.")
+                        "The channel number specified ({}) does not exist.".format(channel_num))
 
             # Temporarily offset the _BitField start register
             self.start_register = self.first_channel_start_register

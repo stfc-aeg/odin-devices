@@ -13,7 +13,7 @@ sys.modules['smbus'] = Mock()
 sys.modules['gpiod'] = MagicMock()
 import gpiod
 sys.modules['logging'] = Mock() # Track calls to logger.warning
-from odin_devices.si534x import _SI534x, SI5344, SI5345, SI5342, SI534xCommsException
+from odin_devices.si534x import _SI534x, SI5344, SI5345, SI5342, SI534xCommsException, SI534xException
 from odin_devices.i2c_device import I2CException
 
 class si534xTestFixture(object):
@@ -106,6 +106,12 @@ class TestSI534x():
 
         test_si534x_driver.virtual_registers_en(False, test_si5344)
 
+        # Check that reading or writing to a nonexistent channel results in error
+        with pytest.raises(SI534xException, match=".*channel number specified [(]99[)] does not exist.*"):
+            test_si534x_driver.si5345_i2c._output_driver_cfg_OE.write(0b1, 99)
+        with pytest.raises(SI534xException, match=".*channel number specified [(]98[)] does not exist.*"):
+            test_si534x_driver.si5345_i2c._output_driver_cfg_OE.read(98)
+
     def test_multisynthmap_register_addressing(self, test_si534x_driver):
         test_si534x_driver.virtual_registers_en(True)
 
@@ -124,6 +130,12 @@ class TestSI534x():
 
         # Check that reading the same field offsets correctly to multisyth 3
         assert(test_si534x_driver.si5345_i2c._multisynth_freq_step_word.read(3) == 0xFFEEDDCCBBAA)
+
+        # Check that reading or writing nonexistent multisynths results in error
+        with pytest.raises(SI534xException, match=".*multisynth number specified [(]9[)] does not exist.*"):
+            test_si534x_driver.si5345_i2c._multisynth_freq_step_word.write(0xAA, 9)
+        with pytest.raises(SI534xException, match=".*multisynth number specified [(]7[)] does not exist.*"):
+            test_si534x_driver.si5345_i2c._multisynth_freq_step_word.read(7)
 
         test_si534x_driver.virtual_registers_en(False)
 
