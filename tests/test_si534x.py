@@ -470,7 +470,33 @@ class TestSI534x():
         test_si534x_driver.virtual_registers_en(False)
 
     def test_increment_decrement_multisynth(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+        test_si534x_driver.virtual_registers[0x03][0x39] = 0                    # init
+        test_si534x_driver.virtual_registers[0x00][0x1D] = 0                    # init
+
+        # Decrement the frequency of multisynth 3
+        test_si534x_driver.si5345_i2c.decrement_multisynth_frequency(3)
+
+        # Check that only 3 was decremented (other channels were masked off)
+        assert(test_si534x_driver.virtual_registers[0x03][0x39] == 0b10111)
+
+        # Check that the FDEC bit was asserted
+        print(test_si534x_driver.si5345_i2c.i2c_bus.write8.mock_calls)
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.assert_any_call(0x1D, 0b10)    # 1 Written
+        assert(test_si534x_driver.virtual_registers[0x00][0x1D] & 0b10 == 0)    # left at 0
+
+        # Increment the frequency of multisynth 3
+        test_si534x_driver.si5345_i2c.increment_multisynth_frequency(3)
+
+        # Check that only 3 was incremented (other channels were masked off)
+        assert(test_si534x_driver.virtual_registers[0x03][0x39] == 0b10111)
+
+        # Check that the FINC bit was asserted
+        print(test_si534x_driver.si5345_i2c.i2c_bus.write8.mock_calls)
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.assert_any_call(0x1D, 0b01)    # 1 Written
+        assert(test_si534x_driver.virtual_registers[0x00][0x1D] & 0b01 == 0)    # left at 0
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_increment_decrement_channel(self, test_si534x_driver):
         pass

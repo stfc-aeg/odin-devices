@@ -499,6 +499,16 @@ class _SI534x(object):
                                                                  start_bit_pos = num_multisynths-1,
                                                                  bit_width = num_multisynths,
                                                                  parent_device = self)
+        self._multisynth_frequency_increment = _SI534x._BitField(page=0x00,
+                                                                 start_register = 0x1D,
+                                                                 start_bit_pos = 0,
+                                                                 bit_width = 1,
+                                                                 parent_device = self)
+        self._multisynth_frequency_decrement = _SI534x._BitField(page=0x00,
+                                                                 start_register = 0x1D,
+                                                                 start_bit_pos = 1,
+                                                                 bit_width = 1,
+                                                                 parent_device = self)
         self._fault_lol_status = _SI534x._BitField(page=0x00,
                                                    start_register = 0x0E,
                                                    start_bit_pos = 1, bit_width = 1,
@@ -728,8 +738,8 @@ class _SI534x(object):
         step_mask = all_multisynth_mask & ~(0b1 << multisynth_number)
         self._multisynth_frequency_step_mask.write(step_mask)
 
-        self._multisynth_frequency_increment.write(1, multisynth_number)
-        self._multisynth_frequency_increment.write(0, multisynth_number)
+        self._multisynth_frequency_increment.write(1)
+        self._multisynth_frequency_increment.write(0)
 
     def decrement_multisynth_frequency(self, multisynth_number):
         """
@@ -742,8 +752,8 @@ class _SI534x(object):
         step_mask = all_multisynth_mask & ~(0b1 << multisynth_number)
         self._multisynth_frequency_step_mask.write(step_mask)
 
-        self._multisynth_frequency_decrement.write(1, multisynth_number)
-        self._multisynth_frequency_decrement.write(0, multisynth_number)
+        self._multisynth_frequency_decrement.write(1)
+        self._multisynth_frequency_decrement.write(0)
 
     def decrement_channel_frequency(self, channel_number, ignore_affected_channels=False):
         """
