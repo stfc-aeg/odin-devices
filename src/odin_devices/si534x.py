@@ -20,7 +20,7 @@ Joseph Nobes, Grad Embedded Sys Eng, STFC Detector Systems Software Group
 from odin_devices.i2c_device import I2CDevice
 import logging
 import csv
-
+import time
 
 class SI534xException(Exception):
     """
@@ -666,10 +666,12 @@ class _SI534x(object):
     def reset(self, soft=False):
         if soft:    # Reset state machines
             self._soft_reset_bit.write(1)
+            time.sleep(0.05)                # Allow some (guessed) time for reset
             self._soft_reset_bit.write(0)
         else:       # POR device. Registers set to default.
             self._hard_reset_bit.write(1)
-            self._hard_reset_but.write(0)
+            time.sleep(0.05)                # Allow some (guessed) time for reset
+            self._hard_reset_bit.write(0)
 
     """
     Channel Output Enable Control:

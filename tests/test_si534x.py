@@ -377,7 +377,27 @@ class TestSI534x():
         test_si534x_driver.virtual_registers_en(False)
 
     def test_reset(self, test_si534x_driver):
-        pass
+        test_si534x_driver.virtual_registers_en(True)
+
+        # Test hard reset (the detault)
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.reset_mock()
+        test_si534x_driver.write_virtual_regmap(127, 0)         # Page select 0
+        test_si534x_driver.write_virtual_regmap(0x1E, 0)        # Init register to all 0's
+        test_si534x_driver.si5345_i2c.reset()
+        print(test_si534x_driver.si5345_i2c.i2c_bus.write8.mock_calls)
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.assert_any_call(0x1E, 0b10)    # 1 Written
+        assert(test_si534x_driver.virtual_registers[0x00][0x1E] & 0b10 == 0)    # left out of reset
+
+        # Test soft reset
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.reset_mock()
+        test_si534x_driver.write_virtual_regmap(127, 0)         # Page select 0
+        test_si534x_driver.write_virtual_regmap(0x1C, 0)        # Init register to all 0's
+        test_si534x_driver.si5345_i2c.reset(soft=True)
+        print(test_si534x_driver.si5345_i2c.i2c_bus.write8.mock_calls)
+        test_si534x_driver.si5345_i2c.i2c_bus.write8.assert_any_call(0x1c, 0b100)    # 1 Written
+        assert(test_si534x_driver.virtual_registers[0x00][0x1C] & 0b100 == 0)    # left out of reset
+
+        test_si534x_driver.virtual_registers_en(False)
 
     def test_set_channel_output_enabled(self, test_si534x_driver):
         # Channel mapped fields have been tested already.
