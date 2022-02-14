@@ -667,7 +667,7 @@ class PAC1921(object):
 
         self._integration_mode = _Integration_Mode.FreeRun
 
-        self._logger.info(
+        self._logger.debug(
                 'Config for free-run integration mode with measurement type ' +
                 '{} complete'.format(self._measurement_type))
 
@@ -776,7 +776,7 @@ class PAC1921(object):
             self._freerun_config_complete = False
         self._measurement_type = measurement_type
 
-        self._logger.info('Measurement type set as {}'.format(measurement_type))
+        self._logger.debug('Measurement type set as {}'.format(measurement_type))
 
     def read(self):
         """
@@ -812,7 +812,7 @@ class PAC1921(object):
 
         elif self._integration_mode == _Integration_Mode.FreeRun:
             # By this point, integration mode should already have been entered in config
-            self._logger.info('Reading free-run integration')
+            self._logger.debug('Reading free-run integration')
 
             # Check that the config function has been called
             if not self._freerun_config_complete:
