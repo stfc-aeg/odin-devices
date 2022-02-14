@@ -759,7 +759,6 @@ class PAC1921(object):
         """
         if not isinstance(measurement_type, Measurement_Type):
             raise TypeError("Invalid measurement type given ({})".format(type(measurement_type)))
-        print("allowed measurement type: {}".format(type(measurement_type)))
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
         if measurement_type is not Measurement_Type.VBUS:
