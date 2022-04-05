@@ -55,6 +55,7 @@ class SPIDevice(object):  # Explicitly making this new-style class
         self.spi.max_speed_hz = hz
         self.spi.bits_per_word = bits_per_word  # Can be 8 or 16
         self.spi.mode = 1
+        self.spi.cshigh = False     # CS almost always active low
         self.buffer = None
         self.debug = debug
 
@@ -117,6 +118,15 @@ class SPIDevice(object):  # Explicitly making this new-style class
             logging.debug("Mode must be 0, 1, 2 or 3.")
             return
         self.spi.mode = mode
+
+    def set_cs_active_high(self, cshigh):
+        """Set the polarity of the chip select for this bus.
+
+        Almost always active low, the default.
+
+        :param cshigh: Set True for active high chip select.
+        """
+        self.spi.cshigh = bool(cshigh)
 
     def close(self):
         """Disconnect from the SPI device."""
