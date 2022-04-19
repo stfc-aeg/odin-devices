@@ -667,7 +667,7 @@ class PAC1921(object):
 
         self._integration_mode = _Integration_Mode.FreeRun
 
-        self._logger.info(
+        self._logger.debug(
                 'Config for free-run integration mode with measurement type ' +
                 '{} complete'.format(self._measurement_type))
 
@@ -759,7 +759,6 @@ class PAC1921(object):
         """
         if not isinstance(measurement_type, Measurement_Type):
             raise TypeError("Invalid measurement type given ({})".format(type(measurement_type)))
-        print("allowed measurement type: {}".format(type(measurement_type)))
 
         # Check r_sense was supplied if the measurement type is not vbus (others need it for decode)
         if measurement_type is not Measurement_Type.VBUS:
@@ -776,7 +775,7 @@ class PAC1921(object):
             self._freerun_config_complete = False
         self._measurement_type = measurement_type
 
-        self._logger.info('Measurement type set as {}'.format(measurement_type))
+        self._logger.debug('Measurement type set as {}'.format(measurement_type))
 
     def read(self):
         """
@@ -812,7 +811,7 @@ class PAC1921(object):
 
         elif self._integration_mode == _Integration_Mode.FreeRun:
             # By this point, integration mode should already have been entered in config
-            self._logger.info('Reading free-run integration')
+            self._logger.debug('Reading free-run integration')
 
             # Check that the config function has been called
             if not self._freerun_config_complete:
