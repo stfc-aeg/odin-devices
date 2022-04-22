@@ -158,7 +158,7 @@ class BME280(object):  # Explicit new-style class for @property with py2
         ctrl_meas sets the pressure and temperature data acquisition options.
         ctrl_hum sets the humidity oversampling and must be written to first.
         """
-        self._write_register_byte(_BME280_REGISTER_STATUS, self._overscan_humidity)
+        self._write_register_byte(_BME280_REGISTER_CTRL_HUM, self._overscan_humidity)
         self._write_register_byte(_BME280_REGISTER_CTRL_MEAS, self._ctrl_meas)
 
     def _get_status(self):

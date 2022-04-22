@@ -946,9 +946,10 @@ class _SI534x(object):
         """
         with open(mapfile_csv_location) as csvfile:
             csv_reader = csv.reader(csvfile, delimiter=',')
+            self.logger.info('Reading clock configuration from {}'.format(mapfile_csv_location))
             for row in csv_reader:
                 # The register map starts after general information is printed preceded by '#'
-                self.logger.info("Line read from CSV: {}".format(row))
+                self.logger.debug("Line read from CSV: {}".format(row))
                 if row[0][0] == '0':    # Register values are preceeded by 0x
                     # Extract register-value pairing from register map
                     page_register = int(row[0], 0)  # 0x prefix detected automatically
@@ -957,7 +958,7 @@ class _SI534x(object):
                     page = (page_register & 0xFF00) >> 8    # Upper byte
 
                     # Write register value (whole byte at a time)
-                    self.logger.info((
+                    self.logger.debug((
                             "Writing page 0x{:02X} ".format(page)
                             + "register 0x{:02X} ".format(register)
                             + "with value {:02X}".format(value)))
@@ -991,7 +992,7 @@ class _SI534x(object):
                 # not be included in a write map, or need their values changing (like SI5342 ICAL)
 
                 value = self._read_paged_register_field(page, register, 7, 8)
-                self.logger.info("Read register 0x{:02X}{:02X}: {:02X}".format(page,
+                self.logger.debug("Read register 0x{:02X}{:02X}: {:02X}".format(page,
                                                                                register,
                                                                                value))
 
