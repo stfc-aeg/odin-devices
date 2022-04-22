@@ -168,8 +168,8 @@ class LTC2986 (SPIDevice):
     def __init__(self, bus=0, device=0, ignore_hardfaults=False):
 
         # Init SPI Device
-        super().__init__(bus, device)
-        self.set_mode(0b01)
+        super().__init__(bus, device, hz=1000000)  # Max allowed speed for device is 2MHz
+        self.set_mode(0b00)
 
         # Store hardfault ignore setting
         self._ignore_hardfaults = ignore_hardfaults
@@ -269,7 +269,7 @@ class LTC2986 (SPIDevice):
                                 current_fault.definition))
                 else:
                     self._logger.warning(
-                            "Hardfault detected on channel {}: {}".format(channel_number,
+                            "Softfault detected on channel {}: {}".format(channel_number,
                                 current_fault.definition))
 
         if hardfault_detected and not self._ignore_hardfaults:

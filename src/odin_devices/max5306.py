@@ -83,7 +83,7 @@ class MAX5306 (SPIDevice):
 
         super(MAX5306, self).__init__(bus, device)
         self.set_cs_active_high(False)
-        self.set_mode(0b01);    # Data latched on falling clock edge, idle low
+        self.set_mode(0b01)    # Data latched on falling clock edge, idle low
 
         self._Vref = Vref
         self._is_bipolar = bipolar
