@@ -39,23 +39,23 @@ class AD5593R(I2CDevice):
     def __init__(self, address=0x10, **kwargs):
         # Initialise the I2CDevice superclass instance
         I2CDevice.__init__(self, address, **kwargs)
-    
+
     def setup_adc(self, adc_pin_mask):
 
         # Write ADC pin config register
         reg = self.AD5593_CONFIG_MODE | self.AD5593_ADC_PIN_CONF
         write_msg = i2c_msg.write(self.address, [reg, 0, adc_pin_mask])
-        self.bus.i2c_rdwr(write_msg)
+        self.execute_transaction(write_msg)
 
         # Write ADC sequence register
         reg = self.AD5593_CONFIG_MODE | self.AD5593_ADC_SEQ_REG
         write_msg = i2c_msg.write(self.address, [reg, 2, adc_pin_mask])
-        self.bus.i2c_rdwr(write_msg)
+        self.execute_transaction(write_msg)
 
         # Set to ADC readback mode
         reg = self.AD5593_ADC_READBACK
         write_msg = i2c_msg.write(self.address, [reg])
-        self.bus.i2c_rdwr(write_msg)
+        self.execute_transaction(write_msg)
 
     def read_adc(self, pin):
 
@@ -72,22 +72,19 @@ class AD5593R(I2CDevice):
         write_msg = i2c_msg.write(self.address, [reg, msb, lsb])
 
         # Write register
-        self.bus.i2c_rdwr(write_msg)
+        self.execute_transaction(write_msg)
 
         # Set to ADC readback mode
         reg = self.AD5593_ADC_READBACK
         write_msg = i2c_msg.write(self.address, [reg])
-        self.bus.i2c_rdwr(write_msg)
+        self.execute_transaction(write_msg)
 
         # Read ADC back and extract value
         read_msg = i2c_msg.read(self.address, 2)
-        self.bus.i2c_rdwr(read_msg)
+        self.execute_transaction(read_msg)
         vals = list(read_msg)
         adc_val = (vals[0] & 0b1111) << 8 | vals[1]
 
         return adc_val
-    
-        
-
 
 
