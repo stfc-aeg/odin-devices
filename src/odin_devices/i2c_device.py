@@ -192,3 +192,9 @@ class I2CDevice(object):
             return result
         except IOError as err:
             return self.handle_error('readS16', reg, err)
+
+    @call_pre_access
+    def execute_transaction(self, *args, **kwargs):
+
+        result = self.bus.i2c_rdwr(*args, **kwargs)
+        return result
