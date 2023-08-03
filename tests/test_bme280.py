@@ -11,15 +11,12 @@ import sys
 import pytest
 
 if sys.version_info[0] == 3:
-    from unittest.mock import Mock, MagicMock, call, patch
+    from unittest.mock import Mock, patch
 else:
-    from mock import Mock, MagicMock, call, patch
+    from mock import Mock, patch
 
-spidev_mock = MagicMock()
-sys.modules['spidev'] = spidev_mock
-
-smbus_mock = MagicMock()
-sys.modules['smbus'] = smbus_mock
+sys.modules['spidev'] = Mock()
+sys.modules['smbus'] = Mock()
 
 from odin_devices.bme280 import BME280
 
@@ -81,7 +78,7 @@ class BME280TextFixtureI2C(object):
 @pytest.fixture(scope="class")
 def test_bme280_device_i2c():
     """Fixture used in device test cases."""
-    with patch('odin_devices.i2c_device.smbus.SMBus') as MockSMBus:
+    with patch('odin_devices.i2c_device.SMBus') as MockSMBus:
         mock_smbus = MockSMBus.return_value
         test_i2c_fixture = BME280TextFixtureI2C(mock_smbus)
         yield test_i2c_fixture

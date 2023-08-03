@@ -11,13 +11,8 @@ if sys.version_info[0] == 3:  # pragma: no cover
 else:                         # pragma: no cover
     from mock import Mock, call, patch
 
-# sys.modules['smbus'] = Mock()
+sys.modules['smbus'] = Mock()
 from odin_devices.si570 import SI570
-from odin_devices.i2c_device import I2CDevice, I2CException
-
-
-def readList_side_effect(reg, length):
-    return [i for i in range(length)]
 
 
 class si570TestFixture(object):
@@ -26,11 +21,14 @@ class si570TestFixture(object):
         self.address = 0x5d
         self.busnum = 1
         self.model = SI570.SI570_C
-        with patch("odin_devices.i2c_device.I2CDevice.readU8") as mocked_readu8, \
-             patch("odin_devices.i2c_device.I2CDevice.readList") as mocked_readlist:
+        with patch("odin_devices.si570.SI570.readU8") as mocked_readu8, \
+             patch("odin_devices.si570.SI570.readList") as mocked_readlist:
             mocked_readu8.return_value = 0
-            mocked_readlist.side_effect = readList_side_effect
+            mocked_readlist.side_effect = self.readList_side_effect
             self.driver = SI570(self.address, self.model, busnum=self.busnum)
+
+    def readList_side_effect(self, reg, length):
+        return [i for i in range(length)]
 
 
 @pytest.fixture(scope="class")

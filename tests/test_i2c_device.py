@@ -1,21 +1,20 @@
 """Test cases for the I2CTContainer class from odin_devices.
 Tim Nicholls, STFC Application Engineering Group
 """
-
 import sys
 
 import pytest
 
 if sys.version_info[0] == 3:  # pragma: no cover
-    from unittest.mock import Mock, MagicMock, call
+    from unittest.mock import Mock, patch
+    from importlib import reload
 else:                         # pragma: no cover
-    from mock import Mock, MagicMock, call
+    from mock import Mock, patch
+    from imp import reload
 
-smbus_mock = MagicMock()
-sys.modules['smbus'] = smbus_mock
-
-from odin_devices.i2c_device import I2CDevice, I2CException
-
+# Initial mock of default smbus to allow i2c_device module to be imported
+sys.modules['smbus'] = Mock()
+import odin_devices.i2c_device
 
 class dummy_cm():
     def __enter__(self):
@@ -32,13 +31,17 @@ class I2CDeviceTestFixture(object):
         self.device_busnum = 1
         self.device_address = 0x70
         self.device_debug = True
-        self.device = I2CDevice(self.device_address, self.device_busnum, self.device_debug)
+        self.device = odin_devices.i2c_device.I2CDevice(self.device_address, self.device_busnum, self.device_debug)
         self.device.pre_access = Mock()
 
 
-@pytest.fixture(scope="class")
-def test_i2c_device():
+@pytest.fixture(scope="class", params=["smbus", "smbus2"])
+def test_i2c_device(request):
     """Fixture used in driver test cases"""
+
+    # Mock out the parameterised smbus/smbus2 module and reload the i2c_device module
+    sys.modules[request.param] = Mock()
+    reload(odin_devices.i2c_device)
 
     test_i2c_fixture = I2CDeviceTestFixture()
     yield test_i2c_fixture
@@ -68,9 +71,9 @@ class TestI2CDevice(object):
     def test_change_default_bus(self, test_i2c_device):
 
         default_i2c_bus = 0
-        I2CDevice.set_default_i2c_bus(default_i2c_bus)
+        odin_devices.i2c_device.I2CDevice.set_default_i2c_bus(default_i2c_bus)
 
-        new_device = I2CDevice(test_i2c_device.device_address, debug=test_i2c_device.device_debug)
+        new_device = odin_devices.i2c_device.I2CDevice(test_i2c_device.device_address, debug=test_i2c_device.device_debug)
         assert default_i2c_bus == new_device.busnum
 
     def test_pre_access_called(self, test_i2c_device):
@@ -113,7 +116,7 @@ class TestI2CDevice(object):
         elif exc_mode == self.EXC_MODE_TRAP:
             side_effect = IOError('mocked error')
             exc_enable = False
-            exp_rc = I2CDevice.ERROR
+            exp_rc = odin_devices.i2c_device.I2CDevice.ERROR
         elif exc_mode == self.EXC_MODE_RAISE:
             side_effect = IOError('mocked error')
             exc_enable = True
@@ -127,7 +130,7 @@ class TestI2CDevice(object):
         exception_message = 'error from device'
 
         if exc_enable:
-            with pytest.raises(I2CException) as excinfo:
+            with pytest.raises(odin_devices.i2c_device.I2CException) as excinfo:
                 rc = getattr(test_i2c_device.device, method)(*args)
                 assert rc == exp_rc
                 assert exception_message in excinfo.value
