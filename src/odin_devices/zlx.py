@@ -28,6 +28,7 @@ from odin_devices.i2c_device import I2CDevice
 from odin_devices.spi_device import SPIDevice
 import logging
 import time
+from smbus2 import i2c_msg
 
 class ZLx(object):
     SPI_CMD_WRITE_ENABLE = 0x06
@@ -73,12 +74,35 @@ class ZLx(object):
         #TODO If no control pins are specified as well as no interface, throw an error
 
         #TODO make a basic check, read manufacturer info and check against expectation
+        self._check_id()
 
     def num_channels(self):
         return len(self._channel_info.keys())
 
     def has_internal_eeprom(self):
         return bool(self._support_internal_eeprom)
+
+    def _check_id(self):
+        # If the required ID is known, read from the device and check that it's what is expected.
+        # If there is a null response (255), assume comms failure and raise an exception
+        # Otherwise warn if the device is not as expected.
+
+        ID1 = self.read_register(0x30)
+        ID2 = self.read_register(0x31)
+
+        if ID1 == 255 or ID2 == 255:
+            raise ('Failure reading device ID, got ID1: {}, ID2: {}'.format(ID1, ID2))
+
+        readback_id = (ID1 << 4) | ((ID2 & 0xF0) >> 4)
+
+        self._logger.info('Read back device ID as {}'.format(hex(readback_id)))
+
+        if self._expected_ID != readback_id:
+            self._logger.warning(
+                'Read back device ID as {} but expected {}, is this the correct device?'.format(
+                    readback_id, self._expected_ID))
+
+        return readback_id
 
     def write_register(self, address, value, write_EEPROM=False, verify=False):
         # Must have either SPI or I2C interface
@@ -101,7 +125,20 @@ class ZLx(object):
             if write_EEPROM:
                 self.device.bus.write_byte(self.device.bus.address, value)
 
-            self.device.write8(address, value)
+            # Make use of lower level i2c_rdwr to make non-standard I2C transactions
+            # TODO merge in Tim's modifications to make I2CDevice do this automatically.
+            transaction = []
+
+            # Write command and 16-bit register address
+            transaction.append(ZLx.SPI_CMD_WRITE)	# Write command
+            transaction.append((address & 0xFF00)>>8)	# Address upper byte
+            transaction.append(address & 0x00FF)	# Address lower byte
+
+            # Rest of the buffer is data to be written, in this case one byte
+            transaction.append(value)
+
+            write_msg = i2c_msg.write(self.device.address, transaction)
+            self.device.bus.i2c_rdwr(write_msg)
 
         # Writing to SPI is more complex due to the register address structure
         elif type(self.device) is SPIDevice:
@@ -112,6 +149,8 @@ class ZLx(object):
                 transaction = [ZLx.SPI_CMD_WRITE_ENABLE]
                 self.device.transfer(transaction)
 
+            # Make use of lower level i2c_rdwr to make non-standard I2C transactions
+            # TODO merge in Tim's modifications to make I2CDevice do this automatically.
             transaction = []
 
             # Write command
@@ -140,6 +179,8 @@ class ZLx(object):
         self.write_register(address, reg_val, write_EEPROM=write_EEPROM, verify=verify)
 
     def read_register(self, address, read_EEPROM):
+	# NOTE THAT THIS FUNCTION EXECUTES A TWO-PART WRITE-READ, WHICH MUST NOT HAVE OTHER TRAFFIC IN BETWEEN
+
         # Must have either SPI or I2C interface
         if self.device is None:
             raise Exception('No valid interface for writing registers')
@@ -151,10 +192,26 @@ class ZLx(object):
         # If the EEPROM / register select is not correct and we are trying to access a register
         # that is supported by the internal EEPROM (>0x00), correct it.
         if (self._EESEL is not read_EEPROM) and address > 0x00:
-            self.write_register(0x00, 0b10000000 if read_EEPROM else 0b00000000)
+            print('Correcting EESEL')
+            #self.write_register(0x00, 0b10000000 if read_EEPROM else 0b00000000)
 
         if type(self.device) is I2CDevice:
-            return self.device.read8(address)
+            # Make use of lower level i2c_rdwr to make non-standard I2C transactions
+            # TODO merge in Tim's modifications to make I2CDevice do this automatically.
+            transaction = []
+
+            # Read command and 16-bit register address
+            transaction.append(ZLx.SPI_CMD_READ)	# Read command
+            transaction.append((address & 0xFF00)>>8)	# Address upper byte
+            transaction.append(address & 0x00FF)	# Address lower byte
+
+            write_msg = i2c_msg.write(self.device.address, transaction)
+            self.device.bus.i2c_rdwr(write_msg)
+
+            # Read the data byte back, return first byte
+            read_msg = i2c_msg.read(self.device.address, 1)
+            self.device.bus.i2c_rdwr(read_msg)
+            return list(read_msg)[0]	# Only return one value
 
         # Writing to SPI is more complex due to the register address structure
         elif type(self.device) is SPIDevice:
@@ -342,13 +399,17 @@ class ZL30264_65(ZL30264_67):
 
 class ZL30264(ZL30264_65):
     _support_internal_eeprom = False
+    _expected_ID = 0x1D8
 class ZL30265(ZL30264_65):
     _support_internal_eeprom = True
+    _expected_ID = 0x1F8
 
 class ZL30266_67(ZL30264_67):
     _num_channels = 10
 
 class ZL30266(ZL30266_67):
     _support_internal_eeprom = False
+    _expected_ID = 0x1D9
 class ZL30267(ZL30266_67):
     _support_internal_eeprom = True
+    _expected_ID = 0x1F9
