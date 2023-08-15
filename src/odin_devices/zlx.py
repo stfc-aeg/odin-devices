@@ -98,9 +98,11 @@ class ZLx(object):
         self._logger.info('Read back device ID as {}'.format(hex(readback_id)))
 
         if self._expected_ID != readback_id:
-            self._logger.warning(
+            self._logger.critical(
                 'Read back device ID as {} but expected {}, is this the correct device?'.format(
                     readback_id, self._expected_ID))
+        else:
+            self._logger.info('ID matches expected')
 
         return readback_id
 
@@ -117,6 +119,7 @@ class ZLx(object):
         # that is supported by the internal EEPROM (>0x00), correct it.
         if (self._EESEL is not write_EEPROM) and address > 0x00:
             self.write_register(0x00, 0b10000000 if write_EEPROM else 0b00000000)
+            self._EESEL = read_EEPROM
 
         if type(self.device) is I2CDevice:
 
@@ -165,7 +168,7 @@ class ZLx(object):
 
             self.device.transfer(transaction)
 
-    def write_register_bit(self, address, bit_pos, value, write_EEPROM, verify):
+    def write_register_bit(self, address, bit_pos, value, write_EEPROM=False, verify=False):
         # Read the existing value
         reg_val_old = self.read_register(address, read_EEPROM=write_EEPROM)
 
@@ -178,7 +181,7 @@ class ZLx(object):
 
         self.write_register(address, reg_val, write_EEPROM=write_EEPROM, verify=verify)
 
-    def read_register(self, address, read_EEPROM):
+    def read_register(self, address, read_EEPROM=False):
 	# NOTE THAT THIS FUNCTION EXECUTES A TWO-PART WRITE-READ, WHICH MUST NOT HAVE OTHER TRAFFIC IN BETWEEN
 
         # Must have either SPI or I2C interface
@@ -193,7 +196,8 @@ class ZLx(object):
         # that is supported by the internal EEPROM (>0x00), correct it.
         if (self._EESEL is not read_EEPROM) and address > 0x00:
             print('Correcting EESEL')
-            #self.write_register(0x00, 0b10000000 if read_EEPROM else 0b00000000)
+            self.write_register(0x00, 0b10000000 if read_EEPROM else 0b00000000)
+            self._EESEL = read_EEPROM
 
         if type(self.device) is I2CDevice:
             # Make use of lower level i2c_rdwr to make non-standard I2C transactions
@@ -296,8 +300,8 @@ class ZLx(object):
 
         # Parse each line checking for errors, but ignoring content
         for line in filehandle.readlines():
-            print(filehandle)
-            print(line)
+            #print(filehandle)
+            #print(line)
             ZLx._mfg_parse_line(line)
 
     def _follow_mfg(self, filehandle):
@@ -316,7 +320,7 @@ class ZLx(object):
 
                 self._logger.debug(
                     'Wrote register {} value {} as specified by mfg line: {}'.format(
-                        address, value, line
+                        hex(address), hex(value), line[:-1]
                     )
                 )
                 write_count += 1
