@@ -165,7 +165,7 @@ class LTC2986 (SPIDevice):
         CUR_40UA_160UA_320UA = (0x2 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
         CUR_80UA_320UA_640UA = (0x3 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
 
-    def __init__(self, bus=0, device=0, ignore_hardfaults=False):
+    def __init__(self, bus=0, device, ignore_hardfaults=False):
 
         # Init SPI Device
         super().__init__(bus, device, hz=1000000)  # Max allowed speed for device is 2MHz
@@ -297,12 +297,14 @@ class LTC2986 (SPIDevice):
         return self._channel_assignment_data[channel_number]
 
     def _wait_for_status_done(self, timeout_ms, check_interval_ms=50):
+        # Read the command status register until the DONE bit is high and START is 0.
+        # This means that if the bus reads all 0 or all 1 by default it will actually
+        # fail if the device does not respond.
 
-        # Read the command status register until 0x40 (done bit) is high
         tstart = time.time()        # Epoch time in s, as a float
         command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
                                               num_bytes=1)[0]
-        while (command_status & 0x40) == 0:
+        while ((command_status & 0xC0) == 0b01000000) == 0:
             time.sleep(check_interval_ms / 1000.0)
             command_status = self._read_ram_bytes(start_address=_REG_COMMAND_STATUS,
                                                   num_bytes=1)[0]
