@@ -11,6 +11,7 @@ from odin_devices.spi_device import SPIDevice, SPIException
 from enum import Enum
 import time
 import logging
+import math
 
 _SPI_CMD_WRITE_RAM = bytes([0x02])
 _SPI_CMD_READ_RAM = bytes([0x03])
@@ -165,10 +166,10 @@ class LTC2986 (SPIDevice):
         CUR_40UA_160UA_320UA = (0x2 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
         CUR_80UA_320UA_640UA = (0x3 << _DIODE_EXCITATION_CURRENT_LSB).to_bytes(4, byteorder='big')
 
-    def __init__(self, bus=0, device, ignore_hardfaults=False):
+    def __init__(self, bus, device, ignore_hardfaults=False, hz=1000000):
 
         # Init SPI Device
-        super().__init__(bus, device, hz=1000000)  # Max allowed speed for device is 2MHz
+        super().__init__(bus, device, hz=hz)  # Max allowed speed for device is 2MHz
         self.set_mode(0b00)
 
         # Store hardfault ignore setting
@@ -403,9 +404,40 @@ class LTC2986 (SPIDevice):
         # Return scaled value
         return (float(raw_channel_bytes) / 1024.0)
 
-    def measure_channel(self, channel_number, include_raw_input=False):
+    def _read_channel_raw_adc(self, channel_number):
+        # Returns the ADC input voltage as a float. This uses a different signed format to the other
+        # results.
+
+        channel_start_address = self._get_channel_result_address(channel_number)
+        raw_channel_bytes = self._read_ram_bytes(start_address=channel_start_address, num_bytes=4)
+
+        # Result is in the last 24 LSBs (last 3 bytes)
+        raw_result_bytes = raw_channel_bytes[1:]
+
+        # Do not use 'signed', as this will assume 2's complement
+        raw_result_24bit = int.from_bytes(raw_result_bytes, byteorder='big', signed=False)
+
+        # The fault bits are in the first 8 MSBs
+        fault_bits = raw_channel_bytes[0]
+
+        # Calculate result based on 24-bit format <+/-> <2v> <1v> <0.5v> <0.25v> ...
+        is_negative = (raw_result_24bit & 0x800000)> 0
+        int_preshift = raw_result_24bit & 0x7FFFFF
+        float_postshift = int_preshift / math.pow(2, 21)
+        result = (-1.0 * float_postshift) if is_negative else float_postshift
+
+        self._logger.info("Channel {} result (raw ADC) as float: {}".format(channel_number, result))
+
+        # Warn if fault bits found
+        if fault_bits is not 1:     # 1 means valid
+            self._process_fault_bits(fault_bits, channel_number)
+
+        return result
+
+
+    def measure_channel(self, channel_number):
         # Measure a channel by triggering a conversion, waiting for it to complete and then scaling
-        # the reading data. include_raw_input adds the raw voltage/resistance to the output.
+        # the reading data.
 
         self._logger.debug("Starting conversion for channel {}".format(channel_number))
         conversion_complete = self._convert_channels([channel_number])
@@ -415,9 +447,9 @@ class LTC2986 (SPIDevice):
 
         self._logger.debug("Conversion complete")
 
-        if include_raw_input:
-            return (self._read_channel_result_temp(channel_number),
-                    self._read_channel_raw_voltage_resistance(channel_number))
+        # Raw ADC is a special case output format, assumes not using table mode
+        if self.get_channel_assignment(channel_number) == LTC2986.Sensor_Type.SENSOR_TYPE_DIRECT_ADC:
+            return self._read_channel_raw_adc(channel_number)
         else:
             return self._read_channel_result_temp(channel_number)
 
