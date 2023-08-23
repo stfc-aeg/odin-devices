@@ -10,7 +10,12 @@ error print calls and replace with proper exception raising.
 James Hogge, Tim Nicholls, STFC Application Engineering Group.
 """
 
-import smbus
+try:
+    from smbus2 import SMBus, i2c_msg
+    using_smbus2 = True
+except ImportError:
+    from smbus import SMBus
+    using_smbus2 = False
 import logging
 
 
@@ -72,7 +77,7 @@ class I2CDevice(object):
         """
         self.address = address
         self.busnum = busnum if busnum else self._default_i2c_bus
-        self.bus = smbus.SMBus(self.busnum)
+        self.bus = SMBus(self.busnum)
         self.debug = debug
         self.pre_access = None
 
@@ -187,3 +192,9 @@ class I2CDevice(object):
             return result
         except IOError as err:
             return self.handle_error('readS16', reg, err)
+
+    @call_pre_access
+    def execute_transaction(self, *args, **kwargs):
+
+        result = self.bus.i2c_rdwr(*args, **kwargs)
+        return result
