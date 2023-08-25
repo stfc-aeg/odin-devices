@@ -43,7 +43,27 @@ class AD5593R(I2CDevice):
         # Internal voltage reference is 2.5v, but is disabled by default
         self._vref = vref
 
-    def setup_adc(self, adc_pin_mask):
+    def setup_adc(self, adc_pin_mask, double_range=False):
+        # double_range is a global ADC setting that allows the ADC to read inputs in
+        # the range 0v - (2*vref)v
+
+        # Get old value of general purpose config register
+        reg = self.AD5593_REG_READBACK | self.AD5593_GP_CONTR_REG
+        write_msg = i2c_msg.write(self.address, [reg])
+        read_msg = i2c_msg.read(self.address, 2)
+        self.execute_transaction(write_msg, read_msg)
+        old_gp_reg = list(read_msg)
+
+        # Substitute in the double range bit
+        adc_range_bit = 0b100000 if double_range else 0
+        new_gp_reg = [old_gp_reg[0], (old_gp_reg[1] & 0b11100000) | adc_range_bit]
+
+        # Write the new general purpose config register
+        reg = self.AD5593_CONFIG_MODE | self.AD5593_GP_CONTR_REG
+        write_msg = i2c_msg.write(self.address, [reg, new_gp_reg[0], new_gp_reg[1]])
+        self.execute_transaction(write_msg)
+
+        self._adc_double_range = double_range
 
         # Write ADC pin config register
         reg = self.AD5593_CONFIG_MODE | self.AD5593_ADC_PIN_CONF
@@ -60,7 +80,7 @@ class AD5593R(I2CDevice):
         write_msg = i2c_msg.write(self.address, [reg])
         self.execute_transaction(write_msg)
 
-    def read_adc(self, pin):
+    def read_adc_raw(self, pin):
 
         # Write ADC sequence register
         reg = self.AD5593_CONFIG_MODE | self.AD5593_ADC_SEQ_REG
@@ -90,8 +110,20 @@ class AD5593R(I2CDevice):
 
         return adc_val
 
+    def read_adc(self, pin):
+        # Actual voltage will depend on the reference, and whether ADC is using double
+        # refeference range.
+        adc_count = self.read_adc_raw(pin)
+
+        range_multiplier = 2 if self._adc_double_range else 1
+        voltage = (adc_count / 4095) * self._vref * range_multiplier
+
+        return voltage
+
     def setup_dac(self, dac_pin_mask, double_range=False):
-        # double_range is a global setting that allows 
+        # double_range is a global setting that allows the DAC to set voltages in the
+        # range 0v -(2*vref)v
+
         # Note that it is allowed to set I/On as ADC and DAC to readback the DAC output.
 
         # Get old value of general purpose config register
@@ -101,7 +133,7 @@ class AD5593R(I2CDevice):
         self.execute_transaction(write_msg, read_msg)
         old_gp_reg = list(read_msg)
 
-        # Substitute in the range bit
+        # Substitute in the double range bit
         dr_bit = 0b10000 if double_range else 0
         new_gp_reg = [old_gp_reg[0], (old_gp_reg[1] & 0b11100000) | dr_bit]
 
