@@ -30,6 +30,9 @@ import logging
 import time
 from smbus2 import i2c_msg
 
+class ZLFlaggedChannelException(Exception):
+    pass
+
 class ZLx(object):
     SPI_CMD_WRITE_ENABLE = 0x06
     SPI_CMD_WRITE = 0x02
@@ -38,6 +41,7 @@ class ZLx(object):
 
     _support_internal_eeprom = False
     _num_channels = 0
+    _output_en_mapping = {}
 
     # Store as [num: {}] where the following dict must at least contain 'offset' for register info.
     _channel_info = {}
@@ -55,6 +59,12 @@ class ZLx(object):
         self._logger = logging.getLogger('ZLx')
 
         self._pin_nreset = nreset_pin
+
+        # Store a list of register addresses associated with output enables for later use.
+        self._output_en_regs = set()
+        for address, bit in self._output_en_mapping.values():
+            self._output_en_regs.add(address)
+        self._output_en_regs = list(self._output_en_regs)   # Convert to list
 
         #TODO Initially cycle the reset, potentially with selected config pins if they
         # are present
@@ -288,8 +298,15 @@ class ZLx(object):
 
         return (linetype, content)
 
-    def _check_mfg(self, filehandle, check_dev_id):
-        # Check the Device ID Matches and is the first line
+    def _check_mfg(self, filehandle, check_dev_id, flag_channels=[]):
+        # Checks:
+        # 1. ID
+        #   Check the Device ID Matches and is the first line.
+        #   Enabled with check_dev_id=True
+        # 2. Flagged Channels
+        #   Check if certain channels are being enabled by the config, if requested by the
+        #   caller. This can be used as a form of protection of downstream devices.
+
         if check_dev_id:
             headerline = filehandle.readline()
             if headerline.startswith('; Device Id'):
@@ -300,9 +317,19 @@ class ZLx(object):
 
         # Parse each line checking for errors, but ignoring content
         for line in filehandle.readlines():
-            #print(filehandle)
-            #print(line)
-            ZLx._mfg_parse_line(line)
+            linetype, content = ZLx._mfg_parse_line(line)
+
+        if linetype == 'regwrite':
+            address, value = content
+
+            # If the register address is known to be used for output enable bits
+            if address in self._output_en_regs:
+
+                # If any channel to be flagged has its bit set high, raise
+                for check_channel in flag_channels:
+                    check_addr, check_bit = self._output_en_mapping[check_channel]
+                    if check_addr == address and ((0b1 << check_bit) & value > 0):
+                        raise ZLFlaggedChannelException('You are attempting to program channel {}, which has been flagged.')
 
     def _follow_mfg(self, filehandle):
         # Tally the number of register writes since this can be checked at the end
@@ -385,6 +412,12 @@ in use).
 class ZL30244_45Channel(ZLx):
     _support_internal_eeprom = False
     _num_channels = 3
+    _output_en_mapping = {
+        # num: (address, bit)
+        1: (0x0D, 0),
+        2: (0x0D, 1),
+        3: (0x0D, 2),
+    }
 
 class ZL30244Channel(ZL30244_45Channel):
     _support_internal_eeprom = False
@@ -396,7 +429,19 @@ class ZL30245Channel(ZL30244_45Channel):
 Support for the ZL30264-ZL30267
 """
 class ZL30264_67(ZLx):
-    pass
+    _output_en_mapping = {
+        # num: (address, bit)
+        1: (0x05, 0),
+        2: (0x05, 1),   # 10-channel devices only
+        3: (0x05, 2),
+        4: (0x05, 3),
+        5: (0x05, 4),   # 10-channel devices only
+        6: (0x05, 5),
+        7: (0x05, 6),   # 10-channel devices only
+        8: (0x05, 7),
+        9: (0x06, 0),
+        10: (0x06, 1),  # 10-channel devices only
+    }
 
 class ZL30264_65(ZL30264_67):
     _num_channels = 6
