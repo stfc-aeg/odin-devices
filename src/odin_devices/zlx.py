@@ -253,7 +253,7 @@ class ZLx(object):
         # Scan the whole file first before attempting to write the config
         with open(filepath, "r") as f:
             try:
-                self._check_mfg(f, check_dev_id=check_dev_id, flag_channels)
+                self._check_mfg(f, check_dev_id=check_dev_id, flag_channels=flag_channels)
             except Exception as e:
                 raise Exception('Could not use mfg; config check failed: {}'.format(e))
 
