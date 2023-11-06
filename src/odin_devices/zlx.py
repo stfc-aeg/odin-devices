@@ -245,7 +245,7 @@ class ZLx(object):
             # Return the transaction minus the preamble
             return self.device.transfer(transaction)[3:]
 
-    def write_config_mfg(self, filepath, check_dev_id=True):
+    def write_config_mfg(self, filepath, check_dev_id=True, flag_channels=[]):
         # Must have either SPI or I2C interface
         if self.device is None:
             raise Exception('No valid interface for writing registers')
@@ -253,7 +253,7 @@ class ZLx(object):
         # Scan the whole file first before attempting to write the config
         with open(filepath, "r") as f:
             try:
-                self._check_mfg(f, check_dev_id=check_dev_id)
+                self._check_mfg(f, check_dev_id=check_dev_id, flag_channels)
             except Exception as e:
                 raise Exception('Could not use mfg; config check failed: {}'.format(e))
 
