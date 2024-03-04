@@ -8,7 +8,7 @@ else:                           # pramga: no cover
     from mock import Mock, MagicMock, mock_open, patch
     BUILTINS_NAME = '__builtin__'
 
-sys.modules['smbus'] = Mock()
+sys.modules['smbus'] = MagicMock()
 
 from odin_devices.ad5259 import AD5259
 from odin_devices.i2c_device import I2CException
