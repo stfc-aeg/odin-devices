@@ -74,10 +74,9 @@ else:                                       # pragma: no cover
     from mock import Mock, MagicMock, call, patch
 
 sys.modules['smbus'] = MagicMock()
-sys.modules['gpiod.Line'] = MagicMock()
+sys.modules['gpiod'] = MagicMock()
 import odin_devices.pac1921                 # Needed so that module can be reloaded
 from odin_devices.pac1921 import PAC1921, PAC1921_Synchronised_Array, Measurement_Type, OverflowException
-import smbus
 from odin_devices.i2c_device import I2CDevice
 import gpiod
 
