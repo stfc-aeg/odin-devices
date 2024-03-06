@@ -82,9 +82,9 @@ class AD5259(I2CDevice):
             """)
 
         # Both terminal voltages must be supplied to be useful, so warn if either not supplied
-        if voltage_A:
+        if voltage_A is not None:
             self.set_voltage_A(voltage_A)
-        if voltage_B:
+        if voltage_B is not None:
             self.set_voltage_B(voltage_B)
         if voltage_A is None or voltage_B is None:
             self._logger.warning("""

@@ -14,9 +14,9 @@ from odin_devices.ad5259 import AD5259
 from odin_devices.i2c_device import I2CException
 
 class ad5259TestFixture(object):
-    def __init__(self, address=0, busnum=0):
+    def __init__(self, address=0, busnum=0, voltage_A=None, voltage_B=None):
         # Base instance has no optional args so that errors thrown when args are required can be tested.
-        self.ad5259 = AD5259(address=address, busnum=busnum)
+        self.ad5259 = AD5259(address=address, busnum=busnum, voltage_A=voltage_A, voltage_B=voltage_B)
 
         # Mock the read and write functions
         self.ad5259.set_wiper_count = Mock()
@@ -112,6 +112,10 @@ class TestAD5259():
         with pytest.raises(Exception, match=".*V_B.*"):
             test_driver.ad5259._V_B = None
             test_driver.ad5259.get_wiper_voltage()
+
+        # Test that if init with init with B as 0, error is not thrown
+        tmp_drv = ad5259TestFixture(voltage_A = 1, voltage_B = 0)
+        tmp_drv.ad5259.get_wiper_voltage()
 
         # Test that if R_AB is not set, the less accurate approximation is used
         # If the less accurate formula is used and voltage AB is 3v, the calculated value for count 200
