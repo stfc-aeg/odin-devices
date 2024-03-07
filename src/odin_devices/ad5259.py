@@ -145,13 +145,13 @@ class AD5259(I2CDevice):
         """
         Store the current wiper setting in the EEPROM.
         """
-        self.write8(self._INS_STORE_RDAC_EEPROM, 0)
+        self.write8(self._INS_STORE_RDAC_TO_EEPROM, 0)
 
     def restore_wiper_count(self):
         """
         Restore the stored wiper setting from the EEPROM to RDAC.
         """
-        self.write8(self._INS_STORE_EEPROM_RDAC, 0)
+        self.write8(self._INS_STORE_EEPROM_TO_RDAC, 0)
 
     def _get_resistance_terminal_to_wiper(self, terminal_is_A):
         """
