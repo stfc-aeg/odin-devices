@@ -189,7 +189,7 @@ class TestFireFly():
             # Check that the correct OUI address is read, using the correct write-read pattern
             writemock.reset_mock()
             readmock.reset_mock()
-            FireFly._get_interface(select_line=temp_pin, default_address=0x50)
+            FireFly._get_interface(select_line=temp_pin, default_address=0x50, busnum=None)
             writemock.assert_called_with(127, 0)        # Writes page 0 to page select byte
             readmock.assert_any_call(165, 3)            # Reads OUI bytes for QSFP+
             readmock.assert_any_call(168, 3)            # Reads OUI bytes for CXP
@@ -198,13 +198,13 @@ class TestFireFly():
             readmock.side_effect = lambda reg, ln: {        # Set fake register to return expected count
                         165: [0x04, 0xC8, 0x80],        # QSFP+ OUI is Samtek
                         168: [0, 0, 0]}[reg]            # QSFP first 3 digits of PN)
-            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50, busnum=None) == FireFly.INTERFACE_QSFP)
 
             # Check that reading the OUI for a CXP device will result in identification
             readmock.side_effect = lambda reg, ln: {        # Set fake register to return expected count
                         165: [0, 0, 0],                 # CXP end of vendor name in ASCII
                         168: [0x04, 0xC8, 0x80]}[reg]   # CXP OUI is Samtek
-            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_CXP)
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50, busnum=None) == FireFly.INTERFACE_CXP)
 
 
         # Check that the mocking model for different types also works
@@ -223,10 +223,10 @@ class TestFireFly():
             mock_registers_reset()          # reset the register systems
 
             mock_I2C_SwitchDeviceCXP()     # Model a CXP device
-            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_CXP)
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50, busnum=None) == FireFly.INTERFACE_CXP)
 
             mock_I2C_SwitchDeviceQSFP()     # Model a QSFP device
-            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50) == FireFly.INTERFACE_QSFP)
+            assert (FireFly._get_interface(select_line=temp_pin, default_address=0x50, busnum=None) == FireFly.INTERFACE_QSFP)
 
             # Check that an invalid value for both, raise an error
             global mock_registers_QSFP
