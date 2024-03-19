@@ -289,6 +289,9 @@ class FireFly(object):
         if (direction is None and (self.direction == FireFly.DIRECTION_TX or
                                    self.direction == FireFly.DIRECTION_RX)):
             direction = self.direction  # Derive temperature direction from simplex device
+        elif (direction is None and FireFly.DIRECTION_DUPLEX):
+            # If unspecified with a duplex device, just use the TX temperature
+            direction = FireFly.DIRECTION_TX
 
         if direction == FireFly.DIRECTION_TX:
             temperature_bytes = self._interface.read_field(self._interface.FLD_Tx_Temperature)
