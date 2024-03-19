@@ -87,7 +87,7 @@ class FireFly(object):
 
     _LOGGER_BASENAME = "odin_devices.FireFly"
 
-    def __init__(self, Interface_Type=None, base_address=0x00, select_line=None):
+    def __init__(self, Interface_Type=None, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
         """
         Create an instance of a generic FireFly device. The interface type will be determined
         automatically, as will the number of channels. Devices are assumed to be in POR, and at
@@ -97,19 +97,21 @@ class FireFly(object):
 
         :param Interface_Type:  Type of interface to use, FireFly.INTERFACE_CXP/QSFP. In most cases
                                 should be able to omit this and have it detected automatically.
-        :param base_address:    Address that will be set for future communication. Omit for default
+        :param base_address:            The address on which the FireFly is expected to be found by default
+        :param chosen_base_address:     The address that the device will be assigned to. None for unchanged.
+        :param busnum:          I2C bus to be used. If not supplied, will use system default.
         :param select_line:     GPIO line to use for active-low chip select, if used. This should be
                                 a line provided by odin_devices.gpio_bus or directly via gpiod.
         """
 
         # Init logger for instance (likely to have multiple fireflies)
-        loggername = FireFly._LOGGER_BASENAME + ('@0x%02x'%base_address)
+        loggername = FireFly._LOGGER_BASENAME + ('@0x%02x'%(chosen_base_address if chosen_base_address else base_address))
         self._log = logging.getLogger(loggername)
         self._log.info("Init FireFly with base address 0x%02x" % base_address)
 
         # Determine interface type automatically or use manually chosen one if supplied
         if Interface_Type is None:      # Detect interface automatically (default)
-            INTERFACE_Detect = FireFly._get_interface(select_line, 0x50, self._log)
+            INTERFACE_Detect = FireFly._get_interface(select_line, base_address, busnum, self._log)
             if INTERFACE_Detect is None:    # Automatic detection failed
                 raise I2CException("Was unable to determine interface type automatically, " +
                                    "try specifying Interface_Type manually.")
@@ -120,10 +122,10 @@ class FireFly(object):
 
         # Instantiate the interface based on above manual/automatic select
         if INTERFACE_Detect == FireFly.INTERFACE_QSFP:
-            self._interface = _interface_QSFP(loggername+".QSFP+", base_address, select_line)
+            self._interface = _interface_QSFP(loggername+".QSFP+", base_address, chosen_base_address, busnum, select_line)
             self._log.info("Interface detected as QSFP+ based")
         elif INTERFACE_Detect == FireFly.INTERFACE_CXP:
-            self._interface = _interface_CXP(loggername+".CXP", base_address, select_line)
+            self._interface = _interface_CXP(loggername+".CXP", base_address, chosen_base_address, busnum, select_line)
             self._log.info("Interface detected as CXP based")
 
         # From here onwards, interface and address specific functions can be called through
@@ -142,7 +144,7 @@ class FireFly(object):
         self._log.info("Tx Temperature: {}".format(temp_tx))
 
     @staticmethod
-    def _get_interface(select_line, default_address, log_instance=None):
+    def _get_interface(select_line, default_address, busnum, log_instance=None):
         """
         Attempt to automatically determine the interface type (QSFP+ or CXP) that is being used by
         the FireFly device at a given I2C address, using a given select line (if used).
@@ -150,13 +152,14 @@ class FireFly(object):
         :param select_line:     gpiod Line being used for CS. Provide with gpio_bus or gpiod.
         :param default_address: The address to use when attempting to communicate. Most likely this
                                 is the default (0x50) since the device has not been configured.
+        :param busnum:          I2C bus to be used.
         :param log_instance:    Because this is a static method, the self._log must be passed in
                                 for logging to work.
         :return:                Interface type (FireFly.INTERFACE_*) or None if it could not be
                                 determined automatically.
         """
         # Assuming the device is currently on the default address, and OUI is 0x40C880
-        tempdevice = I2CDevice(default_address)
+        tempdevice = I2CDevice(default_address, busnum)
 
         if select_line is not None:
             # Check GPIO control is available
@@ -453,15 +456,38 @@ class _FireFly_Interface(object):
     FireFly instance, which will have ownership of one type of interface (detected automatically).
     """
 
-    def __init__(self, channel_no_offset, loggername):
+    def __init__(self, channel_no_offset, loggername, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
         """
         :param channel_no_offset:       The channel numbering offset from 0 that the interface
                                         uses. For example, QSFP+ starts at channel 1, and so has an
                                         offset of 1.
         :param loggername:              Name to use when creating the logger.
+        :param base_address:            The address on which the FireFly is expected to be found by default
+        :param chosen_base_address:     The address that the device will be assigned to. None for unchanged.
+        :param busnum:                  I2C bus number, None for default.
+        :param select_line:             Optional gpiod pin for device select, will be used if provided.
         """
+
         self.channel_no_offset = channel_no_offset
         self._log = logging.getLogger(loggername)
+
+        # Set up select line use for the given address
+        self._select_line = select_line
+
+        # Establish contact with the device on the initial interface
+        self._setup_interface(base_address=base_address, busnum=busnum, select_line=select_line)
+
+        # If one has been supplied, change the address, setting up the new interface automatically
+        if chosen_base_address is not None:
+            self._change_address(chosen_base_address, busnum=busnum, select_line=select_line)
+
+    def _setup_interface(self, base_address, busnum, select_line):
+        # Will be overridden by QSFP or CXP
+        pass
+
+    def _change_address(self, chosen_base_address, busnum, select_line):
+        # Will be overridden by QSFP or CXP
+        pass
 
     def read_field(self, field, i2c_device):
         """
@@ -634,29 +660,44 @@ class _interface_CXP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_version_control = _Field_CXP(0x03, True, 0x00, 7, 8)
 
-    def __init__(self, loggername, base_address=0x00, select_line=None):
+    def __init__(self, loggername, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
-        if requried. Also initiate use of the GPIO selection line.
+        if requried. Also initiate use of the GPIO selection line. Note that for CXP devices, there
+        are two addresses, one for Rx and one for Tx. The supplied 'base' address is for Tx.
+        :param loggername:          Used to name the logger requested from the system
+        :param base_address:        The address on which the FireFly Tx is expected to be found by default
+        :param chosen_base_address:      The address that the Tx device will be assigned to. None for unchanged.
+        :param busnum:              I2C bus number, None for default.
+        :param select_line:         Optional gpiod pin for device select, will be used if provided.
         """
-        _FireFly_Interface.__init__(self, 0, loggername)        # Channels start at 00
+        # Call the super init, specifying the channel start for CXP
+        super().__init__(
+            channel_no_offset=0,        # Channels start at 00 for CXP
+            loggername=loggername,
+            base_address=base_address,
+            chosen_base_address=chosen_base_address,
+            busnum=busnum,
+            select_line=select_line,
+        )
 
-        # Set up select line use for the given address
-        self._select_line = select_line
-
-        self._base_address = base_address
-        self._init_select(base_address)     # May modify _base_address
+    def _setup_interface(self, base_address, busnum, select_line):
+        """
+        Given an interface definition consisting of a base address, bus and select line, set up the
+        class variables so that the read and write functions operate correctly.
+        :param base_address:    The address that will be used for Tx
+        :param busnum:          The I2C bus number to be used, None for default.
+        :param select_line:     Optional select gpiod pin, active low. None for no pin.
+        """
+        # Check address validity
+        if base_address == 0x7F:
+            raise Exception('Invalid base address for CXP devices: {} (will respond to 0x50 when register set to this address)'.format(base_address))
 
         # CXP uses seperate 'devices' for Tx/Rx operations
-        self._tx_device = I2CDevice(self._base_address)
-        self._rx_device = I2CDevice(self._base_address + 4)
+        self._tx_device = I2CDevice(base_address, busnum=busnum)
+        self._rx_device = I2CDevice(base_address+4, busnum=busnum)
 
-    def _init_select(self, chosen_address):
-        """
-        Set up the FireFly to respond on a chosen address, and to use the select line correctly
-        when when the _select_device() functions are used.
-        """
-        # Set up device to respond on chosen address with _select_device() functions
+        self._select_line = select_line
         if self._select_line is None:
             # If no selectL line is provided, it must be assumed that it is being pulled low
             # externally, or setup cannot be completed. It must also be the only device pulled low
@@ -664,23 +705,26 @@ class _interface_CXP(_FireFly_Interface):
             self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
-        # Apply extra address-specific measures
-        if chosen_address in [0x00, 0x7F]:
-            # Revert to default behaviour, where address is 0x50 when selectL pulled low
-            self._base_address = 0x50
-            return
+    def _change_address(self, chosen_base_address, busnum, select_line):
+        """
+        Change the address by directly setting the register that the FireFly module will respond to.
+        For CXP devices:
+            - Setting 0x00 will respond to 0x50 (selectL needed)
+            - Setting 0x01 - 0x3F will resond to 0x50 or the chosen value (selectL needed)
+            - Setting 0x40 - 0x7E will resond to the chosen value (selectL ignored)
+        For CXP devices, the Rx address will be 4 addresses higher than the chosen base address.
+        """
+        # Write the chosen address (the initial interface will have already been set up)
+        self.write_field(self.FLD_I2C_Address, [chosen_base_address])
 
-        if 0x40 < chosen_address < 0x7E and chosen_address is not 0x50:
-            # Addresses in this range will ignore selectL, so disable it (if not already None)
-            # Note that 0x50 is a special case as the default, since it is responded to with
-            # address register set to 0x00, and so not in this range...
-            self._select_line = None
-
-        # Write address field with initial settings for select line
-        self._tx_device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
-        self.write_field(self.FLD_I2C_Address, [chosen_address])
-        self._base_address = chosen_address
-        self._tx_device = None              # Will be properly assigned later
+        # If successful, update the interface
+        if chosen_base_address in [0x00, 0x7F]:
+            # Special case, setting this value will cause device to still respond to 0x50 only
+            self._setup_interface(base_address=0x50, busnum=busnum, select_line=select_line)
+            self._log.warning('Chosen address will have device respond to 0x50')
+        else:
+            # Setup as normal
+            self._setup_interface(base_address=chosen_base_address, busnum=busnum, select_line=select_line)
 
     def write_field(self, field, value):
         """
@@ -773,28 +817,42 @@ class _interface_QSFP(_FireFly_Interface):
     # Private interface-specific fields
     _FLG_interface_revision_compliance = _Field_QSFP(0x01, 0x00, 7, 8)
 
-    def __init__(self, loggername, address=0x00, select_line=None):
+    def __init__(self, loggername, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
         """
         Configure the two I2C device drivers, and set up the FireFly device to a specified address
         if requried. Also initiate use of the GPIO selection line.
+        :param loggername:          Used to name the logger requested from the system
+        :param base_address:        The address on which the FireFly is expected to be found by default
+        :param chosen_base_address:      The address that the device will be assigned to. None for unchanged.
+        :param busnum:              I2C bus number, None for default.
+        :param select_line:         Optional gpiod pin for device select, will be used if provided.
         """
-        _FireFly_Interface.__init__(self, 1, loggername)    # Channels start at 1 for some reason...
+        # Call the super init, specifying the channel start for QSFP
+        super().__init__(
+            channel_no_offset=1,        # Channels start at 01 for QSFP
+            loggername=loggername,
+            base_address=base_address,
+            chosen_base_address=chosen_base_address,
+            busnum=busnum,
+            select_line=select_line,
+        )
 
-        # Set up select line use for the given address
+    def _setup_interface(self, base_address, busnum, select_line):
+        """
+        Given an interface definition consisting of a base address, bus and select line, set up the
+        class variables so that the read and write functions operate correctly.
+        :param base_address:    The address that will be used for Tx and Rx
+        :param busnum:          The I2C bus number to be used, None for default.
+        :param select_line:     Optional select gpiod pin, active low. None for no pin.
+        """
+        # Check address validity
+        if base_address in range(0x7f, 0xFF+1):
+            raise Exception('Invalid base address for QSFP devices: {} (addresses in this range will respond to 0x50)'.format(base_address))
+
+        # QSFP uses one device for Tx/Rx operations
+        self._device = I2CDevice(base_address, busnum=busnum)
+
         self._select_line = select_line
-
-        self._address = address
-        self._init_select(address)          # May modify _address
-
-        self._device = I2CDevice(self._address)
-        self._device.enable_exceptions()#TODO remove
-
-    def _init_select(self, chosen_address):
-        """
-        Set up the FireFly to respond on a chosen address, and to use the select line correctly
-        when when the _select_device() functions are used.
-        """
-        # Set up device to respond on chosen address with _select_device() functions
         if self._select_line is None:
             # If no selectL line is provided, it must be assumed that it is being pulled low
             # externally, or setup cannot be completed. It must also be the only device pulled low
@@ -802,19 +860,25 @@ class _interface_QSFP(_FireFly_Interface):
             self._log.warning("Select Line not specified. "
                            "This MUST be the only device with selectL pulled low on the bus")
 
-        # Apply extra address-specific measures
-        if chosen_address == 0x00 or 0x7F < chosen_address < 0xFF:
-            # Revert to default behaviour, where address is 0x50 when selectL pulled low
-            self._log.warning("Device will be responding to 0x50, not {}".format(chosen_address))
-            self._address = 0x50
-            return
+    def _change_address(self, chosen_base_address, busnum, select_line):
+        """
+        Change the address by directly setting the register that the FireFly module will respond to.
+        For QSFP devices:
+            - Setting 0x00, 0x7F - 0xFF     will respond to 0x50 and 0x00 (selectL needed)
+            - Setting 0x01 - 0x7E           will resond to chosen value and 0x00 (selectL needed)
+        """
+        # Write the chosen address (the initial interface will have already been set up)
+        self.write_field(self.FLD_I2C_Address, [chosen_base_address])
 
-        # Write address field with initial settings for select line
-        self._device = I2CDevice(0x50)   # Temporarily assign the tx_device to default address
-        self.write_field(self.FLD_I2C_Address, [chosen_address])
-        self._address = chosen_address
-        self._device = None              # Will be properly assigned later
-        # Otherwise chosen address will be used when selectL pulled low
+        # If successful, update the interface
+        if chosen_base_address == 0x00 or chosen_base_address in range(0x7F,0xFF+1):
+            # Setting anything in this range will result in the device only responding to address
+            # 0x50 anyway, so set the field but warn the user, and set up the interface to use 0x50
+            self._setup_interface(base_address=0x50, busnum=busnum, select_line=select_line)
+            self._log.warning('Chosen address will have device respond to 0x50')
+        else:
+            # Set up as normal to respond to the requested address
+            self._setup_interface(base_address=chosen_base_address, busnum=busnum, select_line=select_line)
 
     def write_field(self, field, value):
         """
