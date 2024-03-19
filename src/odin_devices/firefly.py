@@ -721,10 +721,11 @@ class _interface_CXP(_FireFly_Interface):
         if chosen_base_address in [0x00, 0x7F]:
             # Special case, setting this value will cause device to still respond to 0x50 only
             self._setup_interface(base_address=0x50, busnum=busnum, select_line=select_line)
-            self._log.warning('Chosen address will have device respond to 0x50')
+            self._log.warning('Chosen address {} will have device respond to 0x50'.format(hex(chosen_base_address)))
         else:
             # Setup as normal
             self._setup_interface(base_address=chosen_base_address, busnum=busnum, select_line=select_line)
+            self._log.warning('Reprogrammed FireFly to respond to address {}'.format(hex(chosen_base_address)))
 
     def write_field(self, field, value):
         """
@@ -875,10 +876,11 @@ class _interface_QSFP(_FireFly_Interface):
             # Setting anything in this range will result in the device only responding to address
             # 0x50 anyway, so set the field but warn the user, and set up the interface to use 0x50
             self._setup_interface(base_address=0x50, busnum=busnum, select_line=select_line)
-            self._log.warning('Chosen address will have device respond to 0x50')
+            self._log.warning('Chosen address {} will have device respond to 0x50'.format(hex(chosen_base_address)))
         else:
             # Set up as normal to respond to the requested address
             self._setup_interface(base_address=chosen_base_address, busnum=busnum, select_line=select_line)
+            self._log.warning('Reprogrammed FireFly to respond to address {}'.format(hex(chosen_base_address)))
 
     def write_field(self, field, value):
         """
