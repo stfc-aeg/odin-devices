@@ -421,10 +421,24 @@ class TestFireFly():
             test_firefly = FireFly(base_address=0x60)
             assert(test_firefly._interface._device.address == 0x60)
 
-            # Check that if a base address out of range is set, the address stays the same
+            # Check that if a base address out of range is set, an error is thrown
             mock_registers_reset()          # reset the register systems, PS is 0
-            test_firefly = FireFly(base_address=0x90)
+            with pytest.raises(Exception, match=".*Invalid base address.*"):
+                test_firefly = FireFly(base_address=0x90)
+
+            # Check that if a new address is requested, it sets the register, and
+            # also updates the in-use interface.
+            mock_registers_reset()
+            test_firefly = FireFly(base_address=0x50, chosen_base_address=0x60)
+            assert(test_firefly._interface._device.address == 0x60)
+            assert(mock_registers_QSFP['upper'][2][255] == 0x60)
+
+            # Check that if a new address is requested in the upper range, the value is
+            # set in the register, but interface still uses 0x50.
+            mock_registers_reset()
+            test_firefly = FireFly(base_address=0x50, chosen_base_address=0x80)
             assert(test_firefly._interface._device.address == 0x50)
+            assert(mock_registers_QSFP['upper'][2][255] == 0x80)
 
     def test_base_address_reassignment_cxp(self, test_firefly):
         with \
@@ -463,6 +477,18 @@ class TestFireFly():
             test_firefly = FireFly()
             assert(test_firefly._interface._rx_device.address ==
                    test_firefly._interface._tx_device.address + 4)
+
+            # Check that if a base address out of range is set, an error is thrown
+            mock_registers_reset()          # reset the register systems, PS is 0
+            with pytest.raises(Exception, match=".*Invalid base address.*"):
+                test_firefly = FireFly(base_address=0x7F)
+
+            # Check that if a new address is requested, it sets the register, and
+            # also updates the in-use interface.
+            mock_registers_reset()
+            test_firefly = FireFly(base_address=0x50, chosen_base_address=0x60)
+            assert(test_firefly._interface._tx_device.address == 0x60)
+            assert(mock_registers_CXP['upper'][2][255] == 0x60)
 
     def test_pin_control(self, test_firefly):
         temp_pin = MagicMock(spec=gpiod.Line)
