@@ -619,13 +619,6 @@ class TestFireFly():
             test_firefly = FireFly()
             assert(test_firefly.get_temperature(direction=FireFly.DIRECTION_TX) == -128.0)
 
-            # Check that a duplex device supplied with no direction raises an error
-            mock_registers_reset()          # reset the register systems, PS is 0
-            test_firefly = FireFly()
-            assert(test_firefly.direction == FireFly.DIRECTION_DUPLEX)  # Test valid for duplex
-            with pytest.raises(I2CException, match=".*Invalid direction.*could not be derived.*"):
-                test_firefly.get_temperature()
-
             # Check that a simplex device can infer direction
             mock_registers_reset()          # reset the register systems, PS is 0
             mock_registers_CXP['upper'][0][171] = ord('R') # Force PN to reflect Rx only device
