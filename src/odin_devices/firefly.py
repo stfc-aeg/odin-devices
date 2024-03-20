@@ -87,7 +87,7 @@ class FireFly(object):
 
     _LOGGER_BASENAME = "odin_devices.FireFly"
 
-    def __init__(self, Interface_Type=None, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
+    def __init__(self, Interface_Type=None, direction=None, num_channels=None, base_address=0x50, chosen_base_address=None, busnum=None, select_line=None):
         """
         Create an instance of a generic FireFly device. The interface type will be determined
         automatically, as will the number of channels. Devices are assumed to be in POR, and at
@@ -98,6 +98,10 @@ class FireFly(object):
         :param Interface_Type:  Type of interface to use, FireFly.INTERFACE_CXP/QSFP. In most cases
                                 should be able to omit this and have it detected automatically.
         :param base_address:            The address on which the FireFly is expected to be found by default
+        :param direction:       Direction, one of FireFly.DIRECTION_TX/RX/DUPLEX. This should not be required
+                                        (will be determined from part number automatically) unless using a
+                                        customised part, where the part number cannot be decoded.
+        :param num_channels:    Override for number of channels, only required for custom parts (see above)
         :param chosen_base_address:     The address that the device will be assigned to. None for unchanged.
         :param busnum:          I2C bus to be used. If not supplied, will use system default.
         :param select_line:     GPIO line to use for active-low chip select, if used. This should be
@@ -133,7 +137,7 @@ class FireFly(object):
 
         # Read some identifying information
         PN_ascii, VN_ascii, OUI = self.get_device_info()
-        self._check_pn_fields(PN_ascii)
+        self._check_pn_fields(PN_ascii, direction, num_channels)
         self._log.info(
                 "Found device, Vendor: {} ({}),\tPN: {}".format(VN_ascii, OUI, PN_ascii))
 
@@ -206,7 +210,7 @@ class FireFly(object):
                 log_instance.critical("OUI not found during automatic detection")
             return None
 
-    def _check_pn_fields(self, pn_str):
+    def _check_pn_fields(self, pn_str, direction=None, num_channels=None):
         """
         Checks some common fields accross all common devices to make sure the PN has been read
         correctly. Some fields important to the driver's operation are designated as CRITICAL, and
@@ -216,53 +220,84 @@ class FireFly(object):
         This function also populates some fields used by the driver, like number of channels, data
         direction and data rate.
 
-        :param pn_str:  String of unformatted Part number (without ECU0 prefix)
+        :param pn_str:      String of unformatted Part number (without ECU0 prefix)
+        :param direction:   Allow user to supply a direction instead of decoding it. This should not
+                            be required unless the part is custom, since this renders the part number
+                            un-decodable.
+        :param num_channels:   Allow user to supply a number of channels instead of decoding it. This
+                            should not be required unless the part is custom, since this renders the
+                            part number un-decodable.
         """
 
-        # (CRITICAL) Check data direction (width) field
-        if pn_str[0] in ['T']:
-            self.direction = FireFly.DIRECTION_TX
-        elif pn_str[0] in ['R']:
-            self.direction = FireFly.DIRECTION_RX
-        elif pn_str[0] in ['B', 'Y']:
-            self.direction = FireFly.DIRECTION_DUPLEX
-        elif pn_str[0] in ['U']:
-            # Currently unsure what this mode means
-            #TODO
-            pass
-        else:
-            raise I2CException(
-                    "Data direction {} in part number field not recognised".format(pn_str[0]))
-        self._log.info("Device data direction: {}".format(pn_str[0]))
+        try:
+            # (CRITICAL) Check data direction (width) field
+            if pn_str[0] in ['T']:
+                self.direction = FireFly.DIRECTION_TX
+            elif pn_str[0] in ['R']:
+                self.direction = FireFly.DIRECTION_RX
+            elif pn_str[0] in ['B', 'Y']:
+                self.direction = FireFly.DIRECTION_DUPLEX
+            elif pn_str[0] in ['U']:
+                # Currently unsure what this mode means
+                #TODO
+                pass
+            elif pn_str[0:3] == "OTP":
+                self._log.warning('Customised OTP part discovered, cannot decode part number further')
 
-        # (CRITICAL) Check number of channels
-        if pn_str[1:3] == '12':
-            self.num_channels = 12
-        elif pn_str[1:3] == '04':
-            self.num_channels = 4
-        else:
-            raise I2CException("Unsupported number of channels: {}".format(pn_str[1:3]))
-        self._log.info("Device channels: {}".format(self.num_channels))
+                # Special case: customised part. Direction cannot be derived from part number
+                if direction is None:
+                    raise I2CException(
+                        'Device direction cannot be derived automatically for custom parts, please supply a direction')
+                else:
+                    self.direction = direction
 
-        # (WARNING) Check data rate
-        if pn_str[3:5] in ['14','16','25','28']:
-            self.data_rate_Gbps = int(pn_str[3:5])
-            self._log.info("Device data rate: {}Gbps".format(self.data_rate_Gbps))
-        else:
-            self._log.warning("Device data rate: unsupported ({})".format(pn_str[3:5]))
+                # Special case: customised part. Number of channels cannot be derived from part number
+                if num_channels is None:
+                    raise I2CException(
+                        'Device number of channels cannot be derived automatically for custom parts, please supply num_channels'
+                    )
+                else:
+                    self.num_channels = num_channels
 
-        # (CRITICAL) Check static padding fields (wrong implies invalid PN)
-        if pn_str[8] != '0' or pn_str[10] != '1':
-            raise I2CException("Invalid PN static field(s)")
 
-        # (WARNING) Check heat sink type
-        if pn_str[9] not in "12345":
-            self._log.warning("Unknown head sink type ({})".format(pn_str[9]))
+                # Skip the other checks, since they won't pass
+                return
+            else:
+                raise I2CException(
+                        "Data direction {} in part number field not recognised".format(pn_str[0]))
+            self._log.info("Device data direction: {}".format(pn_str[0]))
 
-        # (WARNING) Fiber type
-        if pn_str[11] not in "12456":
-            self._log.warning("Unknown fiber type ({})".format(pn_str[11]))
+            # (CRITICAL) Check number of channels
+            if pn_str[1:3] == '12':
+                self.num_channels = 12
+            elif pn_str[1:3] == '04':
+                self.num_channels = 4
+            else:
+                raise I2CException("Unsupported number of channels: {}".format(pn_str[1:3]))
+            self._log.info("Device channels: {}".format(self.num_channels))
 
+            # (WARNING) Check data rate
+            if pn_str[3:5] in ['14','16','25','28']:
+                self.data_rate_Gbps = int(pn_str[3:5])
+                self._log.info("Device data rate: {}Gbps".format(self.data_rate_Gbps))
+            else:
+                self._log.warning("Device data rate: unsupported ({})".format(pn_str[3:5]))
+
+            # (CRITICAL) Check static padding fields (wrong implies invalid PN)
+            if pn_str[8] != '0' or pn_str[10] != '1':
+                raise I2CException("Invalid PN static field(s)")
+
+            # (WARNING) Check heat sink type
+            if pn_str[9] not in "12345":
+                self._log.warning("Unknown head sink type ({})".format(pn_str[9]))
+
+            # (WARNING) Fiber type
+            if pn_str[11] not in "12456":
+                self._log.warning("Unknown fiber type ({})".format(pn_str[11]))
+        except Exception as e:
+            raise I2CException('Failure while checking FireFly part number ({}) fields: {}'.format(
+                pn_str, e
+            ))
 
     def get_device_info(self):
         """
