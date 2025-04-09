@@ -2,7 +2,11 @@ from odin_devices.i2c_device import I2CDevice
 import logging
 import time
 
-
+#tests
+#masking
+#paging
+#writing everything
+#pre/post write operations carried out correctly
 class SI5338(I2CDevice):
     # A list of the registers that should be read back when exporting the register map
     registers = [
@@ -331,25 +335,33 @@ class SI5338(I2CDevice):
     }
     
     def __init__(self, address, busnum, **kwargs):
+        """Initialise the class - initialise the parent class and get the current page we are on.
+
+        Args:
+            address (int): the i2c address of this device
+            busnum (int): the i2c bus this device is on
+        """
         I2CDevice.__init__(self, address, busnum, **kwargs)
         #get which page we are currently on
         self.currentPage = self.readU8(255)
         
-    
-    def pre_write(self, debug=False):
+    def pre_write(self):
+        """carry out the operations necessary before writing a register map to the device"""
         #Disable all outputs
         self.paged_read_modify_write(230, "00010000", 0b00010000)
         #Pause LOL
         self.paged_read_modify_write(241, "10000000", 0b10000000)
-        if debug:
-            logging.debug("Pre-write complete.")
         
-    def post_write(self, usingDownSpread=False, debug=False):
+    def post_write(self, usingDownSpread=False):
+        """carry out the operations necessary after writing a register map to the device
+
+        Args:
+            usingDownSpread (bool, optional): extra operations have to be run post-register map write if you are using down spread. Defaults to False.
+        """
         #Wait for valid input clock status
         while (self.make8bits(str(bin(self.paged_read8(218))).replace("0b", ""))[5] == "1"):
             time.sleep(0.05)
-            if debug:
-                logging.debug("Checking input clock.")
+            logging.debug("Checking input clock.")
         #Configure PLL for locking
         self.paged_read_modify_write(49, "10000000", 0b00000000)
         #Initiate locking of PLL
@@ -360,8 +372,7 @@ class SI5338(I2CDevice):
         #Wait to confirm PLL lock
         while (self.make8bits(str(bin(self.paged_read8(218))).replace("0b", ""))[3] == "1"):
             time.sleep(0.05)
-            if (debug):
-                logging.debug("Checking PLL lock status.")
+            logging.debug("Checking PLL lock status.")
         #Copy FCAL values to active registers
         self.paged_read_modify_write(47, "00000011",  self.paged_read8(237))
         self.paged_write8(46, self.paged_read8(236))
@@ -376,25 +387,28 @@ class SI5338(I2CDevice):
             self.paged_read_modify_write(226, "00000100", 0b00000000)
         #enable outputs
         self.paged_read_modify_write(230, "00010000", 0b00000000)
-        if debug:
-            logging.debug("Post-write complete.")
         
-    def apply_register_map(self, filepath, usingDownSpread = False, verify=False, debug=False):
+    def apply_register_map(self, filepath, usingDownSpread = False, verify=False):
+        """Apply the necessary pre-register map write operations, write a register map from a given file, then apply the necessary post-register map write operations
+
+        Args:
+            filepath (string): the path to the register map file, including the extension
+            usingDownSpread (bool, optional): extra operations have to be run post-register map write if you are using down spread. Defaults to False.
+            verify (bool, optional): whether all the writes of the register map should be read back to ensure they have all been written correctly. Defaults to False.
+        """
         #Do everything necessary before writing a register map
         self.pre_write()
         #write a register map
-        self.write_register_map(filepath, verify, debug)
+        self._write_register_map(filepath, verify)
         #do everything necessary after writing a register map
         self.post_write(usingDownSpread)
         
-    
-    def write_register_map(self, filepath, verify=False, debug=False):
-        """
-        Write configuration from a register map generated with ClockBuilder Pro.
+    def _write_register_map(self, filepath, verify=False):
+        """load a register map from the provided fire path and write it to the device
 
-        :param file_path: location of register map file to be read
-        :param verify: if true, each register written too by the register map will be read back to check it was written correctly
-        :param debug: passed on to the page_write8 function, this parameter determines whether it will log what it is writing where
+        Args:
+            filepath (string): the path to the register map file, including the extension
+            verify (bool, optional): whether all the writes of the register map should be read back to ensure they have all been written correctly. Defaults to False.
         """
         #open the file at the location provided
         with open(filepath) as file:
@@ -408,6 +422,7 @@ class SI5338(I2CDevice):
                 #if the line starts with a #, it is a comment and should be skipped
                 if line.strip()[0] == "#":
                     continue
+                
                 #if the line does not provide an address and value, skip it
                 if len(line.split(",")) != 2:
                     print("Incorrect line: " + line + ". All lines should be structured *Address*,*Value* or start with a # to indicate they are a comment.")
@@ -420,7 +435,7 @@ class SI5338(I2CDevice):
                     continue
                 #get the value we want to write and convert it from hex to decimal 
                 value = int(line.split(",")[1].replace("h", ""), 16)
-                self.paged_write8(address, value, debug)
+                self.paged_write8(address, value)
             if verify:
                 print("Verifying...")
                 for line in lines:
@@ -447,7 +462,18 @@ class SI5338(I2CDevice):
                         logging.error("Value " + str(result) + " found at address " + str(address) + " does not match expected value " + str(value))
                 print("Verification complete.")
     
-    def paged_write8(self, reg, value, debug=False):
+    def paged_write8(self, reg, value):
+        """Write an 8 bit value to the provided address switching to the appropriate page and accounting for that register's mask. 
+        
+    
+        If the address is greater than 255, automatically write to the paging register to switch to page 1, otherwise switch to page 0.
+        This function also loads the mask for the provided address, and masks off the given values to prevent writes to bits that shouldn't be written too.
+        Write the masked value to the address provided, 
+        
+        Args:
+            reg (int): The address of the register you want to write to, between 0 to 347. 
+            value (int): The value you want written to the register between 0 and 255
+        """
         #if the address is 255 or less, it is on the first page so switch to the first page (0)
         if (reg < 256):
             self.switch_page(0)
@@ -477,18 +503,17 @@ class SI5338(I2CDevice):
             else:
                 #keep this bit the same
                 maskedValue = maskedValue + previousValue[i]
-            
-        if (debug and binValue != maskedValue):
-            print("Some bits edited are readonly so written value " + binValue + " at address " + str(reg) + " was corrected to " + maskedValue + " due to mask " + mask + " to preserve bits from its original value, " + previousValue)
-            logging.debug("Some bits edited are readonly so written value " + binValue + " at address " + str(reg) + " was corrected to " + maskedValue + " due to mask " + mask + " to preserve bits from its original value, " + previousValue)
-        if (debug and maskedValue == previousValue):
-            print("Value at address " + str(reg) + " is being overwritten with the same value - " + str(maskedValue))
-            return
         # carry out modulus division on the address so that it is always less than 256
         self.write8(reg%256, int(maskedValue, 2))
         
-        
-    def paged_read_modify_write(self, reg, provided_mask, value, debug=False):
+    def paged_read_modify_write(self, reg, provided_mask, value):
+        """_summary_
+
+        Args:
+            reg (int): the address of the register we want to read modify then write
+            provided_mask (string): a binary string of zeroes and ones telling us which bits we want to write and which should remain as they were read
+            value (int): the value we want to write to the register
+        """
         #if the address is 255 or less, it is on the first page so switch to the first page (0)
         if (reg < 256):
             self.switch_page(0)
@@ -519,16 +544,18 @@ class SI5338(I2CDevice):
                 #keep this bit the same
                 maskedValue = maskedValue + previousValue[i]
             
-        if (debug and binValue != maskedValue):
-            print("Some bits edited are readonly so written value " + binValue + " at address " + str(reg) + " was corrected to " + maskedValue + " due to mask " + system_mask + " to preserve bits from its original value, " + previousValue)
-            logging.debug("Some bits edited are readonly so written value " + binValue + " at address " + str(reg) + " was corrected to " + maskedValue + " due to mask " + system_mask + " to preserve bits from its original value, " + previousValue)
-        if (debug and maskedValue == previousValue):
-            print("Value at address " + str(reg) + " is being overwritten with the same value - " + str(maskedValue))
-            return
         # carry out modulus division on the address so that it is always less than 256
         self.write8(reg%256, int(maskedValue, 2))
             
-    def paged_read8(self, reg, debug=False):
+    def paged_read8(self, reg):
+        """Read the 8 bit value from a provided address, switching pages automatically for addresses larger than 255.
+
+        Args:
+            reg (int): the address of the register to read
+
+        Returns:
+            int: the value read from the address provided. This will be -1 if the read fails e.g. due to no i2c connection
+        """
         #if the address is 255 or less, it is on the first page so switch to the first page (0)
         if (reg < 256):
             self.switch_page(0)
@@ -537,17 +564,18 @@ class SI5338(I2CDevice):
             self.switch_page(1)
         # carry out modulus division on the address so that it is always less than 256
         value = self.readU8(reg%256)
-        if debug:
-            print("Read value " + str(hex(value)) + " from address " + str(reg%256) + " (" + str(reg) + ") on page " + str(self.currentPage))
-            logging.debug("Read value " + str(value) + " from address " + str(reg%256) + " (" + str(reg) + ") on page " + str(self.currentPage))
         return value
     
-    
     def make8bits(self, value):
-        #make a binary string 8 digits long if it is shorter by appending zeros to the front of it
+        """Make a binary string (e.g. "10010") 8 digits long if it is shorter by appending zeros to the front of it"""
         return "0"*(8-len(value)) + value
     
     def switch_page(self, page):
+        """Write to the page select register to switch whether we are writing to the registers on page 0 or page 1.
+
+        Args:
+            page (int): The page to switch to, should be either 0 or 1.
+        """
         #Check we are not already on the write page
         if (self.currentPage != page):
             # if they want to switch to page 0, set the value of 
@@ -567,6 +595,11 @@ class SI5338(I2CDevice):
     
     
     def export_register_map(self, path_to_export_to):
+        """Read back various registers, generate a string from them and write that string to a file at the given location
+        
+        Args:
+            path_to_export_to (string): the path we want to write the new register map file to - including extension
+        """
         # Add in an appropriate header to the starting text
         text = """# Si5338 Registers Script
 # 
