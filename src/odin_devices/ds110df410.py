@@ -8,6 +8,9 @@ Joseph Nobes, STFC Detector Systems Software Group
 
 from odin_devices.i2c_device import I2CDevice, I2CException
 import logging
+import math
+import time
+import numpy as np
 
 logger = logging.getLogger('odin_devices.ds110df410')
 
@@ -36,105 +39,112 @@ class _Field:
         return (self.startbit - (self.length - 1))
 
 
+_CHANNEL_0 = 0
+_CHANNEL_1      = 1
+_CHANNEL_2      = 2
+_CHANNEL_3      = 3
+_CHANNEL_All    = 4         # Applies to write only
+
+# Encoding for output driver de-emphasis values
+_De_Emphasis_Value_Map = {0.0   :   0b0000,
+                          -0.9  :   0b0011,
+                          -1.5  :   0b0010,
+                          -2.0  :   0b0101,
+                          -2.8  :   0b0100,
+                          -3.3  :   0b0111,
+                          -3.5  :   0b0110,
+                          -3.9  :   0b1001,
+                          -4.5  :   0b1000,
+                          -5.0  :   0b1011,
+                          -6.0  :   0b1101,
+                          -7.5  :   0b1100,
+                          -9.0  :   0b1111,
+                          -12.0 :   0b1110}
+
+# System reset signals
+RST_CORE    = 0b1000
+RST_REGS    = 0b0100
+RST_REFCLK  = 0b0010
+RST_VCO     = 0b0001
+RST_ALL     = 0b1111
+
+# MUX Output selection (production modes only)
+MUX_OUTPUT_default  = 0b111     # Will not take effect unless 0x09[5] set or no lock
+MUX_OUTPUT_raw      = 0b000
+MUX_OUTPUT_retimed  = 0b001     # 'force' output even with no lock
+MUX_OUTPUT_prbs     = 0b100
+
+# Adaptation setting
+ADAPT_Mode0_None                = 0b00
+ADAPT_Mode1_CTLE_Only           = 0b01
+ADAPT_Mode2_Both_CTLE_Optimal   = 0b10
+ADAPT_Mode3_Both_DFE_Emphasis   = 0b11
+
+# PPM Groups, 0 and 1 exist for each channel
+PPM_GROUP_0         = 0
+PPM_GROUP_1         = 1
+PPM_GROUP_Both      = 2     # For code convenience use only
+
+# Standard-based rate settings for auto mode register 0x2F
+CDR_STANDARD_Ethernet           = 0x06
+CDR_STANDARD_Fibre_Channel      = 0x16
+CDR_STANDARD_Infiniband         = 0x26
+CDR_STANDARD_SDH_SONET          = 0x56
+CDR_STANDARD_PROP1a             = 0x76
+CDR_STANDARD_PROP1b             = 0x86
+CDR_STANDARD_Interlaken_2       = 0xC6
+CDR_STANDARD_SFF_8431           = 0xD6
+
+# Subrate (VCO divider) settings for manual mode register 0x2F[7:4]
+SUBRATE_DIV_Grp0_8__Grp1_1              = 0b0000
+SUBRATE_DIV_Grp0_1_2_4__Grp1_1          = 0b0001
+SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4      = 0b0010
+SUBRATE_DIV_Grp0_2_4__Grp1_2_4          = 0b0100
+SUBRATE_DIV_Grp0_1_4__Grp1_1_4          = 0b0101
+SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8  = 0b0110
+SUBRATE_DIV_Grp0_1__Grp1_1              = 0b0111    # Or 0b1000, 0b1100, 0b1101
+SUBRATE_DIV_Grp0_2__Grp1_2              = 0b1010
+_SUBRATE_DIV_STATIC = [SUBRATE_DIV_Grp0_8__Grp1_1, SUBRATE_DIV_Grp0_1__Grp1_1,
+                       SUBRATE_DIV_Grp0_2__Grp1_2]
+_SUBRATE_DIV_VARIABLE = [SUBRATE_DIV_Grp0_1_2_4__Grp1_1, SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4,
+                         SUBRATE_DIV_Grp0_2_4__Grp1_2_4, SUBRATE_DIV_Grp0_1_4__Grp1_1_4,
+                         SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8]
+
+# Reference clock mode (rarely not 0b11)
+REF_CLK_Mode_3                      = 0b11
+REF_CLK_Constr_CAPDAC__RefClk_EN    = 0b10
+REF_CLK_Refless_Constr_CAPDAC       = 0b01
+REF_CLK_Refless_All_CAPDAC          = 0b00
+
+# CAP DAC range settings (override), stop = <setting>
+CAP_DAC_RANGE_Start_Minus_4     = 0b11
+CAP_DAC_RANGE_Start_Minus_3     = 0b10
+CAP_DAC_RANGE_Start_Minus_2     = 0b01
+CAP_DAC_RANGE_Start_Minus_1     = 0b00
+
+# Figure of Merit (FOM) Mode
+FOM_MODE_HEO_Only   = 0x1
+FOM_MODE_VEO_Only   = 0x2
+FOM_MODE_HEO_VEO    = 0x3   # Default
+
+# EOM Voltage Range Selection
+EOM_Voltage_pm_100mV    = 0x0
+EOM_Voltage_pm_200mV    = 0x1
+EOM_Voltage_pm_300mV    = 0x2
+EOM_Voltage_pm_400mV    = 0x3
+
+# Channel/shared register group selection
+_REG_GRP_Shared = 1
+_REG_GRP_Channel = 0
+
 class DS110DF410(I2CDevice):
 
-    # Channel/shared register group selection
-    _REG_GRP_Shared = 1
-    _REG_GRP_Channel = 0
+    _CHANNEL_0      = _CHANNEL_0
+    _CHANNEL_1      = _CHANNEL_1
+    _CHANNEL_2      = _CHANNEL_2
+    _CHANNEL_3      = _CHANNEL_3
+    _CHANNEL_All    = _CHANNEL_All         # Applies to write only
 
-    _CHANNEL_0      = 0
-    _CHANNEL_1      = 1
-    _CHANNEL_2      = 2
-    _CHANNEL_3      = 3
-    _CHANNEL_All    = 4         # Applies to write only
-
-    # Encoding for output driver de-emphasis values
-    _De_Emphasis_Value_Map = {0.0   :   0b0000,
-                              -0.9  :   0b0011,
-                              -1.5  :   0b0010,
-                              -2.0  :   0b0101,
-                              -2.8  :   0b0100,
-                              -3.3  :   0b0111,
-                              -3.5  :   0b0110,
-                              -3.9  :   0b1001,
-                              -4.5  :   0b1000,
-                              -5.0  :   0b1011,
-                              -6.0  :   0b1101,
-                              -7.5  :   0b1100,
-                              -9.0  :   0b1111,
-                              -12.0 :   0b1110}
-
-    # System reset signals
-    RST_CORE    = 0b1000
-    RST_REGS    = 0b0100
-    RST_REFCLK  = 0b0010
-    RST_VCO     = 0b0001
-    RST_ALL     = 0b1111
-
-    # MUX Output selection (production modes only)
-    MUX_OUTPUT_default  = 0b111     # Will not take effect unless 0x09[5] set or no lock
-    MUX_OUTPUT_raw      = 0b000
-    MUX_OUTPUT_retimed  = 0b001     # 'force' output even with no lock
-    MUX_OUTPUT_prbs     = 0b100
-
-    # Adaptation setting
-    ADAPT_Mode0_None                = 0b00
-    ADAPT_Mode1_CTLE_Only           = 0b01
-    ADAPT_Mode2_Both_CTLE_Optimal   = 0b10
-    ADAPT_Mode3_Both_DFE_Emphasis   = 0b11
-
-    # PPM Groups, 0 and 1 exist for each channel
-    PPM_GROUP_0         = 0
-    PPM_GROUP_1         = 1
-    PPM_GROUP_Both      = 2     # For code convenience use only
-
-    # Standard-based rate settings for auto mode register 0x2F
-    CDR_STANDARD_Ethernet           = 0x06
-    CDR_STANDARD_Fibre_Channel      = 0x16
-    CDR_STANDARD_Infiniband         = 0x26
-    CDR_STANDARD_SDH_SONET          = 0x56
-    CDR_STANDARD_PROP1a             = 0x76
-    CDR_STANDARD_PROP1b             = 0x86
-    CDR_STANDARD_Interlaken_2       = 0xC6
-    CDR_STANDARD_SFF_8431           = 0xD6
-
-    # Subrate (VCO divider) settings for manual mode register 0x2F[7:4]
-    SUBRATE_DIV_Grp0_8__Grp1_1              = 0b0000
-    SUBRATE_DIV_Grp0_1_2_4__Grp1_1          = 0b0001
-    SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4      = 0b0010
-    SUBRATE_DIV_Grp0_2_4__Grp1_2_4          = 0b0100
-    SUBRATE_DIV_Grp0_1_4__Grp1_1_4          = 0b0101
-    SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8  = 0b0110
-    SUBRATE_DIV_Grp0_1__Grp1_1              = 0b0111    # Or 0b1000, 0b1100, 0b1101
-    SUBRATE_DIV_Grp0_2__Grp1_2              = 0b1010
-    _SUBRATE_DIV_STATIC = [SUBRATE_DIV_Grp0_8__Grp1_1, SUBRATE_DIV_Grp0_1__Grp1_1,
-                           SUBRATE_DIV_Grp0_2__Grp1_2]
-    _SUBRATE_DIV_VARIABLE = [SUBRATE_DIV_Grp0_1_2_4__Grp1_1, SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4,
-                             SUBRATE_DIV_Grp0_2_4__Grp1_2_4, SUBRATE_DIV_Grp0_1_4__Grp1_1_4,
-                             SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8]
-
-    # Reference clock mode (rarely not 0b11)
-    REF_CLK_Mode_3                      = 0b11
-    REF_CLK_Constr_CAPDAC__RefClk_EN    = 0b10
-    REF_CLK_Refless_Constr_CAPDAC       = 0b01
-    REF_CLK_Refless_All_CAPDAC          = 0b00
-
-    # CAP DAC range settings (override), stop = <setting>
-    CAP_DAC_RANGE_Start_Minus_4     = 0b11
-    CAP_DAC_RANGE_Start_Minus_3     = 0b10
-    CAP_DAC_RANGE_Start_Minus_2     = 0b01
-    CAP_DAC_RANGE_Start_Minus_1     = 0b00
-
-    # Figure of Merit (FOM) Mode
-    FOM_MODE_HEO_Only   = 0x1
-    FOM_MODE_VEO_Only   = 0x2
-    FOM_MODE_HEO_VEO    = 0x3   # Default
-
-    # EOM Voltage Range Selection
-    EOM_Voltage_pm_100mV    = 0x0
-    EOM_Voltage_pm_200mV    = 0x1
-    EOM_Voltage_pm_300mV    = 0x2
-    EOM_Voltage_pm_400mV    = 0x3
 
     # Register Fields (Channel)
     _FIELD_Chn_Reset = _Field(0x00, _REG_GRP_Channel, 3, 4)         # Combined channel reset bits
@@ -152,6 +162,7 @@ class DS110DF410(I2CDevice):
     _FIELD_EOM_LockM_Thr_HEO = _Field(0x6A, _REG_GRP_Channel, 3, 4) # EOM Lock mon HEO Threshold
 
     _FIELD_Chn_CAPDAC_StartVal_EN = _Field(0x09, _REG_GRP_Channel, 7, 1)    # EN CAPDAC startval ovr
+    _FIELD_Chn_Bypass_PFD_0V = _Field(0x09, _REG_GRP_Channel, 5, 1)    # Override retimed and raw loopthru
     _FIELD_Chn_CAPDAC_Setting_0 = _Field(0x08, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group0
     _FIELD_Chn_CAPDAC_Setting_1 = _Field(0x0B, _REG_GRP_Channel, 4, 5)      # CAPDAC startval group1
 
@@ -161,6 +172,9 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_Driver_DEM = _Field(0x15, _REG_GRP_Channel, 2, 3)    # Output De-emphasis
     _FIELD_Chn_Driver_SLOW = _Field(0x18, _REG_GRP_Channel, 2, 1)   # Output Slow Rise/Fall enable
     _FIELD_Chn_Driver_POL = _Field(0x1F, _REG_GRP_Channel, 7, 1)    # Output Polarity Inversion
+
+    _FIELD_Chn_PFD_MUX = _Field(0x1E, _REG_GRP_Channel, 7, 3)       # PFD Output Select MUX
+    _FIELD_Chn_PRBS_EN = _Field(0x1E, _REG_GRP_Channel, 4, 1)       # Enable PRBS Generator
 
     _FIELD_Chn_DFE_Power_Down = _Field(0x1E, _REG_GRP_Channel, 3, 1)    # DFE Power Down
     _FIELD_Chn_DFE_Override_En = _Field(0x23, _REG_GRP_Channel, 6, 1)   # DFE override enable
@@ -179,12 +193,16 @@ class DS110DF410(I2CDevice):
     _FIELD_Chn_FastEye_EN = _Field(0x24, _REG_GRP_Channel, 7, 1)        # EOM Fast Eye enable
     _FIELD_Chn_FastEye_Auto = _Field(0x24, _REG_GRP_Channel, 1, 1)      # EOM Fast Eye auto init
 
+    _FIELD_Chn_HEO_Val = _Field(0x28, _REG_GRP_Channel, 7, 8)           # HEO Value
+    _FIELD_Chn_VEO_Val = _Field(0x29, _REG_GRP_Channel, 7, 8)           # VEO Value
+
     _FIELD_Chn_CDR_Standard_Rate = _Field(0x2F, _REG_GRP_Channel, 7, 8) # CDR Standard-based rates
     _FIELD_Chn_CDR_Subrate_Div = _Field(0x2F, _REG_GRP_Channel, 7, 4)   # CDR Manual Rate Mode
     _FIELD_Chn_Manual_Adapt_Initiate = _Field(0x2F, _REG_GRP_Channel, 0, 1) # Initiate Adaptation
 
     _FIELD_Chn_EOM_VR_Lim_Err = _Field(0x30, _REG_GRP_Channel, 5, 1)
     _FIELD_Chn_HEO_VEO_INT = _Field(0x30, _REG_GRP_Channel, 4, 1)       # Cleared on read
+    _FIELD_Chn_PRBS_EN_DIG_CLK = _Field(0x30, _REG_GRP_Channel, 3, 1)       # Enable clock to PRBS generator, toggle is primary PRBS reset method.
 
     _FIELD_Chn_Adapt_Mode = _Field(0x31, _REG_GRP_Channel, 6, 2)    # Adaptation / Lock mode
     _FIELD_Chn_FOM_Mode = _Field(0x31, _REG_GRP_Channel, 4, 2)      # Figure of Merit mode
@@ -224,16 +242,17 @@ class DS110DF410(I2CDevice):
         logger.info("Created new ds110df410 instance with address 0x{:02X}.".format(address))
 
         # Set up channels
-        self.channel_0 = _Channel(self, self._CHANNEL_0)
-        self.channel_1 = _Channel(self, self._CHANNEL_1)
-        self.channel_2 = _Channel(self, self._CHANNEL_2)
-        self.channel_3 = _Channel(self, self._CHANNEL_3)
-        self.channel_all = _Channel(self, self._CHANNEL_All)
-        self.channel_all.reset(RST_ALL)         # Get all channels in known reset state
+        self.channel_0 = self._Channel(self, DS110DF410._CHANNEL_0)
+        self.channel_1 = self._Channel(self, DS110DF410._CHANNEL_1)
+        self.channel_2 = self._Channel(self, DS110DF410._CHANNEL_2)
+        self.channel_3 = self._Channel(self, DS110DF410._CHANNEL_3)
+        self.channel_all = self._Channel(self, DS110DF410._CHANNEL_All)
 
         # Set up register access current state
-        self._REG_GRP_SELECTED = _REG_GRP_Channel       # By default shared register write is off
+        self._REG_GRP_SELECTED = _REG_GRP_Shared       # By default shared register write is on
         self._REG_CHANNEL_SELECTED = _CHANNEL_0         # By default channel 0 is selected
+
+        self.channel_all.reset([RST_ALL])         # Get all channels in known reset state
 
     """
     Utility Functions:
@@ -251,7 +270,7 @@ class DS110DF410(I2CDevice):
     """
     Register and Field Access Functions:
     """
-    def _reg_ch_sel(register_group, register_channel):
+    def _reg_ch_sel(self, register_group, register_channel):
         """
         Sets the 0xFF channel select register to reflect a single channel if it is being used, as
         well as setting the WRITE_ALL_CH bit if all channels are being written. The EN_CH_SMB bit
@@ -272,7 +291,7 @@ class DS110DF410(I2CDevice):
                 self.write8(0xFF,
                             0b0100 |                # WRITE_ALL_CH = 0, EN_CH_SMB = 1
                             (register_channel))
-            elif register_channel == self._CHANNEL_All:
+            elif register_channel == DS110DF410._CHANNEL_All:
                 self.write8(0xFF,
                             0b1100 |                # WRITE_ALL_CH = 1, EN_CH_SMB = 1
                             (register_channel))
@@ -280,10 +299,10 @@ class DS110DF410(I2CDevice):
                 raise I2CException("Invalid register channel."
                                    " Select self._CHANNEL_0-CHANNEL3 or self._CHANNEL_All.")
         else:
-            raise I2CExcecption("Invalid register group."
+            raise I2CException("Invalid register group."
                                 " Select _REG_GRP_Channel or _REG_GRP_Shared.")
 
-    def _write_register(register_group, register_channel, register, value):
+    def _write_register(self, register_group, register_channel, register, value):
         """
         Wrapper for the I2CDevice write8 function.
         Ensures that the correct register group is specified for writes, and avoids unnecessary
@@ -300,10 +319,10 @@ class DS110DF410(I2CDevice):
         """
         if ((register_group != self._REG_GRP_SELECTED) or
             (register_channel != self._REG_CHANNEL_SELECTED)):
-            _reg_ch_sel(register_group, register_channel)
+            self._reg_ch_sel(register_group, register_channel)
         self.write8(register, value)
 
-    def _read_register(register_group, register):
+    def _read_register(self, register_group, register_channel, register):
         """
         Wrapper for the I2CDevice readU8 function.
         Ensures that the correct register group is specified for reads, and avoids unnecessary
@@ -318,10 +337,14 @@ class DS110DF410(I2CDevice):
         """
         if ((register_group != self._REG_GRP_SELECTED) or
             (register_channel != self._REG_CHANNEL_SELECTED)):
-            _reg_ch_sel(register_group, register_channel)
-        return self.readU8(register)
+            self._reg_ch_sel(register_group, register_channel)
+        value_out = self.readU8(register)
+        if value_out == -1:
+            raise I2CException('Failed to read unsigned value from register {}'.format(register))
+        logging.debug('Read register {} as {}'.format(register, value_out))
+        return value_out
 
-    def _write_field(field, channel, value, verify=False):
+    def _write_field(self, field, channel, value, verify=False):
         """
         Write a field of <=8 bits into an 8-bit register.
         Field bits are masked to preserve other settings held within the same register.
@@ -336,15 +359,19 @@ class DS110DF410(I2CDevice):
         :param verify: Boolean. If true, read values back to verify correct writing.
         """
         logger.debug("Writing value {} to field {}-{} in register {}".format(
-            value,field.startbit,field.get_endbit(),field.register)) #TODO update logging
+            value,
+            field.startbit,
+            field.get_endbit(),
+            field.register)
+        ) #TODO update logging
 
         # warn about channel selection
         if field.register_group == _REG_GRP_Shared:
-            if channel != self._CHANNEL_All:
+            if channel != DS110DF410._CHANNEL_All:
                 logger.warning(
                         "Field is shared, but channel specified. Channel will be ignored.")
         elif field.register_group == _REG_GRP_Channel:
-            if channel == CHANNEL_ALL:
+            if channel == _CHANNEL_All:
                 logger.warning(
                         "Channel set to -or defaulting to- ALL channels.")
 
@@ -375,7 +402,7 @@ class DS110DF410(I2CDevice):
                         "Value {} was not successfully written to Field {}".format(
                             value, field))
 
-    def _read_field(field, channel=self._CHANNEL_All):
+    def _read_field(self, field, channel=_CHANNEL_All):
         """
         Read only the field-specific bits from the relevant register
 
@@ -411,10 +438,10 @@ class DS110DF410(I2CDevice):
     """
     Device Action Functions:
     """
-    def reset(reset_channel_registers=True):
+    def reset(self, reset_channel_registers=True):
         if (reset_channel_registers):
-            self.channel_all.reset(RST_ALL)                 # Full Reset all channels
-        _write_field(DS110DF410._FIELD_Shr_Reset, 0b1)    # Reset shared / control registers
+            self.channel_all.reset([RST_ALL])                 # Full Reset all channels
+        self._write_field(DS110DF410._FIELD_Shr_Reset, 0b1)    # Reset shared / control registers
 
 
     class _Channel:
@@ -425,38 +452,39 @@ class DS110DF410(I2CDevice):
 
         def get_status(self):
             # Taken from Thomas' version and adapted
-            print(' Reset Reg: ' + hex(self._read_field(DS110DF410._FIELD_Chn_Reset, self.CID)))
+            logger.info(' Reset Reg: ' + hex(self._ds110._read_field(DS110DF410._FIELD_Chn_Reset, self.CID)))
 
-            tmp = self.ds110._read_field(DS110DF410._FIELD_Chn_CDR_LL_INT, self.CID)
-            print('CDR LOCK LOSS INT: ' + str(tmp))
-            tmp = self.ds110._read_field(DS110DF410._FIELD_Chn_SIG_DET_LOSS_INT, self.CID)
-            print('CDR LOCK LOSS INT: ' + str(tmp))
+            tmp = self._ds110._read_field(DS110DF410._FIELD_Chn_CDR_LL_INT, self.CID)
+            logger.info('CDR LOCK LOSS INT: ' + str(tmp))
+            tmp = self._ds110._read_field(DS110DF410._FIELD_Chn_SIG_DET_LOSS_INT, self.CID)
+            logger.info('CDR LOCK LOSS INT: ' + str(tmp))
 
-            tmp = self.ds110._read_field(DS110DF410._FIELD_Chn_EOM_VR_Lim_Err, self.CID)
-            print('EOM VRANGE LIMIT ERROR: ' + str(tmp))
-            tmp = self.ds110._read_field(DS110DF410._FIELD_Chn_HEO_VEO_INT, self.CID)
-            print('HEO VEO INT: ' + str(tmp))
+            tmp = self._ds110._read_field(DS110DF410._FIELD_Chn_EOM_VR_Lim_Err, self.CID)
+            logger.info('EOM VRANGE LIMIT ERROR: ' + str(tmp))
+            tmp = self._ds110._read_field(DS110DF410._FIELD_Chn_HEO_VEO_INT, self.CID)
+            logger.info('HEO VEO INT: ' + str(tmp))
 
-            tmp = self.ds110._read_field(DS110DF410._FIELD_Chn_Status, self.CID)
-            print (hex(tmp))
-            if (tmp & 0b10000000): print('Comp LPF Low')
-            if (tmp & 0b01000000): print('Comp LPF High')
-            if (tmp & 0b00100000): print('Single Bit Limit Reached')
-            if (tmp & 0b00010000): print('CDR Lock')
-            if (tmp & 0b00001000): print('LOCK')
-            if (tmp & 0b00000100): print('Fail Lock Check')
-            if (tmp & 0b00000010): print('Auto Adapt Complete')
-            if (tmp & 0b00000011): print('PPM Count Met')
+            tmp = self._ds110._read_field(DS110DF410._FIELD_Chn_Status, self.CID)
+            logger.info(hex(tmp))
+            if (tmp & 0b10000000): logger.info('Comp LPF Low')
+            if (tmp & 0b01000000): logger.info('Comp LPF High')
+            if (tmp & 0b00100000): logger.info('Single Bit Limit Reached')
+            if (tmp & 0b00010000): logger.info('CDR Lock')
+            if (tmp & 0b00001000): logger.info('LOCK')
+            if (tmp & 0b00000100): logger.info('Fail Lock Check')
+            if (tmp & 0b00000010): logger.info('Auto Adapt Complete')
+            if (tmp & 0b00000011): logger.info('PPM Count Met')
 
-            heo = self.ds110._read_field(DS110DF410._FIELD_Chn_HEO_Val, self.CID)
-            veo = self.ds110._read_field(DS110DF410._FIELD_Chn_VEO_Val, seld.CID)
-            print('HEO ' + str(heo))
-            print('VEO ' + str(veo))
+            # Only valid if CDR is locked
+            heo = self._ds110._read_field(DS110DF410._FIELD_Chn_HEO_Val, self.CID)
+            veo = self._ds110._read_field(DS110DF410._FIELD_Chn_VEO_Val, self.CID)
+            logger.info('HEO ' + str(heo))
+            logger.info('VEO ' + str(veo))
 
         """
         CDR (Clock Data Recovery) Settings:
         """
-        def configure_cdr_ppm_tolerance(ppm_tolerance, group_select):
+        def configure_cdr_ppm_tolerance(self, ppm_tolerance, group_select):
             """
             Apply a PPM tolerance for the channel for a given group 0, 1, or both. The field is one
             byte in total, with one nibble for each group.
@@ -474,15 +502,15 @@ class DS110DF410(I2CDevice):
                         "Invalid group selected. Please Choose PPM_GROUP_0/1/Both")
 
             if group_select in [PPM_GROUP_0, PPM_GROUP_Both]:
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Tolerance_G0,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Tolerance_G0,
                                         self.CID, ppm_tolerance)
 
             if group_select in [PPM_GROUP_1, PPM_GROUP_Both]:
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Tolerance_G1,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Tolerance_G1,
                                         self.CID, ppm_tolerance)
 
 # THE LOGIC IN THESE FUNCTIONS SHOULD BE CHECKED!!!!
-        def configure_cdr_standard_rate(cdr_standard):
+        def configure_cdr_standard_rate(self, cdr_standard):
             """
             Use a pre-defined standard for automatically determining channel rates and subrates. If
             a standard rate matches requirements, no further PPM settings will need to be set.
@@ -499,15 +527,15 @@ class DS110DF410(I2CDevice):
             """
 
             # Set value of 0x2f depending on standard selected
-            self.ds110._write_field(DS110DF410._FIELD_Chn_CDR_Standard_Rate,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_CDR_Standard_Rate,
                                     self.CID, cdr_standard)
 
             # NO rates should need to be set here, rates and subrates automatic (see 8.3.5)
 
             # Ensure standard mode is enabled
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_EN,
                                     self.CID, 0b1)                  # Group 0 Disable manual rate
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_EN,
                                     self.CID, 0b1)                  # Group 0 Disable manual rate
 
             # TODO Does Fibre need special consideration? See documentation:
@@ -517,19 +545,19 @@ class DS110DF410(I2CDevice):
             the table. The retimer cannot automatically switch between these two standards.
             """
 
-        def set_cdr_ppm_count(int_Nppm_group0, int_Nppm_group1):
+        def set_cdr_ppm_count(self, int_Nppm_group0, int_Nppm_group1):
             # Write Nppm values for each group, and enable manual rate selection
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_LSB,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_LSB,
                                     self.CID, int_Nppm_group0 & 0xFF)           # Count Group 0 LSB
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_MSB,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_MSB,
                                     self.CID, (int_Nppm_group0 & 0x7F00) << 8)  # Count Group 0 MSB
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_LSB,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_LSB,
                                     self.CID, int_Nppm_group1 & 0xFF)           # Count Group 1 LSB
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_MSB,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_MSB,
                                     self.CID, (int_Nppm_group1 & 0x7F00) << 8)  # Count Group 1 MSB
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G0_EN,
                                     self.CID, 0b1)                      # Group 0 Enable manual rate
-            self.ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_PPM_Count_G1_EN,
                                     self.CID, 0b1)                      # Group 0 Enable manual rate
 
         def _get_dividers_from_fld(dividers_setting):
@@ -556,18 +584,18 @@ class DS110DF410(I2CDevice):
                 divider_group0 = [1,2,4];       divider_group1 = [1]
             elif dividers_setting == SUBRATE_DIV_Grp0_1_2_4__Grp1_1_2_4:
                 divider_group0 = [1,2,4];       divider_group1 = [1,2,4]
-            elif divider_setting == SUBRATE_DIV_Grp0_2_4__Grp1_2_4:
+            elif dividers_setting == SUBRATE_DIV_Grp0_2_4__Grp1_2_4:
                 divider_group0 = [2,4];         divider_group1 = [2,4]
-            elif divider_setting == SUBRATE_DIV_Grp0_1_4__Grp1_1_4:
+            elif dividers_setting == SUBRATE_DIV_Grp0_1_4__Grp1_1_4:
                 divider_group0 = [1,4];         divider_group1 = [1,4]
-            elif divider_setting == SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8:
+            elif dividers_setting == SUBRATE_DIV_Grp0_1_2_4_8__Grp1_1_2_4_8:
                 divider_group0 = [1,2,4,8];     divider_group1 = [1,2,4,8]
             else:
                 raise I2CException("Divider ratio invalid")
 
             return (divider_group0, divider_group1)
 
-        def autoconfigure_cdr_manual_rate(data_rate_group0, data_rate_group1,
+        def autoconfigure_cdr_manual_rate(self, data_rate_group0, data_rate_group1,
                                       divider_ratio=None,
                                       desired_VCO_freq=None):
             """
@@ -619,7 +647,7 @@ class DS110DF410(I2CDevice):
                             "Please use a different divider, or specify desired_VCO_freq.")
 
                 logger.info("Subrate divider selection using static dividers")
-                dividers = get_dividers_from_fld(divider_ratio)
+                dividers = DS110DF410._get_dividers_from_fld(divider_ratio)
                 divider_group0 = dividers[0][0]
                 divider_group1 = dividers[1][0]
 
@@ -645,7 +673,7 @@ class DS110DF410(I2CDevice):
                     logger.info(
                         "Using static divider values, checking against frequency and data rates...")
 
-                    divider_group0, divider_group1 = get_dividers_from_fld(divider_ratio)
+                    divider_group0, divider_group1 = DS110DF410._get_dividers_from_fld(divider_ratio)
                     if (((desired_VCO_freq / float(divider_group0)) != data_rate_group0) or
                         ((desired_VCO_freq / float(divider_group1)) != data_rate_group1)):
                         raise I2CException(
@@ -655,7 +683,7 @@ class DS110DF410(I2CDevice):
 
                 elif divider_ratio in _SUBRATE_DIV_VARIABLE:        # Using a variable divider ratio
                     logger.info("Using variable divider values, checking for valid combination...")
-                    divider_lists = get_dividers_from_fld(divider_ratio)
+                    divider_lists = DS110DF410._get_dividers_from_fld(divider_ratio)
                     groups_found = [False, False]
                     for current_group in [0,1]:
                         for divider_group_tmp in divider_lists[current_group]:
@@ -672,13 +700,13 @@ class DS110DF410(I2CDevice):
                         raise I2CException("Failed to find valid combination for both groups")
                     else:
                         logger.info("Successfully found combination of dividers: "
-                                    "{}, {}".format(divider_group0, dividers_group1))
+                                    "{}, {}".format(divider_group0, divider_group1))
 
                 else:                                               # Unspecified, try all
                     logger.info("Unspecified divider values, trying all combinations...")
                     for current_div in (_SUBRATE_DIV_STATIC, _SUBRATE_DIV_VARIABLE):
 
-                        divider_lists = get_dividers_from_fld(divider_ratio)
+                        divider_lists = DS110DF410._get_dividers_from_fld(divider_ratio)
                         groups_found = [False, False]
                         for current_group in [0,1]:
                             for divider_group_tmp in divider_lists[current_group]:
@@ -701,7 +729,7 @@ class DS110DF410(I2CDevice):
                             break
 
             # Set selected VCO divider setting
-            self.ds110._write_field(DS110DF410._FIELD_Chn_CDR_Subrate_Div,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_CDR_Subrate_Div,
                                     self.CID, divider_ratio)
 
             # Calcualte PPM count settings for given data rate, taking account of the selected divider subrate.
@@ -720,12 +748,12 @@ class DS110DF410(I2CDevice):
                         "{}, {}".format(int_Nppm_group0. int_Nppm_group1))
 
             # Write calculated PPM values to registers
-            set_cdr_ppm_count(int_Nppm_group0, int_Nppm_group1)
+            self.set_cdr_ppm_count(int_Nppm_group0, int_Nppm_group1)
 
             # Set PPM tolerance to 0xFF default (0xF for both channels)
-            configure_cdr_ppm_tolerance(0xF, PPM_GROUP_ALL)
+            self.configure_cdr_ppm_tolerance(0xF, PPM_GROUP_ALL)
 
-        def set_reference_clock_mode(ref_clk_mode):
+        def set_reference_clock_mode(self, ref_clk_mode):
             """
             Set the CAP DAC reference mode. In the default mode (Ref mode 3), VCO divider ratios
             will be tried automatically using ext osc, with no futher CAP DAC settings set.
@@ -742,20 +770,20 @@ class DS110DF410(I2CDevice):
                         "Invalid reference clock mode specified, choose from:"
                         " REF_CLK_[Mode_3, Constr_CAPDAC__RefClk_EN, Refless_Constr_CAPDAC,"
                         " Refless_All_CAPDAC].")
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Ref_Clk_Mode,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Ref_Clk_Mode,
                                     self.CID, REF_CLK_Mode_3)
 
-        def set_cap_dac_start_override_en(enable):
+        def set_cap_dac_start_override_en(self, enable):
             """
             Set to enable CAP DAC start value override values in registers 0x08 and 0x0B, set using
             the set_cap_dac_start_values() function below.
 
             :param enable:  Boolean, True to enable override
             """
-            self.ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_StartVal_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_StartVal_EN,
                                     self.CID, bool(enable))
 
-        def set_cap_dac_start_values(cap_dac_setting_0, cap_dac_setting_1):
+        def set_cap_dac_start_values(self, cap_dac_setting_0, cap_dac_setting_1):
             """
             Set the CAP DAC start value override values in registers 0x08 and 0x0B. Must be enabled
             with above function to take effect.
@@ -765,24 +793,24 @@ class DS110DF410(I2CDevice):
             """
             if ((cap_dac_setting_0 & 0b11111 != cap_dac_setting_0) or
                 (cap_dac_setting_1 & 0b11111 != cap_dac_setting_1)):
-                raise I2CExcaption(
+                raise I2CException(
                         "CAP DAC setting in in correct range, should fit in 5 bit field")
 
-            self.ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_Setting_0,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_Setting_0,
                                     self.CID, cap_dac_setting_0)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_Setting_1,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_CAPDAC_Setting_1,
                                     self.CID, cap_dac_setting_1)
 
-        def cap_dac_range_override_en(enable):
+        def cap_dac_range_override_en(self, enable):
             """
             Set to enable range (stop value) override for CAP DAC in function below.
 
             :param enable:  Boolean, True to enable override
             """
-            self.ds110._write_field(DS110DF410._FIELD_CAPDAC_Range_Ovr_En,
+            self._ds110._write_field(DS110DF410._FIELD_CAPDAC_Range_Ovr_En,
                                     self.CID, bool(enable))
 
-        def cap_dac_range_override(cap_dac_range):
+        def cap_dac_range_override(self, cap_dac_range):
             """
             Override for VCO search range (stop) value. this is specified relative to the start
             value using several pre-defined choices. Must be enabled with above to take effect.
@@ -795,10 +823,10 @@ class DS110DF410(I2CDevice):
                                       CAP_DAC_RANGE_Start_Minus_4]):
                 raise I2CException(
                         "Incorrect CAP DAC Range Specified")
-            self.ds110._write_field(DS110DF410._FIELD_CAPDAC_Range_Override,
+            self._ds110._write_field(DS110DF410._FIELD_CAPDAC_Range_Override,
                                     self.CID, cap_dac_range)
 
-        def override_vco_divider_ratio(manual_divider_ratio):
+        def override_vco_divider_ratio(self, manual_divider_ratio):
             """
             Manually force a certain VCO divider ratio. This should not commonly be used (8.5.11).
 
@@ -807,26 +835,26 @@ class DS110DF410(I2CDevice):
             """
 
             if manual_divider_ratio == 0:   # Disable override
-                self.ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
                                         self.CID, 0b0)
                 return
-            elif not (manual_divider_ration in [1,2,4,8,16]):
+            elif not (manual_divider_ratio in [1,2,4,8,16]):
                 raise I2CException(
                         "Invalid divider ratio supplied, please choose 1, 2, 4, 8, or 16")
 
             # Set override field
-            self.ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override,
                                     self.CID, math.log2(manual_divider_ratio))
 
             # Enable override
-            self.ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
                                     self.CID, 0b1)
 
 # THE LOGIC IN THESE FUNCTIONS SHOULD BE CHECKED!!!!
         """
         Eye Opening Monitor (EOM) Settings:
         """
-        def set_eom_voltage_range(eom_voltage_range):
+        def set_eom_voltage_range(self, eom_voltage_range):
             """
             Override for the voltage range for the eye-opening measurement comparator. This will
             usually be set during the CTLE lock/adaptation process, so should not normally require
@@ -841,18 +869,27 @@ class DS110DF410(I2CDevice):
                                          EOM_Voltage_pm_400mV]:
                 raise I2CException("Invalid EOM Voltage Range selected")
 
-            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_VoltageRange,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_EOM_VoltageRange,
                                     self.CID, eom_voltage_range)
 
-        def eom_lock_monitor_en(enable):
+            logger.debug('Changed EOM Voltage Range to {}'.format(
+                {
+                    EOM_Voltage_pm_100mV: 'PM 100mV',
+                    EOM_Voltage_pm_200mV: 'PM 200mV',
+                    EOM_Voltage_pm_300mV: 'PM 300mV',
+                    EOM_Voltage_pm_400mV: 'PM 400mV',
+                }[eom_voltage_range]
+            ))
+
+        def eom_lock_monitor_en(self, enable):
             """
             Enable lock monitoring using the eye-opening monitor. Set the thresholds using the
             set_eom_lock_monitor() function below.
             """
-            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_EN,
+            self._ds110._write_field(DS110DF410._FIELD_EOM_LockM_EN,
                                     self.CID, bool(enable))
 
-        def set_eom_lock_monitor_thresholds(threshold_veo, threshold_heo):
+        def set_eom_lock_monitor_thresholds(self, threshold_veo, threshold_heo):
             """
             Set the vertical and horisontal thresholds when using the eye-opening monitor in lock
             monitoring mode.
@@ -863,12 +900,12 @@ class DS110DF410(I2CDevice):
             if ((threshold_veo & 0xF) != threshold_veo or
                 (threshold_heo & 0xF) != threshold_heo):
                 raise I2CException("Threshold values must fit in 4-bit field")
-            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_VEO,
+            self._ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_VEO,
                                     self.CID, threshold_veo)
-            self.ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_HEO,
+            self._ds110._write_field(DS110DF410._FIELD_EOM_LockM_Thr_HEO,
                                     self.CID, threshold_heo)
 
-        def fast_eom_readout(eom_voltage_range=None):
+        def fast_eom_readout(self, eom_voltage_range=None):
             """
             Read out Fast Eye Monitor data under external control, into a 64x64 array representing
             the eye monitor output.
@@ -878,7 +915,7 @@ class DS110DF410(I2CDevice):
             :return:                    EOM output as 64x64 array of unsigned 16-bit integers
             """
             # Read current lock monitoring setting, temporarily disable it
-            old_lockmon_setting = self.ds110._read_field(DS110DF410._FIELD_EOM_LockM_EN, self.CID)
+            old_lockmon_setting = self._ds110._read_field(DS110DF410._FIELD_EOM_LockM_EN, self.CID)
             self.eom_lock_monitor_en(False)
 
             # If specified, change the EOM Voltage Range
@@ -886,39 +923,74 @@ class DS110DF410(I2CDevice):
                 self.set_eom_voltage_range(eom_voltage_range)
 
             # Force power to EOM circuitry
-            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
                                     self.CID, 0b0)
 
             # Clear EOM override (may not be enabled)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Override_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_EOM_Override_EN,
                                     self.CID, 0b0)
 
             # Enable Fast Eye Monitor, automatic Fast Eye
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
                                     self.CID, 0b1)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_Auto,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FastEye_Auto,
                                     self.CID, 0b1)
 
             # Read out first 4 bytes, which are discarded
-            self.ds110.readList(0x25, 4)
+            self._ds110.readList(0x25, 4)
 
             # Read out remaining 64x64 array in 64 byte segments
-            fast_eom_output = [[0 for i in range(64)] for j in range(64)]
-            result_dump = self.ds110.readList(0x25, 64*64*2)    # All values are 2 byte MSB, LSB
-            for output_index in range(0,64*64):
-                outputval = result_dump[output_index*2] << 8 + result_dump[output_index*2+1]
-                fast_eom_output[output_index/64][output_index % 64] = outputval
+            fast_eom_output = [[] for j in range(64)]
+            for i in range(64):
+                for j in range(64):
+                    value = self._ds110.readU8(0x25) << 8 | self._ds110.readU8(0x26)
+                    fast_eom_output[i].append(value)
 
             # Restore normal operating settings
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FastEye_EN,
                                     self.CID, 0b0)          # Disable fasteye
-            self.ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_EOM_Power_Down,
                                     self.CID, 0b1)          # Enable auto power down
 
             # Restore original lock monitor setting
             self.eom_lock_monitor_en(old_lockmon_setting)
 
             return fast_eom_output
+
+        def fast_eom_shade_pixels(self, pxdata, thresholds=None):
+            # Auto-determine thresholds if not supplied
+            if thresholds is None:
+                minpx = min(min(pxdata))
+                maxpx = max(max(pxdata))
+
+                # Split into 5 or the top threshold will only be set for one value
+                thresholds = np.linspace(minpx, maxpx, 5)
+
+            threshold_chars = {
+                0: ' ',
+                thresholds[0]: chr(0x2591),
+                thresholds[1]: chr(0x2592),
+                thresholds[2]: chr(0x2593),
+                thresholds[3]: chr(0x2588),
+            }
+
+            logger.debug('EOM Shade Key: {}'.format(['{}-{}'.format(threshold_chars[th], th) for th in threshold_chars.keys()]))
+
+            fullimage = []
+            for row in pxdata:
+                fullstr = ''
+                for px in row:
+                    current_char = threshold_chars[0]
+                    for threshold in threshold_chars.keys():
+                        if threshold < px:
+                            current_char = threshold_chars[threshold]
+                    fullstr += current_char
+
+                fullimage.append(fullstr)
+
+                logger.debug(fullstr)
+
+            return fullimage
 
         """
         Adaptation Settings:
@@ -938,26 +1010,26 @@ class DS110DF410(I2CDevice):
                                    ADAPT_Mode1_CTLE_Only,
                                    ADAPT_Mode2_Both_CTLE_Optimal,
                                    ADAPT_Mode3_Both_DFE_Emphasis]:
-                self.ds110._write_field(DS110DF410._FIELD_Chn_Adapt_Mode,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_Adapt_Mode,
                                         self.CID, adaptation_mode)
             else:
                 raise I2CException(
                         "Incorrect Adaptation Mode specified. "
                         "Use ADAPT_Modex_x.")
 
-        def initiate_adaptation():
+        def initiate_adaptation(self):
             """
             Manually initiate ataptation. Not that setting the adaptation mode is enough to ensure
             that adaptation will be used at the next loss of lock. This function will perform
             adapatation immediately.
             """
-            self.ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
+            self._ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
                                    self.CID, 0b1)
             time.sleep(50)
-            self.ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
+            self._ds110_write_field(DS110DF410._FIELD_Chn_Manual_Adapt_Initiate,
                                    self.CID, 0b0)
 
-        def set_FOM_mode(fom_mode):
+        def set_FOM_mode(self, fom_mode):
             """
             Set the figure of merit mode to use HEO, VEO, or both (the default) when not using the
             configurable mode.
@@ -967,10 +1039,10 @@ class DS110DF410(I2CDevice):
             if fom_mode not in [FOM_MODE_HEO_Only, FOM_MODE_VEO_Only, FOM_MODE_HEO_VEO]:
                 raise I2CException(
                         "Invalid FOM Mode, choose from FOM_MODE_<HEO_Only, VEO_Only, HEO_VEO>")
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Mode,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_Mode,
                                     self.CID, fom_mode)
 
-        def set_FOM_configurable(a, b, c, CTLE_EN, DFE_EN):
+        def set_FOM_configurable(self, a, b, c, CTLE_EN, DFE_EN):
             """
             Set the arguments for the alternative 'configurable' figure of merit calculation:
                 FOM= (HEO– b) x a + (VEO– c) x (1 – a)
@@ -991,22 +1063,22 @@ class DS110DF410(I2CDevice):
                     raise I2CException("Invalid FOM argument for unsigned 8-bit field")
 
             # Set the a, b, c arguments
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_A,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_A,
                                     self.CID, a)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_B,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_B,
                                     self.CID, b)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_C,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_Config_C,
                                     self.CID, c)
 
             # Enable for CTLE and DFE if required
             if CTLE_EN:
-                self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_CTLE_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_CTLE_EN,
                                         self.CID, 0b1)
             if DFE_EN:
-                self.ds110._write_field(DS110DF410._FIELD_Chn_FOM_DFE_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_FOM_DFE_EN,
                                         self.CID, 0b1)
 
-        def override_CTLE_boost_setting(stage0, stage1, stage2, stage3, limit_final_stage = False):
+        def override_CTLE_boost_setting(self, stage0, stage1, stage2, stage3, limit_final_stage = False):
             """
             Override the CTLE setting in 0x03 to a custom set of stages rather than the set created
             by the adaptation system. This will disable adaptation since, the only setting allowing
@@ -1027,14 +1099,14 @@ class DS110DF410(I2CDevice):
             self.set_adaptation_mode(ADAPT_Mode0_None)
 
             # Apply desired setting in low-rate value used in LOL
-            self.ds110._write_field(DS110DF410._FIELD_Chn_LowDataRate_CTLE_Setting, self.CID
+            self._ds110._write_field(DS110DF410._FIELD_Chn_LowDataRate_CTLE_Setting, self.CID
                                     (stage0 << 6 +
                                      stage1 << 4 +
                                      stage2 << 2 +
                                      stage3))
 
             # Apply desired setting in current CTLE setting register
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Current_CTLE_Setting, self.CID
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Current_CTLE_Setting, self.CID
                                     (stage0 << 6 +
                                      stage1 << 4 +
                                      stage2 << 2 +
@@ -1042,7 +1114,7 @@ class DS110DF410(I2CDevice):
 
             # Apply desired setting in initial value for CTLE adaptation sequence
             tempField = _Field(0x40, _REG_GRP_Channel, 7, 8)    # The first of 32 registers
-            self.ds110._write_field(tempField, self.CID
+            self._ds110._write_field(tempField, self.CID
                                     (stage0 << 6 +
                                      stage1 << 4 +
                                      stage2 << 2 +
@@ -1052,7 +1124,7 @@ class DS110DF410(I2CDevice):
             self.ds11._write_field(DS110DF410._FIELD_Chn_CTLE_Stg3_Limiting, self.CID,
                                    bool(limit_final_stage))
 
-        def override_DFE_tap_weights(tap1_weight, tap2_weight, tabl3_weight, tap4_weight,
+        def override_DFE_tap_weights(self, tap1_weight, tap2_weight, tap3_weight, tap4_weight,
                                      tap5_weight,
                                      tap1_pol_positive = False, tap2_pol_positive = False,
                                      tap3_pol_positive = False, tap4_pol_positive = False,
@@ -1076,15 +1148,15 @@ class DS110DF410(I2CDevice):
                             "Tap {} weight must fit in 4 bit field".format(current_weight))
 
             # Enable DFE override
-            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Override_En,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_DFE_Override_En,
                                     self.CID, 0b1)
 
             # Power up DFE
-            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Power_Down,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_DFE_Power_Down,
                                     self.CID, 0b0)
 
             # Enable manual DFE tap settings
-            self.ds110._write_field(DS110DF410._FIELD_Chn_DFE_Force_En,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_DFE_Force_En,
                                     self.CID, 0b1)
 
             # Set tap weights
@@ -1093,7 +1165,7 @@ class DS110DF410(I2CDevice):
                       DS110DF410._FIELD_Chn_DFE_Tap1_Weight, DS110DF410._FIELD_Chn_DFE_Tap1_Weight,
                       DS110DF410._FIELD_Chn_DFE_Tap1_Weight]
             for weightnum in range(1,6):
-                self.ds110._write_field(fields[weightnum], self.CID, weights[weightnum])
+                self._ds110._write_field(fields[weightnum], self.CID, weights[weightnum])
 
             # Set tap polarities
             polarities = [tap1_pol_positive, tap2_pol_positive, tap3_pol_positive,
@@ -1104,7 +1176,7 @@ class DS110DF410(I2CDevice):
                       DS110DF410._FIELD_Chn_DFE_Tap4_Polarity,
                       DS110DF410._FIELD_Chn_DFE_Tap5_Polarity]
             for tapnum in range(1,6):
-                self.ds110._write_field(fields[tapnum], self.CID, polarities[tapnum])
+                self._ds110._write_field(fields[tapnum], self.CID, polarities[tapnum])
 
         """
         Output Driver Settings:
@@ -1116,32 +1188,32 @@ class DS110DF410(I2CDevice):
             :param mux_output:  Output selection, from MUX_OUTPUT_x
             """
             if (mux_output == MUX_OUTPUT_default):
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
                                         self.CID, MUX_OUTPUT_default)       # Set MUX to mute
-                self.ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
                                         self.CID, 0b0)                      # Disable PFD bypass
             elif (mux_output == MUX_OUTPUT_raw):
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
                                         self.CID, MUX_OUTPUT_raw)           # Set MUX to raw
-                self.ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
                                         self.CID, 0b1)                      # Enable PFD bypass
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PRBS_CLK_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PRBS_EN_DIG_CLK,
                                         self.CID, 0b0)                      # Disable PRBS clock
             elif (mux_output == MUX_OUTPUT_retimed):    # 'Forced'
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
                                         self.CID, MUX_OUTPUT_retimed)       # Set MUX to raw
-                self.ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
                                         self.CID, 0b1)                      # Enable PFD bypass
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PRBS_CLK_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PRBS_EN_DIG_CLK,
                                         self.CID, 0b0)                      # Disable PRBS clock
             elif (mux_output == MUX_OUTPUT_prbs):
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PFD_MUX,
                                         self.CID, MUX_OUTPUT_prbs)          # Set MUX to raw
-                self.ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_Bypass_PFD_0V,
                                         self.CID, 0b1)                      # Enable PFD bypass
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PRBS_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PRBS_EN,
                                         self.CID, 0b1)                      # Enable PRBS clock
-                self.ds110._write_field(DS110DF410._FIELD_Chn_PRBS_CLK_EN,
+                self._ds110._write_field(DS110DF410._FIELD_Chn_PRBS_EN_DIG_CLK,
                                         self.CID, 0b1)                      # Enable PRBS
 
         def configure_output_driver(self, diff_voltage=0.6, de_emphasis_db=0.0,
@@ -1171,22 +1243,22 @@ class DS110DF410(I2CDevice):
                         "Differential voltage can only be set in increments of 0.1, "
                         "Rounding to {}".format(diff_voltage))
             field_value = (int) ((diff_voltage - 0.6) * 10)
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Driver_VOD, self.CID, field_value)
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Driver_VOD, self.CID, field_value)
 
             # De-emphasis
             if not (de_emphasis_db in DS110DF410._De_Emphasis_Value_Map.keys()):
                 raise I2CException(
                         "De-emphasis setting must be one of the following values: "
                         "{}".format(list(DS110DF410._De_Emphasis_Value_Map.keys())))
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Driver_DEM, self.CID,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Driver_DEM, self.CID,
                                     DS110DF410._De_Emphasis_Value_Map[de_emphasis_db])
 
             # Slow Rise / Fall Time
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Driver_SLOW, self.CID,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Driver_SLOW, self.CID,
                                     0b1 & slow_rise_fall_time)
 
             # Output Polarity Inversion
-            self.ds110._write_field(DS110DF410._FIELD_Chn_Driver_POL, self.CID,
+            self._ds110._write_field(DS110DF410._FIELD_Chn_Driver_POL, self.CID,
                                     0b1 & invert_output)
 
         """
@@ -1208,17 +1280,17 @@ class DS110DF410(I2CDevice):
                         "Argument supplied was not a list")
             if RST_ALL in selection:
                 # There is no point in checking other values
-                self._ds110._write_field(ds110df410._field_channel_reset, self.cid, rst_all)
+                self._ds110._write_field(self._ds110._FIELD_Chn_Reset, self.CID, RST_ALL)
             else:
                 # or values to combine into single reset write
                 rst_combined = 0
                 for rst_bit in selection:
-                    if rst_bit in [rst_core, rst_regs, rst_refclk, rst_vco]:
+                    if rst_bit in [RST_CORE, RST_REGS, RST_REFCLK, RST_VCO]:
                         rst_combined |= rst_bit
                     else:
-                        raise i2cexception(
+                        raise I2CException(
                                 "incorrect reset sigal supplied. list items may only be:"
                                 " rst_core, rst_regs, rst_refclk, rst_vco")
-                self._ds110._write_field(ds110df410._field_channel_reset, self.cid, rst_combined)
+                self._ds110._write_field(self._ds110._FIELD_Chn_Reset, self.CID, rst_combined)
 
 
