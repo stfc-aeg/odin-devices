@@ -6,7 +6,6 @@ Adam Davis, STFC Application Engineering Group.
 """
 
 from odin_devices.i2c_device import I2CDevice
-import time
 import logging
 import math
 
@@ -71,7 +70,7 @@ class DAC63004(I2CDevice):
         I2CDevice.__init__(self, address, busnum, **kwargs)
 
     def read_all_registers(self):
-        #Iterate over each register in the device_registers dictionary, read them and print the result.
+        """Iterate over each register in the device_registers dictionary, read them and print the result."""
         for i in self.device_registers:
             if (self.device_registers[i]["flipped"]):
                 print("Read register " + i + " as " + str(hex(self.readU16flipped(self.read_register_address(i)))))
@@ -79,7 +78,11 @@ class DAC63004(I2CDevice):
                 print("Read register " + i + " as " + str(hex(self.readU16(self.read_register_address(i)))))
         
     def read_register_address(self, register_name):
-        """Reads the address of the specified register by name."""
+        """Gets the address of the specified register by name, returning none if the name does not match any registers.
+        
+        Args:
+            register_name (string): the name of the register we want to get the address for
+        """
         if register_name in self.device_registers:
             return self.device_registers[register_name]['address']
         else:
@@ -131,7 +134,11 @@ class DAC63004(I2CDevice):
         return result
         
     def write16flipped(self, reg, value):
-        """Write a 16-bit value to the specified register/address pair."""
+        """Write a 16-bit value to the specified register/address pair, replacing the first 8 bits with the last 8 bits and vice versa
+        
+        reg (int): the address of the register to write to
+        value (int): the value to write to the register
+        """
         try:
             #Convert the value to binary
             value = str(bin(value)).replace("0b", "")
@@ -150,7 +157,10 @@ class DAC63004(I2CDevice):
             return -1
         
     def readU16flipped(self, reg):
-        """Read an unsigned 16-bit value from the I2C device."""
+        """Read an unsigned 16-bit value from the I2C device, replacing the first 8 bits with the last 8 bits and vice versa
+        
+        reg (int): the address of the register to read
+        """
         try:
             result = self.bus.read_word_data(self.address, reg)
             #convert the read value to binary
@@ -169,12 +179,13 @@ class DAC63004(I2CDevice):
             logging.error("--------------------------------------------------")
             return -1
 
-    def set_dac_as_current(self, index, voltage="11"):
-        """
-        voltage:
-        01: Power-down VOUT-X with 10 KΩ to AGND
-        10: Power-down VOUT-X with 100 KΩ to AGND
-        11: Power-down VOUT-X with Hi-Z to AGND
+    def set_dac_as_current(self, index, voltagePowerDown="11"):
+        """ Set the dac at the provided index into current output mode, powering down the voltage mode in the method specified
+        
+        voltagePowerDown (string):
+            "01": Power-down VOUT-X with 10 KΩ to AGND
+            "10": Power-down VOUT-X with 100 KΩ to AGND
+            "11": Power-down VOUT-X with Hi-Z to AGND
         """
         #There are only 4 dacs, so check there is a valid index
         if (index >= 0 and index <= 3):
@@ -184,13 +195,18 @@ class DAC63004(I2CDevice):
             # The 0 sets the current output for the dac to powered up mode
             # See page 61 in the data sheet for more info on the COMMON_CONFIG register
             mask = "0000" + ("000" * (3-index)) + "111" + ("000" * index)
-            write = "0000" + ("000" * (3-index)) + voltage + "0" + ("000" * index)
+            write = "0000" + ("000" * (3-index)) + voltagePowerDown + "0" + ("000" * index)
             self.read_modify_write("COMMON_CONFIG", int(mask, 2), int(write, 2))
         else:
             print("Not a valid index.")
             return
         
     def set_dac_as_voltage(self, index):
+        """Set the dac at the provided input to voltage output mode, powering down current mode
+
+        Args:
+            index (int): a number between zero and 3, telling us which dac we want to put into voltage mode
+        """
         #There are only 4 dacs, so check there is a valid index
         if (index >= 0 and index <= 3):
             # Build the mask and value to write based on the index of the dac we want to enable. 
@@ -206,60 +222,70 @@ class DAC63004(I2CDevice):
             return
         
     def set_dac_current_range(self, current_range, index):
-        """ 
-        0000: 0 μA to 25 μA,
-        0001: 0 μA to 50 μA,
-        0010: 0 μA to 125 μA,
-        0011: 0 μA to 250 μA,
-        0100: 0 μA to -24 μA,
-        0101: 0 μA to -48 μA,
-        0110: 0 μA to -120 μA,
-        0111: 0 μA to -240 μA,
-        1000: -25 μA to +25 μA,
-        1001: -50 μA to +50 μA,
-        1010: -125 μA to +125 μA,
-        1011: -250 μA to +250 μA,
+        """specify a current range for the dac at the provided index 
+        
+        current_range (string):
+        "0000": 0 μA to 25 μA,
+        "0001": 0 μA to 50 μA,
+        "0010": 0 μA to 125 μA,
+        "0011": 0 μA to 250 μA,
+        "0100": 0 μA to -24 μA,
+        "0101": 0 μA to -48 μA,
+        "0110": 0 μA to -120 μA,
+        "0111": 0 μA to -240 μA,
+        "1000": -25 μA to +25 μA,
+        "1001": -50 μA to +50 μA,
+        "1010": -125 μA to +125 μA,
+        "1011": -250 μA to +250 μA,
+        index (int): the index of the dac we want to specify the current range for
         """
         #Change the current range for the DAC with the index provided. The value provided should be a binary string, one of those listed above. 
         #See page 58 for more info on the DAC_X_IOUT_MISC_CONFIG register
         self.read_modify_write("DAC_" + str(index) + "_IOUT_MISC_CONFIG", 0b0001111000000000, int(current_range + "000000000", 2))
         
     def set_dac_voltage(self, index, voltage, referenceVoltage):
+        """Set the output for the given index to the given voltage based on the reference voltage
+
+        Args:
+            index (int): the index of the dac we want to specify the voltage for
+            voltage (int): the voltage we want to set the output to
+            referenceVoltage (int): the reference voltage being used by the dac
+        """
         value_to_write = voltage*4096/referenceVoltage 
         self.set_dac_output(str(bin(value_to_write)).replace("0b", ""), index, False)
     
-    def set_dac_current_micro_amps(self, index, current, auto_set_range=True):
+    def set_dac_current_micro_amps(self, index, current):
+        """ Set the current range to an approriate value for the current requested, then calculate the value that needs to be written to get the current we want and write that value.
+
+        Args:
+            index (int): the index of the dac we want to set the current for
+            current (int): the amount of microamps we want to set the current to
+        """
         if (current > 250 or current < -240):
             raise Exception("Invalid current - current must be between -240 and 250.")
         range = "0000"
-        #get the range either based on the current enetered (if auto_set_range is true) or the value currently stored in the register (if auto_set_range is false)
-        if (auto_set_range):
+        #get the range either based on the current entered
+        set_current = "0000"
+        if (current > 125):
+            set_current = "0011"
+        elif (current > 50):
+            set_current = "0010"
+        elif (current > 25):
+            set_current = "0001"
+        elif (current > 0):
             set_current = "0000"
-            if (current > 125):
-                set_current = "0011"
-            elif (current > 50):
-                set_current = "0010"
-            elif (current > 25):
-                set_current = "0001"
-            elif (current > 0):
-                set_current = "0000"
-            elif (current > -24):
-                set_current = "0100"
-            elif (current > -48):
-                set_current = "0101"
-            elif (current > -120):
-                set_current = "0110"
-            elif (current > -240):
-                set_current = "0111"
-            elif (current > -250):
-                set_current = "1011"
-            self.write_register(self.read_register_address("DAC_" + str(index) + "_IOUT_MISC_CONFIG"), int(set_current + "000000000", 2), True)
-            range = set_current
-        else:
-            range = str(bin(self.read_register(self.read_register_address("DAC_" + str(index) + "_IOUT_MISC_CONFIG"), True))).replace("0b", "")
-            while (len(range) < 16):
-                range = "0" + range
-            range = range[3:7]
+        elif (current > -24):
+            set_current = "0100"
+        elif (current > -48):
+            set_current = "0101"
+        elif (current > -120):
+            set_current = "0110"
+        elif (current > -240):
+            set_current = "0111"
+        elif (current > -250):
+            set_current = "1011"
+        self.write_register(self.read_register_address("DAC_" + str(index) + "_IOUT_MISC_CONFIG"), int(set_current + "000000000", 2), True)
+        range = set_current
         #make the current value positive since the range determines whether the output is negative or positive
         current = abs(current)
         value_to_write = "-1"
@@ -295,29 +321,43 @@ class DAC63004(I2CDevice):
             raise Exception("Invalid range provided.")
         
     def set_dac_voltage_gain(self, voltage_gain, index):
-        """ 
-        000: Gain = 1x, external reference on VREF pin,
-        001: Gain = 1x, VDD as reference,
-        010: Gain = 1.5x, internal reference,
-        011: Gain = 2x, internal reference,
-        100: Gain = 3x, internal reference,
-        101: Gain = 4x, internal reference
+        """ set the voltage gain for the dac with the provided index
+        
+        Args: 
+            voltage_gain (string):
+                "000": Gain = 1x, external reference on VREF pin,
+                "001": Gain = 1x, VDD as reference,
+                "010": Gain = 1.5x, internal reference,
+                "011": Gain = 2x, internal reference,
+                "100": Gain = 3x, internal reference,
+                "101": Gain = 4x, internal reference
+            index (int): the index of the dac we want to specify the voltage gain for
         """
         #Change the gain for the DAC with the index provided. Gain should be a binary string, one of those listed above. 
         #See page 57 in the manual for more details on the DAC_X_VOUT_CMP_CONFIG register
         self.read_modify_write("DAC_" + str(index) + "_VOUT_CMP_CONFIG", 0b0001110000000000, int(voltage_gain + "0000000000", 2))
     
     def set_dac_output(self, value, index, current=False):
-        #Set the value in the DAC-X-DATA register (where X is the index) to the value provided. 
-        # value should be an up to 12 bit binary string. 
-        #The last four bits in the DAC-X-DATA registers are unused, which is why the mask ends in 4 zeros, and the value provided has "0000" appended to it
-        #See page 61 in the manual for more info on the DAC_X_DATA register
+        """Set the value in the DAC-X-DATA register (where X is the index) to the value provided, changing the current or voltage output based on the value provided
+        
+        See page 61 in the manual for more info on the DAC_X_DATA register
+
+        Args:
+            value (string): a 12 bit if current, or 8 bit if voltage binary string detailing the value to write to set the dac output
+            index (int): the index of the dac we want to write to
+            current (bool, optional): whether we are writing a current value or a voltage value. Defaults to False.
+        """
         value = value + "0000"
         if (current):
             value = value + "0000"
         self.read_modify_write("DAC_" + str(index) + "_DATA", 0b1111111111110000, int(value, 2))
     
     def set_all_dacs_to_voltage(self, gain="000"):
+        """Switch all dacs into voltage output mode, setting the provided gain for each one
+
+        Args:
+            gain (str, optional): gain to set all the voltage outputs to. Defaults to "000".
+        """
         #set the gain for each dac, default is 000 which equates to 1x external reference on VREF pin
         u34.set_dac_voltage_gain(gain, 0)
         u34.set_dac_voltage_gain(gain, 1)
@@ -330,6 +370,11 @@ class DAC63004(I2CDevice):
         u34.set_dac_as_voltage(3)
         
     def set_all_dacs_to_current(self, current_range="0011"):
+        """switch all dacs into current output mode and set all their ranges to the provided range
+
+        Args:
+            current_range (str, optional): The range all the dacs should use for their current. Defaults to "0011" (0-250 microamps)
+        """
         #Set the current range for each dac, defaulting to 0010 which equates to 0-250 μA
         u34.set_dac_current_range(current_range, 0)
         u34.set_dac_current_range(current_range, 1)
@@ -340,42 +385,6 @@ class DAC63004(I2CDevice):
         u34.set_dac_as_current(1)
         u34.set_dac_as_current(2)
         u34.set_dac_as_current(3)
-
-    def dac_voltage_test(self, duration = -1, interval=0.5, voltage="11111111"):
-        #Set all the dacs into voltage output mode, and set the gain on each of them to 1x external reference on VREF pin
-        u34.set_all_dacs_to_voltage("001")
-        startTime = time.time()
-        while (duration == -1 or time.time() - startTime < duration):
-            #Set each of the dac ouputs to 255, which should result in a voltage of roughly 0.062V and wait half a second
-            u34.set_dac_output(voltage, 0)
-            u34.set_dac_output(voltage, 1)
-            u34.set_dac_output(voltage, 2)
-            u34.set_dac_output(voltage, 3)
-            time.sleep(interval)
-            #Set each of the dac ouputs to 0, which should result in a voltage of 0V and wait half a second
-            u34.set_dac_output("0", 0)
-            u34.set_dac_output("0", 1)
-            u34.set_dac_output("0", 2)
-            u34.set_dac_output("0", 3)
-            time.sleep(interval)
-            
-    def dac_current_test(self, duration = -1, interval=0.5, current="10100", current_range="0011"):
-        #Set all the dacs into current output mode, and set the current range to 0-125 μA
-        u34.set_all_dacs_to_current(current_range)
-        startTime = time.time()
-        while (duration == -1 or time.time() - startTime < duration):
-            #Set each of the dac outputs to 100, which should result in a current of 49 
-            u34.set_dac_output(current, 0, True)
-            u34.set_dac_output(current, 1, True)
-            u34.set_dac_output(current, 2, True)
-            u34.set_dac_output(current, 3, True)
-            time.sleep(interval)
-            #Set each of the dac outputs to 0, which should result in a current of 0
-            u34.set_dac_output("0", 0, True)
-            u34.set_dac_output("0", 1, True)
-            u34.set_dac_output("0", 2, True)
-            u34.set_dac_output("0", 3, True)
-            time.sleep(interval)
         
 if __name__ == "__main__":
     u34 = DAC63004(0x47, 3)
