@@ -348,9 +348,9 @@ class SI5338(I2CDevice):
     def pre_write(self):
         """carry out the operations necessary before writing a register map to the device"""
         #Disable all outputs
-        self.paged_read_modify_write(230, "00010000", 0b00010000)
+        self.paged_read_modify_write(230, 0b00010000, 0b00010000)
         #Pause LOL
-        self.paged_read_modify_write(241, "10000000", 0b10000000)
+        self.paged_read_modify_write(241, 0b10000000, 0b10000000)
         
     def post_write(self, usingDownSpread=False):
         """carry out the operations necessary after writing a register map to the device
@@ -359,34 +359,34 @@ class SI5338(I2CDevice):
             usingDownSpread (bool, optional): extra operations have to be run post-register map write if you are using down spread. Defaults to False.
         """
         #Wait for valid input clock status
-        while (self.make8bits(str(bin(self.paged_read8(218))).replace("0b", ""))[5] == "1"):
+        while (self.paged_read8(218) & 100 == 0b100):
             time.sleep(0.05)
             logging.debug("Checking input clock.")
         #Configure PLL for locking
-        self.paged_read_modify_write(49, "10000000", 0b00000000)
+        self.paged_read_modify_write(49, 0b10000000, 0b00000000)
         #Initiate locking of PLL
-        self.paged_read_modify_write(246, "00000010", 0b00000010)
+        self.paged_read_modify_write(246, 0b00000010, 0b00000010)
         time.sleep(0.05)
         #Restart LOL
-        self.paged_read_modify_write(241, "11111111", 0x65)
+        self.paged_read_modify_write(241, 0b11111111, 0x65)
         #Wait to confirm PLL lock
-        while (self.make8bits(str(bin(self.paged_read8(218))).replace("0b", ""))[3] == "1"):
+        while (self.paged_read8(218) & 10000 == 0b10000):
             time.sleep(0.05)
             logging.debug("Checking PLL lock status.")
         #Copy FCAL values to active registers
-        self.paged_read_modify_write(47, "00000011",  self.paged_read8(237))
+        self.paged_read_modify_write(47, 0b00000011,  self.paged_read8(237))
         self.paged_write8(46, self.paged_read8(236))
         self.paged_write8(45, self.paged_read8(235))
-        self.paged_read_modify_write(47, "11111100",  0b00010100) 
+        self.paged_read_modify_write(47, 0b11111100,  0b00010100) 
         #Set PLL to use FCAL values
-        self.paged_read_modify_write(49, "10000000", 0b10000000)
+        self.paged_read_modify_write(49, 0b10000000, 0b10000000)
         #if we are using down spread write the necessary registers
         if usingDownSpread:
-            self.paged_read_modify_write(226, "00000100", 0b00000100)
+            self.paged_read_modify_write(226, 0b00000100, 0b00000100)
             time.sleep(0.02)
-            self.paged_read_modify_write(226, "00000100", 0b00000000)
+            self.paged_read_modify_write(226, 0b00000100, 0b00000000)
         #enable outputs
-        self.paged_read_modify_write(230, "00010000", 0b00000000)
+        self.paged_read_modify_write(230, 0b00010000, 0b00000000)
         
     def apply_register_map(self, filepath, usingDownSpread = False, verify=False):
         """Apply the necessary pre-register map write operations, write a register map from a given file, then apply the necessary post-register map write operations
@@ -487,24 +487,11 @@ class SI5338(I2CDevice):
         if (reg in self.masks.keys()):
             mask = self.masks[reg]
             
-        #convert the mask from a number to a binary string
-        mask = self.make8bits(str(bin(mask)).replace("0b", ""))
-        #convert the value to write from a number to a binary string
-        binValue = self.make8bits(str(bin(value)).replace("0b", ""))
-        #convert the previous value from a number to a binary string
-        previousValue = self.make8bits(str(bin(self.paged_read8(reg))).replace("0b", ""))
-        maskedValue=""
-        #iterate through each digit of an 8 bit register 
-        for i in range(8):
-            #check if the mask allows this bit to be written to
-            if (mask[i] == "1"):
-                #assign the write value to this bit
-                maskedValue = maskedValue + binValue[i]
-            else:
-                #keep this bit the same
-                maskedValue = maskedValue + previousValue[i]
+        previousValue = self.paged_read8(reg)
+        maskedValue = (value & mask) | (previousValue & ~mask)
+        
         # carry out modulus division on the address so that it is always less than 256
-        self.write8(reg%256, int(maskedValue, 2))
+        self.write8(reg%256, maskedValue)
         
     def paged_read_modify_write(self, reg, provided_mask, value):
         """_summary_
@@ -527,25 +514,11 @@ class SI5338(I2CDevice):
         if (reg in self.masks.keys()):
             system_mask = self.masks[reg]
         
-        #convert the system mask from a number to a binary string
-        system_mask = self.make8bits(str(bin(system_mask)).replace("0b", ""))
-        #convert the value to write from a number to a binary string
-        binValue = self.make8bits(str(bin(value)).replace("0b", ""))
-        #convert the previous value from a number to a binary string
-        previousValue = self.make8bits(str(bin(self.paged_read8(reg))).replace("0b", ""))
-        maskedValue=""
-        #iterate through each digit of an 8 bit register 
-        for i in range(8):
-            #check if the masks allow this bit to be written to
-            if (provided_mask[i] == "1" and system_mask[i] == "1"):
-                #assign the write value to this bit
-                maskedValue = maskedValue + binValue[i]
-            else:
-                #keep this bit the same
-                maskedValue = maskedValue + previousValue[i]
+        previousValue = self.paged_read8(reg)
+        maskedValue = (value & system_mask & provided_mask) | (previousValue & ~(system_mask & provided_mask))
             
         # carry out modulus division on the address so that it is always less than 256
-        self.write8(reg%256, int(maskedValue, 2))
+        self.write8(reg%256, maskedValue)
             
     def paged_read8(self, reg):
         """Read the 8 bit value from a provided address, switching pages automatically for addresses larger than 255.
@@ -565,10 +538,6 @@ class SI5338(I2CDevice):
         # carry out modulus division on the address so that it is always less than 256
         value = self.readU8(reg%256)
         return value
-    
-    def make8bits(self, value):
-        """Make a binary string (e.g. "10010") 8 digits long if it is shorter by appending zeros to the front of it"""
-        return "0"*(8-len(value)) + value
     
     def switch_page(self, page):
         """Write to the page select register to switch whether we are writing to the registers on page 0 or page 1.
@@ -593,7 +562,6 @@ class SI5338(I2CDevice):
                 print("Invalid page provided: " + str(page))
                 logging.error("Invalid page provided: " + str(page))
     
-    
     def export_register_map(self, path_to_export_to):
         """Read back various registers, generate a string from them and write that string to a file at the given location
         
@@ -617,5 +585,5 @@ class SI5338(I2CDevice):
 if __name__ == "__main__":
     clockGen = SI5338(0x70, 3)
     path = input("Enter path: ")
-    clockGen.apply_register_map(path, False, True, False)
+    clockGen.apply_register_map(path, False, True)
     
