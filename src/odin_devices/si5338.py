@@ -2,56 +2,253 @@ from odin_devices.i2c_device import I2CDevice
 import logging
 import time
 
-#tests
-#masking
-#paging
-#writing everything
-#pre/post write operations carried out correctly
+
+# tests
+# masking
+# paging
+# writing everything
+# pre/post write operations carried out correctly
+
 class SI5338(I2CDevice):
     # A list of the registers that should be read back when exporting the register map
     registers = [
-        6, 27,28,29,30,31,
-        32,33,34,35,36,37,
-        38,39,40,41,42,45,
-        46,47,48,49,50,51,
-        52,53,54,55,56,57,
-        58,59,60,61,62,63,
-        64,65,66,67,68,69,
-        70,71,72,73,74,75,
-        76,77,78,79,80,81,
-        82,83,84,85,86,87,
-        88,89,90,91,92,93,
-        94,95,97,98,99,100,
-        101,102,103,104,105,106,
-        107,108,109,110,111,112,
-        113,114,115,116,117,118,
-        119,120,121,122,123,124,
-        125,126,127,128,129,130,
-        131,132,133,134,135,136,
-        137,138,139,140,141,142,
-        143,144,152,153,154,155,
-        156,157,158,159,160,161,
-        162,163,164,165,166,167,
-        168,169,170,171,172,173,
-        174,175,176,177,178,179,
-        180,181,182,183,184,185,
-        186,187,188,189,190,191,
-        192,193,194,195,196,197,
-        198,199,200,201,202,203,
-        204,205,206,207,208,209,
-        210,211,212,213,214,215,
-        216,217,230,287,288,289,
-        290,291,292,293,294,295,
-        296,297,298,299,303,304,
-        305,306,307,308,309,310,
-        311,312,313,314,315,319,
-        320,321,322,323,324,325,
-        326,327,328,329,330,331,
-        335,336,337,338,339,340,
-        341,342,343,344,345,346,
+        6,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217,
+        230,
+        287,
+        288,
+        289,
+        290,
+        291,
+        292,
+        293,
+        294,
+        295,
+        296,
+        297,
+        298,
+        299,
+        303,
+        304,
+        305,
+        306,
+        307,
+        308,
+        309,
+        310,
+        311,
+        312,
+        313,
+        314,
+        315,
+        319,
+        320,
+        321,
+        322,
+        323,
+        324,
+        325,
+        326,
+        327,
+        328,
+        329,
+        330,
+        331,
+        335,
+        336,
+        337,
+        338,
+        339,
+        340,
+        341,
+        342,
+        343,
+        344,
+        345,
+        346,
         347,
     ]
-    
+
     masks = {
         0: 0x00,
         1: 0x00,
@@ -333,7 +530,7 @@ class SI5338(I2CDevice):
         277: 0x00,
         278: 0x00,
     }
-    
+
     def __init__(self, address, busnum, **kwargs):
         """Initialise the class - initialise the parent class and get the current page we are on.
 
@@ -342,248 +539,287 @@ class SI5338(I2CDevice):
             busnum (int): the i2c bus this device is on
         """
         I2CDevice.__init__(self, address, busnum, **kwargs)
-        #get which page we are currently on
+        # get which page we are currently on
         self.currentPage = self.readU8(255)
-        
+
     def pre_write(self):
         """carry out the operations necessary before writing a register map to the device"""
-        #Disable all outputs
+        # Disable all outputs
         self.paged_read_modify_write(230, 0b00010000, 0b00010000)
-        #Pause LOL
+        # Pause LOL
         self.paged_read_modify_write(241, 0b10000000, 0b10000000)
-        
+
     def post_write(self, usingDownSpread=False):
-        """carry out the operations necessary after writing a register map to the device
+        """carry out the operations necessary after writing a register map to the device to load
+        the register map
 
         Args:
-            usingDownSpread (bool, optional): extra operations have to be run post-register map write if you are using down spread. Defaults to False.
+            usingDownSpread (bool, optional): extra operations have to be run post-register map
+            write if you are using down spread. Defaults to False.
         """
-        #Wait for valid input clock status
-        while (self.paged_read8(218) & 100 == 0b100):
+        # Wait for valid input clock status
+        while self.paged_read8(218) & 100 == 0b100:
             time.sleep(0.05)
             logging.debug("Checking input clock.")
-        #Configure PLL for locking
+        # Configure PLL for locking
         self.paged_read_modify_write(49, 0b10000000, 0b00000000)
-        #Initiate locking of PLL
+        # Initiate locking of PLL
         self.paged_read_modify_write(246, 0b00000010, 0b00000010)
         time.sleep(0.05)
-        #Restart LOL
+        # Restart LOL
         self.paged_read_modify_write(241, 0b11111111, 0x65)
-        #Wait to confirm PLL lock
-        while (self.paged_read8(218) & 10000 == 0b10000):
+        # Wait to confirm PLL lock
+        while self.paged_read8(218) & 10000 == 0b10000:
             time.sleep(0.05)
             logging.debug("Checking PLL lock status.")
-        #Copy FCAL values to active registers
-        self.paged_read_modify_write(47, 0b00000011,  self.paged_read8(237))
+        # Copy FCAL values to active registers
+        self.paged_read_modify_write(47, 0b00000011, self.paged_read8(237))
         self.paged_write8(46, self.paged_read8(236))
         self.paged_write8(45, self.paged_read8(235))
-        self.paged_read_modify_write(47, 0b11111100,  0b00010100) 
-        #Set PLL to use FCAL values
+        self.paged_read_modify_write(47, 0b11111100, 0b00010100)
+        # Set PLL to use FCAL values
         self.paged_read_modify_write(49, 0b10000000, 0b10000000)
-        #if we are using down spread write the necessary registers
+        # if we are using down spread write the necessary registers
         if usingDownSpread:
             self.paged_read_modify_write(226, 0b00000100, 0b00000100)
             time.sleep(0.02)
             self.paged_read_modify_write(226, 0b00000100, 0b00000000)
-        #enable outputs
+        # enable outputs
         self.paged_read_modify_write(230, 0b00010000, 0b00000000)
-        
-    def apply_register_map(self, filepath, usingDownSpread = False, verify=False):
-        """Apply the necessary pre-register map write operations, write a register map from a given file, then apply the necessary post-register map write operations
+
+    def apply_register_map(self, filepath, usingDownSpread=False, verify=False):
+        """Apply the necessary pre-register map write operations, write a register map from a given
+        file, then apply the necessary post-register map write operations
 
         Args:
             filepath (string): the path to the register map file, including the extension
-            usingDownSpread (bool, optional): extra operations have to be run post-register map write if you are using down spread. Defaults to False.
-            verify (bool, optional): whether all the writes of the register map should be read back to ensure they have all been written correctly. Defaults to False.
+            usingDownSpread (bool, optional): extra operations have to be run post-register map
+            write if you are using down spread. Defaults to False.
+            verify (bool, optional): whether all the writes of the register map should be read back
+            to ensure they have all been written correctly. Defaults to False.
         """
-        #Do everything necessary before writing a register map
+        # Do everything necessary before writing a register map
         self.pre_write()
-        #write a register map
+        # write a register map
         self._write_register_map(filepath, verify)
-        #do everything necessary after writing a register map
+        # do everything necessary after writing a register map
         self.post_write(usingDownSpread)
-        
+
     def _write_register_map(self, filepath, verify=False):
         """load a register map from the provided fire path and write it to the device
 
         Args:
             filepath (string): the path to the register map file, including the extension
-            verify (bool, optional): whether all the writes of the register map should be read back to ensure they have all been written correctly. Defaults to False.
+            verify (bool, optional): whether all the writes of the register map should be read back
+            to ensure they have all been written correctly. Defaults to False.
         """
-        #open the file at the location provided
+        # open the file at the location provided
         with open(filepath) as file:
             text = file.read()
-            #split the file into a list of its lines
+            # split the file into a list of its lines
             lines = text.split("\n")
             for line in lines:
-                #if the line is empty, skip it
+                # if the line is empty, skip it
                 if line == "":
                     continue
-                #if the line starts with a #, it is a comment and should be skipped
+                # if the line starts with a #, it is a comment and should be skipped
                 if line.strip()[0] == "#":
                     continue
-                
-                #if the line does not provide an address and value, skip it
+
+                # if the line does not provide an address and value, skip it
                 if len(line.split(",")) != 2:
-                    print("Incorrect line: " + line + ". All lines should be structured *Address*,*Value* or start with a # to indicate they are a comment.")
-                    logging.error("Incorrect line: " + line + ". All lines should be structured *Address*,*Value* or start with a # to indicate they are a comment.")
+                    logging.error(
+                        "Incorrect line: \n"
+                        + line
+                        + "\n All lines should be structured *Address*,*Value* or start with a # "
+                        + "to indicate they are a comment."
+                    )
                     continue
                 address = int(line.split(",")[0])
-                #Skip address 27, because register 27 controls the I2C configuration and writing too it can cause issues like 
-                #losing I2C control of this device
-                if (address == 27):
+                # Skip address 27, because register 27 controls the I2C configuration and writing
+                # to it can cause issues like losing I2C control of this device
+                if address == 27:
                     continue
-                #get the value we want to write and convert it from hex to decimal 
+                # get the value we want to write and convert it from hex to decimal
                 value = int(line.split(",")[1].replace("h", ""), 16)
                 self.paged_write8(address, value)
             if verify:
-                print("Verifying...")
                 for line in lines:
-                    #if the line is empty, skip it
+                    # if the line is empty, skip it
                     if line == "":
                         continue
-                    #if the line starts with a #, it is a comment and should be skipped
+                    # if the line starts with a #, it is a comment and should be skipped
                     if line.strip()[0] == "#":
                         continue
-                    #if the line does not provide an address and value, skip it
+                    # if the line does not provide an address and value, skip it
                     if len(line.split(",")) != 2:
                         continue
                     address = int(line.split(",")[0])
-                    #Skip address 27 again because it is skipped in the writing stage
-                    if (address == 27):
+                    # Skip address 27 again because it is skipped in the writing stage
+                    if address == 27:
                         continue
-                    #get the value and convert it from hex to decimal
+                    # get the value and convert it from hex to decimal
                     value = int(line.split(",")[1].replace("h", ""), 16)
                     # read the value from the location
                     result = self.paged_read8(address)
-                    #check if the expected value an actual value match
-                    if (result != value):
-                        print("Value " + str(result) + " found at address " + str(address) + " does not match expected value " + str(value))
-                        logging.error("Value " + str(result) + " found at address " + str(address) + " does not match expected value " + str(value))
-                print("Verification complete.")
-    
+                    mask = 0xFF
+                    if address in self.masks.keys():
+                        mask = self.masks[address]
+                    # check if the expected value an actual value match
+                    if result & mask != value & mask:
+                        logging.error(
+                            "Value "
+                            + str(result)
+                            + " found at address "
+                            + str(address)
+                            + " does not match expected value "
+                            + str(value)
+                        )
+                logging.debug("Verification complete.")
+
     def paged_write8(self, reg, value):
-        """Write an 8 bit value to the provided address switching to the appropriate page and accounting for that register's mask. 
-        
-    
-        If the address is greater than 255, automatically write to the paging register to switch to page 1, otherwise switch to page 0.
-        This function also loads the mask for the provided address, and masks off the given values to prevent writes to bits that shouldn't be written too.
-        Write the masked value to the address provided, 
-        
+        """Write an 8 bit value to the provided address switching to the appropriate page and
+        accounting for that register's mask.
+
+        If the address is greater than 255, automatically write to the paging register to switch to
+        page 1, otherwise switch to page 0.
+        This function also loads the mask for the provided address, and masks off the given values
+        to prevent writes to bits that shouldn't be written too.
+        Write the masked value to the address provided,
+
         Args:
-            reg (int): The address of the register you want to write to, between 0 to 347. 
+            reg (int): The address of the register you want to write to, between 0 to 347.
             value (int): The value you want written to the register between 0 and 255
         """
-        #if the address is 255 or less, it is on the first page so switch to the first page (0)
-        if (reg < 256):
+        # if the address is 255 or less, it is on the first page so switch to the first page (0)
+        if reg < 256:
             self.switch_page(0)
-        #if the address is greater than 255 it is on the second page so switch to the second page (1)
+        # if the address is greater than 255 it is on the second page so switch to the second
+        # page (1)
         else:
             self.switch_page(1)
-            
-        #Each register has a mask provided by the data sheet tot tell you which bits you are allowed to write to. Set this as default to FF (all bits can be written to)
-        #and then try to retrieve a mask for the current register from the dictionary of addresses to masks.
+
+        # Each register has a mask provided by the data sheet tot tell you which bits you are
+        # allowed to write to. Set this as default to FF (all bits can be written to) and then try
+        # to retrieve a mask for the current register from the dictionary of addresses to masks.
         mask = 0xFF
-        if (reg in self.masks.keys()):
+        if reg in self.masks.keys():
             mask = self.masks[reg]
-            
+
         previousValue = self.paged_read8(reg)
         maskedValue = (value & mask) | (previousValue & ~mask)
-        
+
         # carry out modulus division on the address so that it is always less than 256
-        self.write8(reg%256, maskedValue)
-        
+        self.write8(reg % 256, maskedValue)
+
     def paged_read_modify_write(self, reg, provided_mask, value):
-        """_summary_
+        """read a register, modify it with the provided value leaving the masked bits the same as
+        they were before and then write the new value back to the register
 
         Args:
             reg (int): the address of the register we want to read modify then write
-            provided_mask (string): a binary string of zeroes and ones telling us which bits we want to write and which should remain as they were read
+            provided_mask (string): a binary string of zeroes and ones telling us which bits we
+            want to write and which should remain as they were read
             value (int): the value we want to write to the register
         """
-        #if the address is 255 or less, it is on the first page so switch to the first page (0)
-        if (reg < 256):
+        # if the address is 255 or less, it is on the first page so switch to the first page (0)
+        if reg < 256:
             self.switch_page(0)
-        #if the address is greater than 255 it is on the second page so switch to the second page (1)
+        # if the address is greater than 255 it is on the second page so switch to the second
+        # page (1)
         else:
             self.switch_page(1)
-            
-        #Each register has a mask provided by the data sheet tot tell you which bits you are allowed to write to. Set this as default to FF (all bits can be written to)
-        #and then try to retrieve a mask for the current register from the dictionary of addresses to masks.
+
+        # Each register has a mask provided by the data sheet tot tell you which bits you are
+        # allowed to write to. Set this as default to FF (all bits can be written to) and then try
+        # to retrieve a mask for the current register from the dictionary of addresses to masks.
         system_mask = 0xFF
-        if (reg in self.masks.keys()):
+        if reg in self.masks.keys():
             system_mask = self.masks[reg]
-        
+
         previousValue = self.paged_read8(reg)
-        maskedValue = (value & system_mask & provided_mask) | (previousValue & ~(system_mask & provided_mask))
-            
+        maskedValue = (value & system_mask & provided_mask) | (
+            previousValue & ~(system_mask & provided_mask)
+        )
+
         # carry out modulus division on the address so that it is always less than 256
-        self.write8(reg%256, maskedValue)
-            
+        self.write8(reg % 256, maskedValue)
+
     def paged_read8(self, reg):
-        """Read the 8 bit value from a provided address, switching pages automatically for addresses larger than 255.
+        """Read the 8 bit value from a provided address, switching pages automatically for
+        addresses larger than 255.
 
         Args:
             reg (int): the address of the register to read
 
         Returns:
-            int: the value read from the address provided. This will be -1 if the read fails e.g. due to no i2c connection
+            int: the value read from the address provided. This will be -1 if the read fails
+            e.g. due to no i2c connection
         """
-        #if the address is 255 or less, it is on the first page so switch to the first page (0)
-        if (reg < 256):
+        # if the address is 255 or less, it is on the first page so switch to the first page (0)
+        if reg < 256:
             self.switch_page(0)
-        #if the address is greater than 255 it is on the second page so switch to the second page (1)
+        # if the address is greater than 255 it is on the second page so switch to the second
+        # page (1)
         else:
             self.switch_page(1)
         # carry out modulus division on the address so that it is always less than 256
-        value = self.readU8(reg%256)
+        value = self.readU8(reg % 256)
         return value
-    
+
     def switch_page(self, page):
-        """Write to the page select register to switch whether we are writing to the registers on page 0 or page 1.
+        """Write to the page select register to switch whether we are writing to the registers on
+        page 0 or page 1.
 
         Args:
             page (int): The page to switch to, should be either 0 or 1.
         """
-        #Check we are not already on the write page
-        if (self.currentPage != page):
-            # if they want to switch to page 0, set the value of 
+        # Check we are not already on the write page
+        if self.currentPage != page:
+            # if they want to switch to page 0, set the value of
             # the PAGE_SEL register, address 255 to 0 and set currentPage to 0
             if page == 0:
                 self.write8(255, 0)
                 self.currentPage = 0
-            # if they want to switch to page 1, set the value of 
+            # if they want to switch to page 1, set the value of
             # the PAGE_SEL register, address 255 to 1 and set currentPage to 1
             elif page == 1:
                 self.write8(255, 1)
                 self.currentPage = 1
-            #If they haven't entered 0 or 1, it is not a valid page index so print an err
+            # If they haven't entered 0 or 1, it is not a valid page index so print an err
             else:
-                print("Invalid page provided: " + str(page))
                 logging.error("Invalid page provided: " + str(page))
-    
+
     def export_register_map(self, path_to_export_to):
-        """Read back various registers, generate a string from them and write that string to a file at the given location
-        
+        """Read back various registers, generate a string from them and write that string to a file
+        at the given location
+
         Args:
-            path_to_export_to (string): the path we want to write the new register map file to - including extension
+            path_to_export_to (string): the path we want to write the new register map file to
+            - including extension
         """
         # Add in an appropriate header to the starting text
         text = """# Si5338 Registers Script
-# 
+#
 # Part: Si5338
 # Bits 6:0 in addr 27d/0x1B will be 0 always
 # Address,Data"""
-        #iterate through each address in the registers list and read it back and append it to text
+        # iterate through each address in the registers list and read it back and append it to text
         for address in self.registers:
-            text = text + "\n" + str(address) + "," + hex(self.paged_read8(address)).replace("0x", "") + "h"
-        #write the contents of text to a file at the path provided
+            text = (
+                text
+                + "\n"
+                + str(address)
+                + ","
+                + hex(self.paged_read8(address)).replace("0x", "")
+                + "h"
+            )
+        # write the contents of text to a file at the path provided
         with open(path_to_export_to, "w") as file:
             file.write(text)
-                
+
 
 if __name__ == "__main__":
     clockGen = SI5338(0x70, 3)
     path = input("Enter path: ")
     clockGen.apply_register_map(path, False, True)
-    
