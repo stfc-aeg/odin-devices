@@ -34,7 +34,7 @@ Check dependencies and environment:
 
 try:
     import gpiod
-except ModuleNotFoundException:
+except ModuleNotFoundError:
     raise GPIOException(
             "gpiod module not found. "
             "This module requires libgpiod to be compiled with python bindings enabled. "
