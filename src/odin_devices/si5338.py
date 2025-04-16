@@ -1,16 +1,20 @@
+"""SI5338 class.
+    Data sheet:
+        https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/data-sheets/Si5338.pdf
+    Reference manual:
+        https://www.skyworksinc.com/-/media/Skyworks/SL/documents/public/reference-manuals/Si5338-RM.pdf
+
+Jack Santiago, STFC DSSG.
+"""
+
 from odin_devices.i2c_device import I2CDevice
 import logging
 import time
 
 
-# tests
-# masking
-# paging
-# writing everything
-# pre/post write operations carried out correctly
-
 class SI5338(I2CDevice):
-    # A list of the registers that should be read back when exporting the register map
+    """SI5338 class to access an si5338 clock generator over i2c and write register maps generated
+    using clockbuilder pro to it"""
     registers = [
         6,
         27,
