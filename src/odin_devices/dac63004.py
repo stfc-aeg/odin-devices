@@ -115,7 +115,7 @@ class DAC63004(I2CDevice):
         CurrentRange.RANGE_negative_25_25 = -25 - 25 microamps
         CurrentRange.RANGE_negative_50_50 = -50 - 50 microamps
         CurrentRange.RANGE_negative_125_125 = -125 - 125 microamps
-        CurrentRange.R`ANGE_negative_250_250 = -250 - 250 microamps"""
+        CurrentRange.RANGE_negative_250_250 = -250 - 250 microamps"""
         RANGE_0_25 = 0b0
         RANGE_0_50 = 0b1000000000
         RANGE_0_125 = 0b10000000000
@@ -510,41 +510,37 @@ class DAC63004(I2CDevice):
         value_to_write = None
         # get the range based on the current entered
         if current > 125:
-            range = 0b0011000000000
+            range = DAC63004.CurrentRange.RANGE_0_250
             value_to_write = math.floor(
                 (256 * abs(current) / 250) + self._250rangeOffset
             )
         elif current > 50:
-            range = 0b0010000000000
+            range = DAC63004.CurrentRange.RANGE_0_125
             value_to_write = math.floor(
                 (256 * abs(current) / 125) + self._125rangeOffset
             )
         elif current > 25:
-            range = 0b0001000000000
+            range = DAC63004.CurrentRange.RANGE_0_50
             value_to_write = math.floor((256 * abs(current) / 50) + self._50rangeOffset)
         elif current > 0:
-            range = 0b0000000000000
+            range = DAC63004.CurrentRange.RANGE_0_25
             value_to_write = math.floor((256 * abs(current) / 25) + self._25rangeOffset)
         elif current > -24:
-            range = 0b0100000000000
+            range = DAC63004.CurrentRange.RANGE_0_negative_24
             value_to_write = math.floor((20000 * abs(current) / 1957) - 12)  # +13.04241
         elif current > -48:
-            range = 0b0101000000000
+            range = DAC63004.CurrentRange.RANGE_0_negative_48
             value_to_write = math.floor((2000 * abs(current) / 391) - 13)  # +13.16266
         elif current > -120:
-            range = 0b0110000000000
+            range = DAC63004.CurrentRange.RANGE_0_negative_120
             value_to_write = math.floor((4000 * abs(current) / 1951) - 13)  # +13.18298
         elif current >= -240:
-            range = 0b0111000000000
+            range = DAC63004.CurrentRange.RANGE_0_negative_240
             value_to_write = math.floor(
                 (10000 * abs(current) / 9751) - 13.1
             )  # +13.1966
 
-        self.write_register(
-            self.read_register_address("DAC_" + str(index) + "_IOUT_MISC_CONFIG"),
-            range,
-            True,
-        )
+        self.set_dac_current_range(range, index)
         # write the value to the register
         self._set_dac_output(value_to_write, index, True)
 
@@ -586,7 +582,7 @@ class DAC63004(I2CDevice):
         """
         value = value << 4
         if current:
-            value << 4
+            value = value << 4
         self.read_modify_write("DAC_" + str(index) + "_DATA", 0b1111111111110000, value)
 
     def set_all_dacs_to_voltage(self, gain=VoltageGain.EXT_REF_1x):
@@ -647,8 +643,11 @@ class DAC63004(I2CDevice):
 
 if __name__ == "__main__":
     u34 = DAC63004(0x48, 3)
-    # u34.set_all_dacs_to_voltage()
-    # u34.set_all_dacs_to_current(DAC63004.CurrentRange.RANGE_0_250)
     u34.read_all_registers()
-    # current = int(input("Enter current "))
-    # u34.set_dac_current_micro_amps(1, current)
+    # u34.set_all_dacs_to_voltage()
+    u34.set_all_dacs_to_current(DAC63004.CurrentRange.RANGE_0_250)
+    current = int(input("Enter current "))
+    u34.set_dac_current_micro_amps(0, current)
+    u34.set_dac_current_micro_amps(1, current)
+    u34.set_dac_current_micro_amps(2, current)
+    u34.set_dac_current_micro_amps(3, current)
