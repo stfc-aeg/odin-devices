@@ -1,5 +1,5 @@
 """
-Analog AD5259: 256-position I2C Digital Potentiometer
+Analog AD5259: 256-position I2C Digital Potentiometer.
 
 The AD5259 is a digital potentiometer with 256 RDAC wiper positions between its A/B terminals.
 If is available in several variants with diferent R_AB total impedances ranging from 5k-100k.
@@ -22,10 +22,13 @@ The user will be warned of this if they instantiate the device without R_AB.
 Joseph Nobes, Embedded Sys Eng, STFC Detector Systems Software Group
 """
 
-from odin_devices.i2c_device import I2CDevice, I2CException
+from odin_devices.i2c_device import I2CDevice
 import logging
 
+
 class AD5259(I2CDevice):
+    """Constrol instance for the AD5259 Digital Potentiometer."""
+
     # I2C Instructions
     _INS_RDAC = (0b000 << 5)    # Write / read RDAC (wiper) count
     _INS_EEPROM = (0b001 << 5)  # Write / read EEPROM (stored count)
@@ -37,7 +40,7 @@ class AD5259(I2CDevice):
     @staticmethod
     def ad_pins_to_address(AD0, AD1):
         """
-        Convert known pin values to an I2C address
+        Convert known pin values to an I2C address.
 
         :param AD0: AD0 pin value, boolean
         :param AD1: AD1 pin value, boolean
@@ -61,8 +64,7 @@ class AD5259(I2CDevice):
         """
 
         # Set up the logger
-        #TODO
-        self._logger = logging.getLogger('odin_devices.ad5259@i2c:{}:0x{}'.format(busnum,hex(address)))
+        self._logger = logging.getLogger('odin_devices.ad5259@i2c:{}:0x{}'.format(busnum, hex(address)))
 
         # Set up the I2CDevice
         super(AD5259, self).__init__(address=address, busnum=busnum)
@@ -95,6 +97,7 @@ class AD5259(I2CDevice):
     def set_resistance_AB_kohms(self, resistance_AB_kohms):
         """
         Set the AB total resistance. This is a property of the device and is not adjustable.
+
         Available devices: 5k, 10k, 50k, 100k
         :param resistance_AB_kohms:  Device AB resistance in kiloohms
         """
@@ -107,7 +110,8 @@ class AD5259(I2CDevice):
 
     def set_voltage_A(self, voltage_A):
         """
-        Set the terminal A voltage, known by the user, for use in calculations
+        Set the terminal A voltage, known by the user, for use in calculations.
+
         :param voltage_A:     Terminal A voltage (float)
         """
         self._V_A = float(voltage_A)
@@ -115,42 +119,43 @@ class AD5259(I2CDevice):
 
     def set_voltage_B(self, voltage_B):
         """
-        Set the terminal B voltage, known by the user, for use in calculations
+        Set the terminal B voltage, known by the user, for use in calculations.
+
         :param V_B:     Terminal B voltage (float)
         """
         self._V_B = float(voltage_B)
         self._logger.debug('Set terminal B voltage (V_B) to {}v'.format(voltage_B))
 
     def set_wiper_count(self, count):
+        """Directly set the wiper count out of 256."""
         count = int(count) & 0xFF
         self.write8(self._INS_RDAC, count)
         self._logger.debug('Set wiper count {}/256'.format(count))
 
     def get_wiper_count(self):
+        """Get the current wiper count out of 256."""
         count = self.readU8(self._INS_RDAC)
         self._logger.debug('Read wiper count: {}/256'.format(count))
         return count
 
     def read_eeprom(self):
+        """Read the device EEPROM to get the stored count."""
         count = self.readU8(self._INS_EEPROM)
         self._logger.debug('Read EEPROM: {}/256'.format(count))
         return count
 
     def write_eeprom(self, count):
+        """Write a count directly to the device EEPROM."""
         count = int(count) & 0xFF
         self.write8(self._INS_EEPROM, count)
         self._logger.debug('Wrote EEPROM: {}/256'.format(count))
 
     def store_wiper_count(self):
-        """
-        Store the current wiper setting in the EEPROM.
-        """
+        """Store the current wiper setting in the EEPROM."""
         self.write8(self._INS_STORE_RDAC_TO_EEPROM, 0)
 
     def restore_wiper_count(self):
-        """
-        Restore the stored wiper setting from the EEPROM to RDAC.
-        """
+        """Restore the stored wiper setting from the EEPROM to RDAC."""
         self.write8(self._INS_STORE_EEPROM_TO_RDAC, 0)
 
     def _get_resistance_terminal_to_wiper(self, terminal_is_A):
@@ -160,7 +165,6 @@ class AD5259(I2CDevice):
         This is only possible if R_AB is known.
         :param terminal_is_A:       Set True if using A terminal, false for B
         """
-
         if not self._R_AB:
             raise Exception('Getting direct resistances is not possible without specifying R_AB')
 
@@ -176,14 +180,14 @@ class AD5259(I2CDevice):
 
     def _set_resistance_terminal_to_wiper(self, target_resistance_ohms, terminal_is_A):
         """
-        Set the resistance between terminal A or B and the wiper W. The closest possible value will
-        be chosen, if it is valid.
+        Set the resistance between terminal A or B and the wiper W.
+
+        The closest possible value will be chosen, if it is valid.
 
         This is only possible if R_AB is known.
         :param target_resistance_ohms:  Target resistance that will be set
         :param terminal_is_A:       Set True if using A terminal, false for B
         """
-
         if not self._R_AB:
             raise Exception('Setting direct resistances is not possible without specifying R_AB')
 
@@ -213,9 +217,9 @@ class AD5259(I2CDevice):
         ))
 
     def set_resistance_AW(self, target_resistance_ohms):
-        """
-        Set the resistance between terminal A and the wiper W. The closest possible value will
-        be chosen.
+        """Set the resistance between terminal A and the wiper W.
+
+        The closest possible value will be chosen.
 
         This is only possible if R_AB is known.
 
@@ -224,9 +228,9 @@ class AD5259(I2CDevice):
         self._set_resistance_terminal_to_wiper(target_resistance_ohms, terminal_is_A=True)
 
     def set_resistance_BW(self, target_resistance_ohms):
-        """
-        Set the resistance between terminal B and the wiper W. The closest possible value will
-        be chosen.
+        """Set the resistance between terminal B and the wiper W.
+
+        The closest possible value will be chosen.
 
         This is only possible if R_AB is known.
 
@@ -263,7 +267,6 @@ class AD5259(I2CDevice):
         :param voltage_A:         Optional voltage at terminal A override (float)
         :param voltage_B:         Optional voltage at terminal B override (float)
         """
-
         # Check that V_A and V_B are available either from params or stored values
         if (voltage_A is None and self._V_A is None) or (voltage_B is None and self._V_B is None):
             raise Exception('Cannot set a wiper voltage without supplying terminal voltages V_A and V_B')
@@ -297,7 +300,6 @@ class AD5259(I2CDevice):
         :param voltage_A:         Optional voltage at terminal A override (float)
         :param voltage_B:         Optional voltage at terminal B override (float)
         """
-
         # Check that V_A and V_B are available either from params or stored values
         if (voltage_A is None and self._V_A is None) or (voltage_B is None and self._V_B is None):
             raise Exception('Cannot set a wiper voltage without supplying terminal voltages V_A and V_B')
@@ -336,7 +338,6 @@ class AD5259(I2CDevice):
 
         :param proportion:  Target proportion, 0-1 (float)
         """
-
         proportion = float(proportion)
         if proportion < 0 or proportion > 1:
             raise Exception('Invalid proportion, must be between 0 and 1')
