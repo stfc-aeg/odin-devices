@@ -258,7 +258,7 @@ class GPIO_Bus():
                 flags = 0
             lines.request(consumer=self._consumer_name,
                          type = direction,
-                         flags = active,
+                         flags = active_l,
                          default_val = 0)
 
         return lines
