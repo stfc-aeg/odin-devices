@@ -4,8 +4,7 @@ The temperature is fetched and printed once per second.
 
 from odin_devices.max31856 import Max31856 
 from odin_devices.max31856 import ThermocoupleType
-from time import sleep
-
+import time
 
 def main():
     """Create an instance of the max31856 class.

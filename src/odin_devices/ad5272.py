@@ -93,7 +93,7 @@ class AD5272(I2CDevice):
         #:param pd: Target potential difference (Volts)
         #
 
-        self.__wiper_pos[wiper] = int((pd - self.__low_pd) / (self.__high_pd - self.__low_pd) * self.__wiper_pos)
+        self.__wiper_pos = int((pd - self.__low_pd) / (self.__high_pd - self.__low_pd) * self.__wiper_pos)
         self.write8(((self.__wiper_pos & 0xFF00) + 0x400)>>8, (self.__wiper_pos & 0xFF))
 
     def set_wiper(self, position):

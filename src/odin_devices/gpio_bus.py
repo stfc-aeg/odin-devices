@@ -34,7 +34,7 @@ Check dependencies and environment:
 
 try:
     import gpiod
-except ModuleNotFoundException:
+except ModuleNotFoundError:
     raise GPIOException(
             "gpiod module not found. "
             "This module requires libgpiod to be compiled with python bindings enabled. "
@@ -258,7 +258,7 @@ class GPIO_Bus():
                 flags = 0
             lines.request(consumer=self._consumer_name,
                          type = direction,
-                         flags = active,
+                         flags = active_l,
                          default_val = 0)
 
         return lines
