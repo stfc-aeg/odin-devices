@@ -18,13 +18,14 @@ from odin_devices.i2c_device import I2CDevice
 try:
     _GPIOD_SUPPORTED = True
     import gpiod
-except ModuleNotFoundException:
+except ModuleNotFoundError:
     _GPIOD_SUPPORTED = False
 
+
 class MIC284():
-    """
-    Register Addresses:
-    """
+    """Control class for MIC284 thermal supervisor."""
+
+    # Register Addresses
     _REG_TEMP0 = 0x00       # Local Temperature
     _REG_CONFIG = 0x01      # Configuration Register
     _REG_T_HYST0 = 0x02     # Local Hysteresis
@@ -36,7 +37,13 @@ class MIC284():
     _REG_CRIT1 = 0x23       # Overtemperature Temperature Setpoint
 
     def __init__(self, address, busnum, debug=False, int_pin=None):
+        """Initialise the MIC284 device.
 
+        :param address:     I2C address
+        :param busnum:      I2C bus number
+        :param debug:       Boolean: if True, will put the I2CDevice driver into debug mode.
+        :param int_pin:     Optional interrupt input pin, supplied as a GPIO line from gpiod.
+        """
         # Check if the supplied pin is valid and configured as an input
         self._int_pin = None
         if int_pin is not None and _GPIOD_SUPPORTED:
@@ -57,9 +64,7 @@ class MIC284():
 
     @staticmethod
     def part_to_address(partno, a0):
-        """
-        Work out the anticipated I2C address of the device based on its part number
-        (ending) and the address pins.
+        """Work out the anticipated I2C address of the device based on its part number) and address pins.
 
         :param partno:      The last digit of the part number N, in pattern MIC284-N
         :param a0:          The value of the address pin, 1 for high, 0 for low
@@ -69,18 +74,15 @@ class MIC284():
 
     @staticmethod
     def _convert_to_temperature(reg_byte):
-        """
-        Convert the byte read back from the device to a temperature.
+        """Convert the byte read back from the device to a temperature.
+
         The value is in 2's complement.
         """
         return ((reg_byte & 0b10000000) * -1) + (0b1111111 & reg_byte)
 
     @staticmethod
     def _convert_from_temperature(temperature):
-        """
-        Convert a supplied numerical limit into a byte value that can be written into
-        the limit registers.
-        """
+        """Convert a supplied numerical limit into a byte value that can be written into the limit registers."""
         # Check limits
         if temperature < -128 or temperature > 127:
             raise Exception('Temperature supplied must be between -128 to 127 DegC')
@@ -92,20 +94,21 @@ class MIC284():
             return 0b10000000 | (temperature + 128)
 
     def read_temperature_internal(self):
+        """Return the float internal temperature."""
         if self.get_shutdown():
             raise Exception('Cannot read, device in shutdown')
 
         return MIC284._convert_to_temperature(self.read_register(MIC284._REG_TEMP0))
 
     def read_temperature_external(self):
+        """Return the float external temperature."""
         if self.get_shutdown():
             raise Exception('Cannot read, device in shutdown')
 
         return MIC284._convert_to_temperature(self.read_register(MIC284._REG_TEMP1))
 
     def set_interrupt_mode(self, interrupt_mode):
-        """
-        Set the interrupt/comparator mode for the /INT pin and S0/S1 flags:
+        """Set the interrupt/comparator mode for the /INT pin and S0/S1 flags.
 
             - In interrupt mode, S0/1 event flags will remain active until any register
                 is read. This also goes for the interrupt pin, which will remain active
@@ -131,6 +134,7 @@ class MIC284():
             self._device.write8(MIC284._REG_CONFIG, reg_new)
 
     def get_interrupt_mode(self):
+        """Get whether the device is currently in interrupt mode, as a boolean."""
         if self._interrupt_mode_cached is None:
             config = self.read_register(MIC284._REG_CONFIG)
             self._interrupt_mode_cached = bool((config & 0b10) > 0)
@@ -138,9 +142,9 @@ class MIC284():
         return self._interrupt_mode_cached
 
     def set_throsholds_internal(self, setpoint=None, hysteresis=None):
-        """
-        Set event flag / interrupt threshold temperatures for the internal temperature
-        sensor. Either setpoint or hysteresis temperature can be supplied, or both.
+        """Set event flag / interrupt threshold temperatures for the internal temperature sensor.
+
+        Either setpoint or hysteresis temperature can be supplied, or both.
 
         :param setpoint:    If the temperature rises above this point, high temperature
                             fault will be registered. Default level 81C
@@ -154,14 +158,18 @@ class MIC284():
                 setpoint, hysteresis))
 
     def get_thresholds_internal(self):
+        """Get the internal sensor setpoint and hysteresis.
+
+        :return:    (setpoint, hysteresis) as a tuple, both in degrees
+        """
         setpoint_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_T_SET0))
         hysteresis_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_T_HYST0))
         return (setpoint_degrees, hysteresis_degrees)
 
     def set_thresholds_external(self, setpoint=None, hysteresis=None):
-        """
-        Set event flag / interrupt threshold temperatures for the external temperature
-        sensor. Either setpoint or hysteresis temperature can be supplied, or both.
+        """Set event flag / interrupt threshold temperatures for the external temperature sensor.
+
+        Either setpoint or hysteresis temperature can be supplied, or both.
 
         :param setpoint:    If the temperature rises above this point, high temperature
                             fault will be registered. Default level 97C
@@ -175,14 +183,18 @@ class MIC284():
                 setpoint, hysteresis))
 
     def get_thresholds_external(self):
+        """Get the external sensor setpoint and hysteresis.
+
+        :return:    (setpoint, hysteresis) as a tuple, both in degrees
+        """
         setpoint_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_T_SET1))
         hysteresis_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_T_HYST1))
         return (setpoint_degrees, hysteresis_degrees)
 
     def set_thresholds_external_critical(self, setpoint=None, hysteresis=None):
-        """
-        Set critical event flag / interrupt threshold temperatures for the external temperature
-        sensor. Either setpoint or hysteresis temperature can be supplied, or both. This behaves
+        """Set critical event flag / interrupt threshold temperatures for the external temperature sensor.
+
+        Either setpoint or hysteresis temperature can be supplied, or both. This behaves
         similarly to the normal interrupt, except that it operates the /CRIT line instead of the
         /INT line, and has a separate flag.
 
@@ -198,13 +210,18 @@ class MIC284():
                 setpoint, hysteresis))
 
     def get_thresholds_external_critical(self):
+        """Get the critical external sensor setpoint and hysteresis.
+
+        :return:    (setpoint, hysteresis) as a tuple, both in degrees
+        """
         setpoint_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_CRIT1))
         hysteresis_degrees = MIC284._convert_to_temperature(self.read_register(MIC284._REG_nCRIT1))
         return (setpoint_degrees, hysteresis_degrees)
 
     def enter_shutdown(self):
-        """
-        Enter the shutdown mode. Interrupts will not trigger, and no conversions take place.
+        """Enter the shutdown mode.
+
+        Interrupts will not trigger, and no conversions take place.
         All registers are still accessible.
         """
         reg_old = self.read_register(MIC284._REG_CONFIG)
@@ -215,9 +232,7 @@ class MIC284():
         self._shutdown_cached = True
 
     def exit_shutdown(self):
-        """
-        Exit shutdown mode.
-        """
+        """Exit shutdown mode."""
         reg_old = self.read_register(MIC284._REG_CONFIG)
         reg_new = (reg_old & 0b11111110)
         self._device.write8(MIC284._REG_CONFIG, reg_new)
@@ -237,7 +252,8 @@ class MIC284():
         return self._shutdown_cached
 
     def set_fault_queue_depth(self, N):
-        """
+        """Set the number of condition cases before triggering eror states.
+
         When triggering fault states / interrupts, the MIC284 will wait for N
         cases of the condition being true before triggering the error state.
         Default depth is 1.
@@ -268,7 +284,15 @@ class MIC284():
         return self._fault_queue_depth_cached
 
     def read_register(self, address):
+        """Read the value of an 8-bit I2C register.
 
+        The function also checks the config register first; otherwise the vlue would be cleared
+        automatically by reading other registers. The status of interrupts are updated using this
+        value.
+
+        :param address:     Address of the register to be read
+        :return:            8-bit value read from the specified register
+        """
         # First read the config register, as this may contain interrupt flags that would be
         # otherwise cleared by reading any other register.
         config = self._device.readU8(MIC284._REG_CONFIG)
@@ -280,7 +304,7 @@ class MIC284():
             if status_dict[interrupt]['triggered']:
                 self._logger.warning(status_dict[interrupt]['info'])
 
-        # If the register to read is the config register, simply return it. Otherwise, 
+        # If the register to read is the config register, simply return it. Otherwise,
         # read the desired address.
         if address == MIC284._REG_CONFIG:
             return config
@@ -288,6 +312,10 @@ class MIC284():
             return self._device.readU8(address)
 
     def get_event_status(self):
+        """Update the events status, then return the encoded status value.
+
+        This value must be decoded with self._decode_event_status().
+        """
         if self.get_shutdown():
             raise Exception('Event interrupts disabled, device in shutdown')
 
@@ -301,9 +329,9 @@ class MIC284():
     def _decode_event_status(config_reg_val):
         """
         Get status information from the fault bits.
+
         Note that this will clear any event if the device is in interrupt mode.
         """
-
         # Read the current status of the flags
         s0 = bool((config_reg_val & 0b10000000) > 0)
         s1 = bool((config_reg_val & 0b01000000) > 0)
