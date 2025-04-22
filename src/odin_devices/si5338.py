@@ -743,8 +743,7 @@ class SI5338(I2CDevice):
 
         previousValue = self.paged_read8(reg)
         maskedValue = (value & system_mask & provided_mask) | (
-            previousValue & ~(system_mask & provided_mask)
-        )
+            previousValue & ~(system_mask & provided_mask))
 
         # carry out modulus division on the address so that it is always less than 256
         self.write8(reg % 256, maskedValue)
@@ -792,7 +791,7 @@ class SI5338(I2CDevice):
                 self.currentPage = 1
             # If they haven't entered 0 or 1, it is not a valid page index so print an err
             else:
-                logging.error("Invalid page provided: " + str(page))
+                raise IndexError("Invalid page provided: " + str(page) + ". Accepted values are 0 and 1.")
 
     def export_register_map(self, path_to_export_to):
         """Read back various registers, generate a string from them and write that string to a file
