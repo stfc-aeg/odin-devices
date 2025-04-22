@@ -1,6 +1,6 @@
-"""
-Driver for supporting the Microchip ZLx series of clock generators, with a primary focus on the
-relatively common process for loading register maps for configuration.
+"""Driver for Microchip ZLx series of clock generators.
+
+Primary focus on the relatively common process for loading register maps for configuration.
 
 Register maps are generated using software available from Microchip, though different versions
 are used for different sub-families of device. For example, the 'ZL30267' version of the software
@@ -30,10 +30,21 @@ import logging
 import time
 from smbus2 import i2c_msg
 
+
 class ZLFlaggedChannelException(Exception):
+    """Exception thrown if the user has attmpted to use a channel marked as flagged.
+
+    The user is able to mark flagged channels on init, which will rais this exception if someone attempts
+    to load a config that would modify the channel. This is a safety feature to prevent the accidental setting
+    of channels that might damage other devices if set to the incorrect voltage. It is optional.
+    """
+
     pass
 
+
 class ZLx(object):
+    """Control class for the ZLx family of clock generators."""
+
     SPI_CMD_WRITE_ENABLE = 0x06
     SPI_CMD_WRITE = 0x02
     SPI_CMD_READ = 0x03
@@ -47,7 +58,8 @@ class ZLx(object):
     _channel_info = {}
 
     def __init__(self, use_spi=False, use_i2c=False, bus=0, device=0, nreset_pin=None):
-        '''
+        """Initialise device contact with I2C or SPI, and check communication works.
+
         :param use_spi:     bool to specify if using spi.
         :param use_i2c:     bool to specify if using i2c.
                         Note: use_i2c and use_spi can both be False if the user only wants
@@ -55,7 +67,7 @@ class ZLx(object):
         :param bus:         bus number for SPI/I2C device
         :param device:      device number for SPI device, address for I2C.
         :param nreset_pin:  Optional active low reset pin, assumed to be gpiod pre-requested line.
-        '''
+        """
         self._logger = logging.getLogger('ZLx')
 
         self._pin_nreset = nreset_pin
@@ -66,7 +78,7 @@ class ZLx(object):
             self._output_en_regs.add(address)
         self._output_en_regs = list(self._output_en_regs)   # Convert to list
 
-        #TODO Initially cycle the reset, potentially with selected config pins if they
+        # TODO Initially cycle the reset, potentially with selected config pins if they
         # are present
 
         # Set either I2C or SPI interface (or neither)
@@ -81,22 +93,26 @@ class ZLx(object):
         # EESEL should be False (bit=0), meaning device registers in use by default.
         self._EESEL = None
 
-        #TODO If no control pins are specified as well as no interface, throw an error
+        # TODO If no control pins are specified as well as no interface, throw an error
 
-        #TODO make a basic check, read manufacturer info and check against expectation
+        # TODO make a basic check, read manufacturer info and check against expectation
         self._check_id()
 
     def num_channels(self):
+        """Return the number of output channels this device has."""
         return len(self._channel_info.keys())
 
     def has_internal_eeprom(self):
+        """Return a boolean, True if this device contains an internal EEPROM."""
         return bool(self._support_internal_eeprom)
 
     def _check_id(self):
-        # If the required ID is known, read from the device and check that it's what is expected.
-        # If there is a null response (255), assume comms failure and raise an exception
-        # Otherwise warn if the device is not as expected.
+        """Check the device's internal ID against the expected one for the given part.
 
+        If the required ID is known, read from the device and check that it's what is expected.
+        If there is a null response (255), assume comms failure and raise an exception
+        Otherwise warn if the device is not as expected.
+        """
         ID1 = self.read_register(0x30)
         ID2 = self.read_register(0x31)
 
@@ -117,6 +133,13 @@ class ZLx(object):
         return readback_id
 
     def write_register(self, address, value, write_EEPROM=False, verify=False):
+        """Write to a device register using the configured I2C or SPI interface.
+
+        :param address:         Address of the register to be written
+        :param value:           Value to write to the address, single byte
+        :param write_EEPROM:    Boolean: If true, will write to the device EEPROM (if present) instead.
+        :param verify:          Boolean: If true, will read back the value after writing to confirm success.
+        """
         # Must have either SPI or I2C interface
         if self.device is None:
             raise Exception('No valid interface for writing registers')
@@ -129,7 +152,7 @@ class ZLx(object):
         # that is supported by the internal EEPROM (>0x00), correct it.
         if (self._EESEL is not write_EEPROM) and address > 0x00:
             self.write_register(0x00, 0b10000000 if write_EEPROM else 0b00000000)
-            self._EESEL = read_EEPROM
+            self._EESEL = write_EEPROM
 
         if type(self.device) is I2CDevice:
 
@@ -143,9 +166,9 @@ class ZLx(object):
             transaction = []
 
             # Write command and 16-bit register address
-            transaction.append(ZLx.SPI_CMD_WRITE)	# Write command
-            transaction.append((address & 0xFF00)>>8)	# Address upper byte
-            transaction.append(address & 0x00FF)	# Address lower byte
+            transaction.append(ZLx.SPI_CMD_WRITE)       # Write command
+            transaction.append((address & 0xFF00) >> 8)   # Address upper byte
+            transaction.append(address & 0x00FF)        # Address lower byte
 
             # Rest of the buffer is data to be written, in this case one byte
             transaction.append(value)
@@ -179,6 +202,14 @@ class ZLx(object):
             self.device.transfer(transaction)
 
     def write_register_bit(self, address, bit_pos, value, write_EEPROM=False, verify=False):
+        """Write a single bit of a register with either 1 or 0.
+
+        :param address:         Address of the reigster to access
+        :param bit_pos:         Number of the bit position, 0-7 (0 is LSB).
+        :param value:           Value to write to the bit, either 1 or 0.
+        :param write_EEPROM:    Boolean: If true, will write to the device EEPROM (if present) instead.
+        :param verify:          Boolean: If true, will read back the value after writing to confirm success.
+        """
         # Read the existing value
         reg_val_old = self.read_register(address, read_EEPROM=write_EEPROM)
 
@@ -192,8 +223,13 @@ class ZLx(object):
         self.write_register(address, reg_val, write_EEPROM=write_EEPROM, verify=verify)
 
     def read_register(self, address, read_EEPROM=False):
-	# NOTE THAT THIS FUNCTION EXECUTES A TWO-PART WRITE-READ, WHICH MUST NOT HAVE OTHER TRAFFIC IN BETWEEN
+        """Read from a device register using the configured I2C or SPI interface.
 
+        NOTE THAT THIS FUNCTION EXECUTES A TWO-PART WRITE-READ, WHICH MUST NOT HAVE OTHER TRAFFIC IN BETWEEN
+
+        :param address:         Address of the register to be written
+        :param read_EEPROM:     Boolean: If true, will read from the device EEPROM (if present) instead.
+        """
         # Must have either SPI or I2C interface
         if self.device is None:
             raise Exception('No valid interface for writing registers')
@@ -215,9 +251,9 @@ class ZLx(object):
             transaction = []
 
             # Read command and 16-bit register address
-            transaction.append(ZLx.SPI_CMD_READ)	# Read command
-            transaction.append((address & 0xFF00)>>8)	# Address upper byte
-            transaction.append(address & 0x00FF)	# Address lower byte
+            transaction.append(ZLx.SPI_CMD_READ)            # Read command
+            transaction.append((address & 0xFF00) >> 8)     # Address upper byte
+            transaction.append(address & 0x00FF)            # Address lower byte
 
             write_msg = i2c_msg.write(self.device.address, transaction)
             self.device.bus.i2c_rdwr(write_msg)
@@ -225,7 +261,9 @@ class ZLx(object):
             # Read the data byte back, return first byte
             read_msg = i2c_msg.read(self.device.address, 1)
             self.device.bus.i2c_rdwr(read_msg)
-            return list(read_msg)[0]	# Only return one value
+
+            # Only return one value
+            return list(read_msg)[0]
 
         # Writing to SPI is more complex due to the register address structure
         elif type(self.device) is SPIDevice:
@@ -246,6 +284,15 @@ class ZLx(object):
             return self.device.transfer(transaction)[3:]
 
     def write_config_mfg(self, filepath, check_dev_id=True, flag_channels=[]):
+        """Write a pre-prepared confuration file to the device, with .mfg extension.
+
+        :param filepath:        Full path and filename of the file to be written.
+        :param check_dev_id:    Whether the device ID should be checked to confirm the file was
+                                generated for the same device type. Optional, True by default.
+        :param flag_channels:   A list of channel numbers that will be considered 'flagged'- if the
+                                configuration in the file attampts to alter these channels, an
+                                exception will be raised.
+        """
         # Must have either SPI or I2C interface
         if self.device is None:
             raise Exception('No valid interface for writing registers')
@@ -310,7 +357,7 @@ class ZLx(object):
         if check_dev_id:
             headerline = filehandle.readline()
             if headerline.startswith('; Device Id'):
-                #TODO check ID matches
+                # TODO check ID matches
                 pass
             else:
                 raise Exception('Could not find device ID in mfg file')
@@ -368,6 +415,11 @@ class ZLx(object):
             self._logger.warning('No target register write count decoded from mfg')
 
     def enter_reset(self):
+        """Enter reset state using a GPIO pin if provided, or use the register reset otherwise.
+
+        The register reset (MCR1.RST) is a less thorough reset, so if possible the hardware reset pin
+        should be used. However, the GPIO line may not have been provided to the driver.
+        """
         # If there is a reset pin, use it; this is a more thorough reset
         if self._pin_nreset is not None:
             self._pin_nreset.set_value(0)
@@ -378,6 +430,7 @@ class ZLx(object):
             self.write_register_bit(0x09, 7, 1)
 
     def exit_reset(self):
+        """Exit reset state using a GPIO pin if provided, or use the register reset otherwise."""
         # If there is a reset pin, use it; this is a more thorough reset
         if self._pin_nreset is not None:
             self._pin_nreset.set_value(1)
@@ -389,9 +442,14 @@ class ZLx(object):
             pass
 
     def cycle_reset(self, delay_ms=20):
+        """Cycle through a reset cycle to end up in the out-of-reset state.
+
+        :param delay_ms:        Override the time held in reset state in ms, default 20ms.
+        """
         self.enter_reset()
-        time.sleep(delay_ms/1000)
+        time.sleep(delay_ms / 1000)
         self.exit_reset()
+
 
 """
 Support for the ZL30244/ZL30245.
@@ -409,7 +467,9 @@ The device classes should then be called with two channels (or None if one is no
 in use).
 
 """
-class ZL30244_45Channel(ZLx):
+
+
+class _ZL30244_45Channel(ZLx):
     _support_internal_eeprom = False
     _num_channels = 3
     _output_en_mapping = {
@@ -419,16 +479,25 @@ class ZL30244_45Channel(ZLx):
         3: (0x0D, 2),
     }
 
-class ZL30244Channel(ZL30244_45Channel):
+
+class ZL30244Channel(_ZL30244_45Channel):
+    """Driver for a single channel of the ZL30244 clock generator."""
+
     _support_internal_eeprom = False
 
-class ZL30245Channel(ZL30244_45Channel):
+
+class ZL30245Channel(_ZL30244_45Channel):
+    """Driver for a single channel of the ZL30245 clock generator."""
+
     _support_internal_eeprom = True
+
 
 """
 Support for the ZL30264-ZL30267
 """
-class ZL30264_67(ZLx):
+
+
+class _ZL30264_67(ZLx):
     _output_en_mapping = {
         # num: (address, bit)
         1: (0x05, 0),
@@ -443,22 +512,38 @@ class ZL30264_67(ZLx):
         10: (0x06, 1),  # 10-channel devices only
     }
 
-class ZL30264_65(ZL30264_67):
+
+class _ZL30264_65(_ZL30264_67):
     _num_channels = 6
 
-class ZL30264(ZL30264_65):
+
+class ZL30264(_ZL30264_65):
+    """Driver for the ZL30264 clock generator."""
+
     _support_internal_eeprom = False
     _expected_ID = 0x1D8
-class ZL30265(ZL30264_65):
+
+
+class ZL30265(_ZL30264_65):
+    """Driver for the ZL30265 clock generator."""
+
     _support_internal_eeprom = True
     _expected_ID = 0x1F8
 
-class ZL30266_67(ZL30264_67):
+
+class _ZL30266_67(_ZL30264_67):
     _num_channels = 10
 
-class ZL30266(ZL30266_67):
+
+class ZL30266(_ZL30266_67):
+    """Driver for the ZL30266 clock generator."""
+
     _support_internal_eeprom = False
     _expected_ID = 0x1D9
-class ZL30267(ZL30266_67):
+
+
+class ZL30267(_ZL30266_67):
+    """Driver for the ZL30267 clock generator."""
+
     _support_internal_eeprom = True
     _expected_ID = 0x1F9
