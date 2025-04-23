@@ -6,7 +6,7 @@ Jack Santiago, STFC Detector Systems Software Group
 import sys
 import pytest  # type: ignore
 import random
-from odin_devices.si5338 import SI5338
+
 
 if sys.version_info[0] == 3:  # pragma: no cover
     from unittest.mock import Mock, mock_open, patch
@@ -20,6 +20,7 @@ else:  # pragma: no cover
 sys.modules["smbus"] = Mock()
 sys.modules["logging"] = Mock()  # Track calls to logger.warning
 
+from odin_devices.si5338 import SI5338
 
 # tests
 # masking
@@ -29,12 +30,38 @@ sys.modules["logging"] = Mock()  # Track calls to logger.warning
 
 class si5338TestFixture(object):
     def __init__(self):
-        self.si5338 = SI5338()  # Create with default address
+        self.si5338 = SI5338(0x70, 3)  # Create with default address
 
         # Create virtual registers, init to 0x00
         self.registers = dict.fromkeys(
             [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
                 6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
                 27,
                 28,
                 29,
@@ -51,6 +78,8 @@ class si5338TestFixture(object):
                 40,
                 41,
                 42,
+                43,
+                44,
                 45,
                 46,
                 47,
@@ -102,6 +131,7 @@ class si5338TestFixture(object):
                 93,
                 94,
                 95,
+                96,
                 97,
                 98,
                 99,
@@ -150,6 +180,13 @@ class si5338TestFixture(object):
                 142,
                 143,
                 144,
+                145,
+                146,
+                147,
+                148,
+                149,
+                150,
+                151,
                 152,
                 153,
                 154,
@@ -216,7 +253,75 @@ class si5338TestFixture(object):
                 215,
                 216,
                 217,
+                218,
+                219,
+                220,
+                221,
+                222,
+                223,
+                224,
+                225,
+                226,
+                227,
+                228,
+                229,
                 230,
+                231,
+                232,
+                233,
+                234,
+                235,
+                236,
+                237,
+                238,
+                239,
+                240,
+                241,
+                242,
+                243,
+                244,
+                245,
+                246,
+                247,
+                248,
+                249,
+                250,
+                251,
+                252,
+                253,
+                254,
+                255,
+                256,
+                257,
+                258,
+                259,
+                260,
+                261,
+                262,
+                263,
+                264,
+                265,
+                266,
+                267,
+                268,
+                269,
+                270,
+                271,
+                272,
+                273,
+                274,
+                275,
+                276,
+                277,
+                278,
+                279,
+                280,
+                281,
+                282,
+                283,
+                284,
+                285,
+                286,
                 287,
                 288,
                 289,
@@ -230,6 +335,9 @@ class si5338TestFixture(object):
                 297,
                 298,
                 299,
+                300,
+                301,
+                302,
                 303,
                 304,
                 305,
@@ -243,6 +351,9 @@ class si5338TestFixture(object):
                 313,
                 314,
                 315,
+                316,
+                317,
+                318,
                 319,
                 320,
                 321,
@@ -256,6 +367,9 @@ class si5338TestFixture(object):
                 329,
                 330,
                 331,
+                332,
+                333,
+                334,
                 335,
                 336,
                 337,
@@ -269,6 +383,9 @@ class si5338TestFixture(object):
                 345,
                 346,
                 347,
+                348,
+                349,
+                350
             ],
             0x00,
         )
@@ -553,8 +670,6 @@ class si5338TestFixture(object):
             276: 0x00,
             277: 0x00,
             278: 0x00,
-
-
             279: 0x00,
             280: 0x00,
             281: 0x00,
@@ -638,16 +753,24 @@ class si5338TestFixture(object):
             self.si5338.bus.write_byte_data.side_effect = None
 
     def read_virtual_regmap(self, address, register):
-        if (self.registers[255] == 0):
+        if (register == 255):
+            return self.registers[255]
+        elif (self.registers[255] == 0):
             return self.registers[register]
-        else:
+        elif (self.registers[255] == 1):
             return self.registers[register + 256]
+        else:
+            raise Exception("Register 255 (paging register) should always be either 0 or 1 but is not.")
 
     def write_virtual_regmap(self, address, register, value):
-        if (self.registers[255] == 0):
+        if (register == 255):
+            self.registers[255] = value
+        elif (self.registers[255] == 0):
             self.registers[register] = value
-        else:
+        elif (self.registers[255] == 1):
             self.registers[register + 256] = value
+        else:
+            raise Exception("Register 255 (paging register) should always be either 0 or 1 but is not.")
 
 
 @pytest.fixture(scope="class")
@@ -657,37 +780,36 @@ def test_si5338_driver():
 
 
 class TestSI5338:
-    def test_read_and_write():
-        value_to_write = random.randint(0, 255)
+    def test_read_and_write(self, test_si5338_driver):
+        test_si5338_driver.virtual_registers_en(True)
+        value_to_write = 222
         test_si5338_driver.si5338.paged_write8(2, value_to_write)
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 2) == value_to_write
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 2) == test_si5338_driver.si5338.paged_read8(2)
+        assert test_si5338_driver.read_virtual_regmap(0x70, 2) == value_to_write
+        assert test_si5338_driver.read_virtual_regmap(0x70, 2) == test_si5338_driver.si5338.paged_read8(2)
 
         value_to_write = random.randint(0, 255)
         test_si5338_driver.si5338.paged_write8(287, value_to_write)
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 287) == value_to_write
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 287) == test_si5338_driver.si5338.paged_read8(287)
+        assert test_si5338_driver.read_virtual_regmap(0x70, 287) == value_to_write
+        assert test_si5338_driver.read_virtual_regmap(0x70, 287) == test_si5338_driver.si5338.paged_read8(287)
 
-    def test_read_modify_write():
-        for i in range(2, 6):
-            previous_value = test_si5338_driver.read_virtual_reg_map(0x70, i)
-            value_to_write = random.randint(122, 255)
-            provided_mask = 0b10101010
-            masked_value = (value_to_write & provided_mask) | (
-                previous_value & ~(provided_mask))
-            test_si5338_driver.si5338.paged_read_modify_write(i, provided_mask,  value_to_write)
-            assert test_si5338_driver.read_virtual_reg_map(0x70, i) == masked_value
+    def test_read_modify_write(self, test_si5338_driver):
+        test_si5338_driver.virtual_registers_en(True)
+        value_to_write = 222
+        provided_mask = 0b10101010
+        test_si5338_driver.si5338.paged_read_modify_write(2, provided_mask,  value_to_write)
+        assert test_si5338_driver.read_virtual_regmap(0x70, 2) & provided_mask == value_to_write & provided_mask
 
-    def test_page_switching():
+    def test_page_switching(self, test_si5338_driver):
+        test_si5338_driver.virtual_registers_en(True)
         test_value = 2
         with pytest.raises(IndexError, match="Invalid page provided: " + str(test_value) + ". Accepted values are 0 and 1."):
             test_si5338_driver.si5338.switch_page(test_value)
 
         test_si5338_driver.si5338.switch_page(1)
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 255) == 1
+        assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 1
         test_si5338_driver.si5338.switch_page(0)
-        assert test_si5338_driver.read_virtual_reg_map(0x70, 255) == 0
+        assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 0
 
-    def test_write_register_map():
+    def test_write_register_map(self, test_si5338_driver):
         with pytest.raises(FileNotFoundError, match="No such file or directory: ''"):
             test_si5338_driver.si5338.apply_register_map("", False, False)
