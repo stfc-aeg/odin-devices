@@ -22,12 +22,6 @@ sys.modules["logging"] = Mock()  # Track calls to logger.warning
 
 from odin_devices.si5338 import SI5338
 
-# tests
-# masking
-# paging
-# writing everything
-# pre/post write operations carried out correctly
-
 class si5338TestFixture(object):
     def __init__(self):
         self.si5338 = SI5338(0x70, 3)  # Create with default address
@@ -780,24 +774,12 @@ def test_si5338_driver():
 
 
 class TestSI5338:
-    def test_read_and_write(self, test_si5338_driver):
-        test_si5338_driver.virtual_registers_en(True)
-        value_to_write = 222
-        test_si5338_driver.si5338.paged_write8(2, value_to_write)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 2) == value_to_write
-        assert test_si5338_driver.read_virtual_regmap(0x70, 2) == test_si5338_driver.si5338.paged_read8(2)
-
-        value_to_write = random.randint(0, 255)
-        test_si5338_driver.si5338.paged_write8(287, value_to_write)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 287) == value_to_write
-        assert test_si5338_driver.read_virtual_regmap(0x70, 287) == test_si5338_driver.si5338.paged_read8(287)
-
     def test_read_modify_write(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
         value_to_write = 222
         provided_mask = 0b10101010
-        test_si5338_driver.si5338.paged_read_modify_write(2, provided_mask,  value_to_write)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 2) & provided_mask == value_to_write & provided_mask
+        test_si5338_driver.si5338.paged_read_modify_write(28, provided_mask,  value_to_write)
+        assert test_si5338_driver.read_virtual_regmap(0x70, 28) & provided_mask == value_to_write & provided_mask
 
     def test_page_switching(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
@@ -809,6 +791,24 @@ class TestSI5338:
         assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 1
         test_si5338_driver.si5338.switch_page(0)
         assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 0
+
+    def test_pre_write(self, test_si5338_driver):
+        test_si5338_driver.virtual_registers_en(True)
+        test_si5338_driver.si5338.pre_write()
+        assert test_si5338_driver.read_virtual_regmap(0x70, 230) & 0b00010000 == 0b00010000
+        assert test_si5338_driver.read_virtual_regmap(0x70, 241) & 0b10000000 == 0b10000000
+
+    def test_post_write(self, test_si5338_driver):
+        test_si5338_driver.virtual_registers_en(True)
+        test_si5338_driver.si5338.post_write()
+        assert test_si5338_driver.read_virtual_regmap(0x70, 246) & 0b00000010 == 0b00000010
+        assert test_si5338_driver.read_virtual_regmap(0x70, 241) & 0b11111111 == 0x65
+        assert test_si5338_driver.read_virtual_regmap(0x70, 47) & 0b00000011 == test_si5338_driver.read_virtual_regmap(0x70, 237) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap(0x70, 46) == test_si5338_driver.read_virtual_regmap(0x70, 236) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap(0x70, 45) == test_si5338_driver.read_virtual_regmap(0x70, 235) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap(0x70, 47) & 0b11111100 == 0b00010100
+        assert test_si5338_driver.read_virtual_regmap(0x70, 49) & 0b10000000 == 0b10000000
+        assert test_si5338_driver.read_virtual_regmap(0x70, 230) & 0b00010000 == 0b00000000
 
     def test_write_register_map(self, test_si5338_driver):
         with pytest.raises(FileNotFoundError, match="No such file or directory: ''"):
