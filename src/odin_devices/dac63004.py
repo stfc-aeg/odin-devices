@@ -242,8 +242,8 @@ class DAC63004(I2CDevice):
             int: the value stored in the register that was read (16 bit value)
         """
         if name in self.device_registers.keys():
-            register_address = self.device_registers[name].address
-            flipped = self.device_registers[name].flipped
+            register_address = self.device_registers[name]["address"]
+            flipped = self.device_registers[name]["flipped"]
             if flipped:
                 result = self.readU16flipped(register_address)
             else:
