@@ -21,6 +21,12 @@ sys.modules["smbus"] = Mock()
 sys.modules["logging"] = Mock()  # Track calls to logger.warning
 
 
+# tests
+# masking
+# paging
+# writing everything
+# pre/post write operations carried out correctly
+
 class si5338TestFixture(object):
     def __init__(self):
         self.si5338 = SI5338()  # Create with default address
@@ -547,6 +553,80 @@ class si5338TestFixture(object):
             276: 0x00,
             277: 0x00,
             278: 0x00,
+
+
+            279: 0x00,
+            280: 0x00,
+            281: 0x00,
+            282: 0x00,
+            283: 0x00,
+            284: 0x00,
+            285: 0x00,
+            286: 0x00,
+            287: 0xFF,
+            288: 0xFF,
+            289: 0xFF,
+            290: 0xFF,
+            291: 0xFF,
+            292: 0xFF,
+            293: 0xFF,
+            294: 0xFF,
+            295: 0xFF,
+            296: 0xFF,
+            297: 0xFF,
+            298: 0xFF,
+            299: 0x0F,
+            300: 0x00,
+            301: 0x00,
+            302: 0x00,
+            303: 0xFF,
+            304: 0xFF,
+            305: 0xFF,
+            306: 0xFF,
+            307: 0xFF,
+            308: 0xFF,
+            309: 0xFF,
+            310: 0xFF,
+            311: 0xFF,
+            312: 0xFF,
+            313: 0xFF,
+            314: 0xFF,
+            315: 0x0F,
+            316: 0x00,
+            317: 0x00,
+            318: 0x00,
+            319: 0xFF,
+            320: 0xFF,
+            321: 0xFF,
+            322: 0xFF,
+            323: 0xFF,
+            324: 0xFF,
+            325: 0xFF,
+            326: 0xFF,
+            327: 0xFF,
+            328: 0xFF,
+            329: 0xFF,
+            330: 0xFF,
+            331: 0x0F,
+            332: 0x00,
+            333: 0x00,
+            334: 0x00,
+            335: 0xFF,
+            336: 0xFF,
+            337: 0xFF,
+            338: 0xFF,
+            339: 0xFF,
+            340: 0xFF,
+            341: 0xFF,
+            342: 0xFF,
+            343: 0xFF,
+            344: 0xFF,
+            345: 0xFF,
+            346: 0xFF,
+            347: 0x0F,
+            348: 0x00,
+            349: 0x00,
+            350: 0x00
         }
 
     def virtual_registers_en(self, en):
@@ -578,12 +658,15 @@ def test_si5338_driver():
 
 class TestSI5338:
     def test_read_and_write():
-        for i in range(2, 6):
-            value_to_write = random.randint(0, 255)
-            test_si5338_driver.si5338.paged_write8(i, value_to_write)
-            assert test_si5338_driver.read_virtual_reg_map(0x70, i) == value_to_write
-        for i in range(2, 6):
-            assert test_si5338_driver.read_virtual_reg_map(0x70, i) == test_si5338_driver.si5338.paged_read8(i)
+        value_to_write = random.randint(0, 255)
+        test_si5338_driver.si5338.paged_write8(2, value_to_write)
+        assert test_si5338_driver.read_virtual_reg_map(0x70, 2) == value_to_write
+        assert test_si5338_driver.read_virtual_reg_map(0x70, 2) == test_si5338_driver.si5338.paged_read8(2)
+
+        value_to_write = random.randint(0, 255)
+        test_si5338_driver.si5338.paged_write8(287, value_to_write)
+        assert test_si5338_driver.read_virtual_reg_map(0x70, 287) == value_to_write
+        assert test_si5338_driver.read_virtual_reg_map(0x70, 287) == test_si5338_driver.si5338.paged_read8(287)
 
     def test_read_modify_write():
         for i in range(2, 6):
