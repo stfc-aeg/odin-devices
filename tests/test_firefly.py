@@ -23,7 +23,6 @@ To Test:
 
 import sys
 import pytest
-import time
 
 if sys.version_info[0] == 3:                # pragma: no cover
     from unittest.mock import Mock, MagicMock, call, patch
@@ -67,7 +66,6 @@ TX_EXAMPLE_PN =  [ord(x) for x in list('T0414xxx0114    ')]  # https://suddendoc
 
 
 def model_I2C_readList(register, length):
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
     length = int(length)
     outlist = []
     for reg in range(register, register+length):
@@ -80,7 +78,6 @@ def model_I2C_readList(register, length):
 
 
 def model_I2C_readU8(register):
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
     try:
         #print("\t\tSearching for register {}".format(register))
         if register <= 127:     # Lower page
@@ -94,7 +91,7 @@ def model_I2C_readU8(register):
 
 
 def model_I2C_write8(register, value):
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
+    global mock_registers_CXP_PS, mock_registers_QSFP_PS
     if register <= 127:     # Lower page
         (mock_registers_CXP if mock_registers_areCXP else mock_registers_QSFP)['lower'][register] = value
     else:                   # Upper page(s)
@@ -109,7 +106,6 @@ def model_I2C_write8(register, value):
 
 
 def model_I2C_writeList(register, values):
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
     for i in range(0, len(values)):
         reg = register + i
         model_I2C_write8(reg, values[i])
@@ -119,16 +115,16 @@ def model_I2C_writeList(register, values):
 
 
 def mock_I2C_SwitchDeviceQSFP():
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
+    global mock_registers_areCXP
     mock_registers_areCXP = False
 
 
 def mock_I2C_SwitchDeviceCXP():
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
+    global mock_registers_areCXP
     mock_registers_areCXP = True
 
 def mock_registers_reset():
-    global mock_registers_areCXP, mock_registers_CXP_PS, mock_registers_QSFP_PS
+    global mock_registers_CXP_PS, mock_registers_QSFP_PS
     print("!!! Register Map Reset !!!")
     mock_registers_CXP['lower'] = {}
     mock_registers_QSFP['lower'] = {}
