@@ -116,7 +116,7 @@ class TestDAC63004:
 
         test_dac63004_driver.dac63004.set_dac_current_range(DAC63004.CurrentRange.RANGE_0_250, 3)
         assert test_dac63004_driver.read_virtual_regmap(0x70, 0x04) == 0b11000000000
- 
+
         test_dac63004_driver.dac63004.set_dac_current_range(DAC63004.CurrentRange.RANGE_0_negative_24, 0)
         assert test_dac63004_driver.read_virtual_regmap(0x70, 0x04) == 0b100000000000
 
@@ -325,25 +325,25 @@ class TestDAC63004:
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.EXT_REF_1x, 0)
         test_dac63004_driver.dac63004.set_external_reference_voltage(1.5)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.15)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 410
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 410
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.VDD_REF_1x, 0)
         test_dac63004_driver.dac63004.set_VDD_reference_voltage(5)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.2)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 164
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 164
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.INT_REF_1_5x, 0)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.25)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 563
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 563
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.INT_REF_2x, 0)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.3)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 507
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 507
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.INT_REF_3x, 0)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.35)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 394
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 394
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.INT_REF_4x, 0)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.4)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 338
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 338
