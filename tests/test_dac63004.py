@@ -86,10 +86,10 @@ class dac63004TestFixture(object):
                 return self.device_registers[reg].value
 
     def write_virtual_regmap(self, address, register, value):
-        if (self.registers[255] == 0):
-            self.registers[register] = value
-        else:
-            self.registers[register + 256] = value
+        for reg in self.device_registers.keys():
+            if self.device_registers[reg].address == register:
+                self.device_registers[reg].value = value
+                return
 
 
 @pytest.fixture(scope="class")
