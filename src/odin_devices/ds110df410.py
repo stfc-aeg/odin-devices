@@ -522,7 +522,7 @@ class DS110DF410(I2CDevice):
                 raise I2CException(
                     "Please specify a single group tolerance with mask 0x0F."
                     "To apply this to both groups, choose PPM_GROUP_Both.")
-            if not (group_select in [PPM_GROUP_0, PPM_GROUP_1, PPM_GROUP_Both]):
+            if group_select not in [PPM_GROUP_0, PPM_GROUP_1, PPM_GROUP_Both]:
                 raise I2CException(
                     "Invalid group selected. Please Choose PPM_GROUP_0/1/Both")
 
@@ -813,10 +813,10 @@ class DS110DF410(I2CDevice):
                                     REF_CLK_Refless_Constr_CAPDAC, REF_CLK_Refless_All_CAPDAC.
             """
             # By default, ref clk mode 3 will use external osc to switch VCO ratios in 0x2F manual mode
-            if not (ref_clk_mode in [REF_CLK_Mode_3,
+            if ref_clk_mode not in [REF_CLK_Mode_3,
                                      REF_CLK_Constr_CAPDAC__RefClk_EN,
                                      REF_CLK_Refless_Constr_CAPDAC,
-                                     REF_CLK_Refless_All_CAPDAC]):
+                                     REF_CLK_Refless_All_CAPDAC]:
                 raise I2CException(
                     "Invalid reference clock mode specified, choose from:"
                     " REF_CLK_[Mode_3, Constr_CAPDAC__RefClk_EN, Refless_Constr_CAPDAC,"
@@ -879,10 +879,10 @@ class DS110DF410(I2CDevice):
 
             :param cap_dac_range:   Range choice, from CAP_DAC_RANGE_Start_Minus<1-4>
             """
-            if not (cap_dac_range in [CAP_DAC_RANGE_Start_Minus_1,
+            if cap_dac_range not in [CAP_DAC_RANGE_Start_Minus_1,
                                       CAP_DAC_RANGE_Start_Minus_2,
                                       CAP_DAC_RANGE_Start_Minus_3,
-                                      CAP_DAC_RANGE_Start_Minus_4]):
+                                      CAP_DAC_RANGE_Start_Minus_4]:
                 raise I2CException(
                     "Incorrect CAP DAC Range Specified")
             self._ds110._write_field(
@@ -901,7 +901,7 @@ class DS110DF410(I2CDevice):
                     DS110DF410._FIELD_Chn_VCO_Div_Override_EN,
                     self.CID, 0b0)
                 return
-            elif not (manual_divider_ratio in [1, 2, 4, 8, 16]):
+            elif manual_divider_ratio not in [1, 2, 4, 8, 16]:
                 raise I2CException(
                     "Invalid divider ratio supplied, please choose 1, 2, 4, 8, or 16")
 
@@ -1346,7 +1346,7 @@ class DS110DF410(I2CDevice):
             self._ds110._write_field(DS110DF410._FIELD_Chn_Driver_VOD, self.CID, field_value)
 
             # De-emphasis
-            if not (de_emphasis_db in DS110DF410._De_Emphasis_Value_Map.keys()):
+            if de_emphasis_db not in DS110DF410._De_Emphasis_Value_Map.keys():
                 raise I2CException(
                     "De-emphasis setting must be one of the following values: "
                     "{}".format(list(DS110DF410._De_Emphasis_Value_Map.keys())))
@@ -1379,7 +1379,7 @@ class DS110DF410(I2CDevice):
                                 RST_ALL will reset all systems. Others: RST_CORE, RST_REGS, RST_REFCLK,
                                 RST_VCO
             """
-            if type(selection) != list:
+            if type(selection) is not list:
                 raise I2CException(
                     "Argument supplied was not a list")
             if RST_ALL in selection:
