@@ -100,7 +100,7 @@ class TestGPIOBus():
         # Check that the FileNotFoundError triggers a GPIOError which warns about gpiochip
         with pytest.raises(GPIOException, match=".*gpiochip.*"):
             try:
-                test.gpio_bus.gpio_bus_temp = GPIO_Bus(5, 1, 20)    # Test same request as before
+                test_gpio_bus.gpio_bus.gpio_bus_temp = GPIO_Bus(5, 1, 20)    # Test same request as before
             except FileNotFoundError:
                 pass    # Stop trigger error causing failure if it is not handled
 
