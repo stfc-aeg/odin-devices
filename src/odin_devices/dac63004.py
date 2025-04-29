@@ -82,12 +82,12 @@ class DAC63004(I2CDevice):
         VoltageGain.INT_REF_2x: Gain = 2x, internal reference,
         VoltageGain.INT_REF_3x: Gain = 3x, internal reference,
         VoltageGain.INT_REF_4x: Gain = 4x, internal reference"""
-        EXT_REF_1x = 0b000
-        VDD_REF_1x = 0b001
-        INT_REF_1_5x = 0b010
-        INT_REF_2x = 0b011
-        INT_REF_3x = 0b100
-        INT_REF_4x = 0b101
+        EXT_REF_1x = 0b0
+        VDD_REF_1x = 0b10000000000
+        INT_REF_1_5x = 0b100000000000
+        INT_REF_2x = 0b0110000000000
+        INT_REF_3x = 0b1000000000000
+        INT_REF_4x = 0b1010000000000
 
     class VoltagePowerDownMode(Enum):
         """An enum used to represent the way in which the voltage output of a DAC will be powered
@@ -96,9 +96,9 @@ class DAC63004(I2CDevice):
         VoltagePowerDownMode.POW_DOWN_10k: Power-down VOUT-X with 10 KΩ to AGND
         VoltagePowerDownMode.POW_DOWN_100k: Power-down VOUT-X with 100 KΩ to AGND
         VoltagePowerDownMode.POW_DOWN_HI_Z: Power-down VOUT-X with Hi-Z to AGND"""
-        POW_DOWN_10k = 0b1
-        POW_DOWN_100k = 0b10
-        POW_DOWN_HI_Z = 0b11
+        POW_DOWN_10k = 0b10
+        POW_DOWN_100k = 0b100
+        POW_DOWN_HI_Z = 0b110
 
     class CurrentRange(Enum):
         """An enum used to represent each of the discrete ranges you can have selected for a dacs
@@ -361,7 +361,7 @@ class DAC63004(I2CDevice):
             # The 0 sets the current output for the dac to powered up mode
             # See page 61 in the data sheet for more info on the COMMON_CONFIG register
             mask = 0b111 << (3 * index)
-            write = voltageTermination.value << ((3 * index) + 1)
+            write = voltageTermination.value << (3 * index)
 
             self.read_modify_write("COMMON_CONFIG", mask, write)
         else:
@@ -388,7 +388,7 @@ class DAC63004(I2CDevice):
             # The 1 sets the current output for the dac to powered down mode
             # See page 61 in the data sheet for more info on the COMMON_CONFIG register
             mask = 0b111 << (3 * index)
-            write = 0b001 << ((3 * index) + 1)
+            write = 0b001 << (3 * index)
             self.read_modify_write("COMMON_CONFIG", mask, write)
         else:
             raise IndexError("Index " + str(index) + " is not a valid index (0,1,2 or 3).")
