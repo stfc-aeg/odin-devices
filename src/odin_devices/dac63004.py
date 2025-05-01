@@ -82,12 +82,12 @@ class DAC63004(I2CDevice):
         VoltageGain.INT_REF_2x: Gain = 2x, internal reference,
         VoltageGain.INT_REF_3x: Gain = 3x, internal reference,
         VoltageGain.INT_REF_4x: Gain = 4x, internal reference"""
-        EXT_REF_1x = 0b000
-        VDD_REF_1x = 0b001
-        INT_REF_1_5x = 0b010
-        INT_REF_2x = 0b011
-        INT_REF_3x = 0b100
-        INT_REF_4x = 0b101
+        EXT_REF_1x = 0b0
+        VDD_REF_1x = 0b10000000000
+        INT_REF_1_5x = 0b100000000000
+        INT_REF_2x = 0b0110000000000
+        INT_REF_3x = 0b1000000000000
+        INT_REF_4x = 0b1010000000000
 
     class VoltagePowerDownMode(Enum):
         """An enum used to represent the way in which the voltage output of a DAC will be powered
@@ -96,9 +96,9 @@ class DAC63004(I2CDevice):
         VoltagePowerDownMode.POW_DOWN_10k: Power-down VOUT-X with 10 KΩ to AGND
         VoltagePowerDownMode.POW_DOWN_100k: Power-down VOUT-X with 100 KΩ to AGND
         VoltagePowerDownMode.POW_DOWN_HI_Z: Power-down VOUT-X with Hi-Z to AGND"""
-        POW_DOWN_10k = 0b1
-        POW_DOWN_100k = 0b10
-        POW_DOWN_HI_Z = 0b11
+        POW_DOWN_10k = 0b10
+        POW_DOWN_100k = 0b100
+        POW_DOWN_HI_Z = 0b110
 
     class CurrentRange(Enum):
         """An enum used to represent each of the discrete ranges you can have selected for a dacs
@@ -152,23 +152,6 @@ class DAC63004(I2CDevice):
         self.external_reference_voltage = external_reference_voltage
         self.VDD_reference_voltage = VDD_reference_voltage
 
-    def read_all_registers(self):
-        """Iterate over each register in the device_registers dictionary,
-        read them and print the result."""
-        for i in self.device_registers:
-            if self.device_registers[i]["flipped"]:
-                print(
-                    "Read register "
-                    + i
-                    + " as "
-                    + str(hex(self.readU16flipped(self.read_register_address(i)))))
-            else:
-                print(
-                    "Read register "
-                    + i
-                    + " as "
-                    + str(hex(self.readU16(self.read_register_address(i)))))
-
     def read_register_address(self, register_name):
         """Get the address of the specified register by name, returning none
         if the name does not match any registers.
@@ -179,8 +162,7 @@ class DAC63004(I2CDevice):
         if register_name in self.device_registers:
             return self.device_registers[register_name]["address"]
         else:
-            print(f"Register '{register_name}' not found.")
-            return None
+            raise KeyError("Register " + register_name + " does not match any known registers.")
 
     def read_modify_write(self, register_name, mask, value):
         """Perform a read-modify-write operation on a register.
@@ -223,7 +205,7 @@ class DAC63004(I2CDevice):
                 "Wrote value "
                 + str(bin(value))
                 + " to register at address "
-                + str(hex(register_address)))
+                + str(hex(register_address)))  # pragma: no cover
 
     def read_register_by_name(self, name, debug=True):
         """Read a 16-bit value from a register accessed using the name
@@ -242,8 +224,8 @@ class DAC63004(I2CDevice):
             int: the value stored in the register that was read (16 bit value)
         """
         if name in self.device_registers.keys():
-            register_address = self.device_registers[name].address
-            flipped = self.device_registers[name].flipped
+            register_address = self.device_registers[name]["address"]
+            flipped = self.device_registers[name]["flipped"]
             if flipped:
                 result = self.readU16flipped(register_address)
             else:
@@ -283,7 +265,7 @@ class DAC63004(I2CDevice):
                 + str(hex(register_address))
                 + " as "
                 + str(bin(result))
-            )
+            )  # pragma: no cover
         return result
 
     def write16flipped(self, reg, value):
@@ -361,7 +343,7 @@ class DAC63004(I2CDevice):
             # The 0 sets the current output for the dac to powered up mode
             # See page 61 in the data sheet for more info on the COMMON_CONFIG register
             mask = 0b111 << (3 * index)
-            write = voltageTermination.value << ((3 * index) + 1)
+            write = voltageTermination.value << (3 * index)
 
             self.read_modify_write("COMMON_CONFIG", mask, write)
         else:
@@ -388,7 +370,7 @@ class DAC63004(I2CDevice):
             # The 1 sets the current output for the dac to powered down mode
             # See page 61 in the data sheet for more info on the COMMON_CONFIG register
             mask = 0b111 << (3 * index)
-            write = 0b001 << ((3 * index) + 1)
+            write = 0b001 << (3 * index)
             self.read_modify_write("COMMON_CONFIG", mask, write)
         else:
             raise IndexError("Index " + str(index) + " is not a valid index (0,1,2 or 3).")
@@ -640,14 +622,3 @@ class DAC63004(I2CDevice):
         self.put_dac_into_current_mode(2, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
         self.put_dac_into_current_mode(3, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
 
-
-if __name__ == "__main__":
-    u34 = DAC63004(0x48, 3)
-    u34.read_all_registers()
-    # u34.set_all_dacs_to_voltage()
-    u34.set_all_dacs_to_current(DAC63004.CurrentRange.RANGE_0_250)
-    current = int(input("Enter current "))
-    u34.set_dac_current_micro_amps(0, current)
-    u34.set_dac_current_micro_amps(1, current)
-    u34.set_dac_current_micro_amps(2, current)
-    u34.set_dac_current_micro_amps(3, current)
