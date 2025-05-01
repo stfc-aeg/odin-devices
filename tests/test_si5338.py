@@ -5,7 +5,7 @@ Jack Santiago, STFC Detector Systems Software Group
 
 import sys
 import pytest  # type: ignore
-import random
+import os
 
 
 if sys.version_info[0] == 3:  # pragma: no cover
@@ -20,7 +20,8 @@ else:  # pragma: no cover
 sys.modules["smbus"] = Mock()
 sys.modules["logging"] = Mock()  # Track calls to logger.warning
 
-from odin_devices.si5338 import SI5338
+from odin_devices.si5338 import SI5338  # noqa: E402
+
 
 class si5338TestFixture(object):
     def __init__(self):
@@ -755,6 +756,9 @@ class si5338TestFixture(object):
             return self.registers[register + 256]
         else:
             raise Exception("Register 255 (paging register) should always be either 0 or 1 but is not.")
+        
+    def read_virtual_regmap_paged(self, address, register):
+        return self.registers[register]
 
     def write_virtual_regmap(self, address, register, value):
         if (register == 255):
@@ -779,7 +783,7 @@ class TestSI5338:
         value_to_write = 222
         provided_mask = 0b10101010
         test_si5338_driver.si5338.paged_read_modify_write(28, provided_mask,  value_to_write)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 28) & provided_mask == value_to_write & provided_mask
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 28) & provided_mask == value_to_write & provided_mask
 
     def test_page_switching(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
@@ -788,28 +792,512 @@ class TestSI5338:
             test_si5338_driver.si5338.switch_page(test_value)
 
         test_si5338_driver.si5338.switch_page(1)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 1
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 255) == 1
         test_si5338_driver.si5338.switch_page(0)
-        assert test_si5338_driver.read_virtual_regmap(0x70, 255) == 0
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 255) == 0
 
     def test_pre_write(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
         test_si5338_driver.si5338.pre_write()
-        assert test_si5338_driver.read_virtual_regmap(0x70, 230) & 0b00010000 == 0b00010000
-        assert test_si5338_driver.read_virtual_regmap(0x70, 241) & 0b10000000 == 0b10000000
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 230) & 0b00010000 == 0b00010000
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 241) & 0b10000000 == 0b10000000
 
     def test_post_write(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
         test_si5338_driver.si5338.post_write()
-        assert test_si5338_driver.read_virtual_regmap(0x70, 246) & 0b00000010 == 0b00000010
-        assert test_si5338_driver.read_virtual_regmap(0x70, 241) & 0b11111111 == 0x65
-        assert test_si5338_driver.read_virtual_regmap(0x70, 47) & 0b00000011 == test_si5338_driver.read_virtual_regmap(0x70, 237) & 0b00000011
-        assert test_si5338_driver.read_virtual_regmap(0x70, 46) == test_si5338_driver.read_virtual_regmap(0x70, 236) & 0b00000011
-        assert test_si5338_driver.read_virtual_regmap(0x70, 45) == test_si5338_driver.read_virtual_regmap(0x70, 235) & 0b00000011
-        assert test_si5338_driver.read_virtual_regmap(0x70, 47) & 0b11111100 == 0b00010100
-        assert test_si5338_driver.read_virtual_regmap(0x70, 49) & 0b10000000 == 0b10000000
-        assert test_si5338_driver.read_virtual_regmap(0x70, 230) & 0b00010000 == 0b00000000
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 246) & 0b00000010 == 0b00000010
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 241) & 0b11111111 == 0x65
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 47) & 0b00000011 == test_si5338_driver.read_virtual_regmap(0x70, 237) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 46) == test_si5338_driver.read_virtual_regmap(0x70, 236) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 45) == test_si5338_driver.read_virtual_regmap(0x70, 235) & 0b00000011
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 47) & 0b11111100 == 0b00010100
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 49) & 0b10000000 == 0b10000000
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 230) & 0b00010000 == 0b00000000
 
-    def test_write_register_map(self, test_si5338_driver):
+    def test_apply_register_map(self, test_si5338_driver, tmpdir):
+        test_si5338_driver.virtual_registers_en(True)
         with pytest.raises(FileNotFoundError, match="No such file or directory: ''"):
-            test_si5338_driver.si5338.apply_register_map("", False, False)
+            test_si5338_driver.si5338._write_register_map("", False)
+
+        f = tmpdir.mkdir("sub").join("test_reg_map_file.txt")
+        reg_map = r"""# Si5338 Registers Script
+# 
+# Part: Si5338
+# Project File: C:\Users\erc97477\OneDrive - Science and Technology Facilities Council\Documents\Si5338-RevB-Project.slabtimeproj
+# Bits 6:0 in addr 27d/0x1B will be 0 always
+# Creator: ClockBuilder Pro v4.14 [2024-12-02]
+# Created On: 2025-04-03 10:31:25 GMT+01:00
+# Address,Data
+6,08h
+27,00h
+28,16h
+29,90h
+30,B0h
+31,C0h
+32,C0h
+33,E3h
+34,E3h
+35,0Ah
+36,06h
+37,06h
+38,00h
+39,00h
+40,84h
+41,0Ch
+42,23h
+45,00h
+46,00h
+47,14h
+48,32h
+49,00h
+50,C3h
+51,07h
+52,10h
+53,00h
+54,D5h
+55,00h
+56,00h
+57,00h
+58,00h
+59,01h
+60,00h
+61,00h
+62,00h
+63,10h
+64,00h
+65,12h
+66,00h
+67,00h
+68,00h
+69,00h
+70,01h
+71,00h
+72,00h
+73,00h
+74,10h
+75,00h
+76,00h
+77,00h
+78,00h
+79,00h
+80,00h
+81,00h
+82,00h
+83,00h
+84,00h
+85,10h
+86,00h
+87,00h
+88,00h
+89,00h
+90,00h
+91,00h
+92,00h
+93,00h
+94,00h
+95,00h
+97,C0h
+98,33h
+99,00h
+100,00h
+101,00h
+102,00h
+103,02h
+104,00h
+105,00h
+106,80h
+107,00h
+108,00h
+109,00h
+110,40h
+111,00h
+112,00h
+113,00h
+114,40h
+115,00h
+116,80h
+117,00h
+118,40h
+119,00h
+120,00h
+121,00h
+122,40h
+123,00h
+124,00h
+125,00h
+126,00h
+127,00h
+128,00h
+129,00h
+130,00h
+131,00h
+132,00h
+133,00h
+134,00h
+135,00h
+136,00h
+137,00h
+138,00h
+139,00h
+140,00h
+141,00h
+142,00h
+143,00h
+144,00h
+152,00h
+153,00h
+154,00h
+155,00h
+156,00h
+157,00h
+158,00h
+159,00h
+160,00h
+161,00h
+162,00h
+163,00h
+164,00h
+165,00h
+166,00h
+167,00h
+168,00h
+169,00h
+170,00h
+171,00h
+172,00h
+173,00h
+174,00h
+175,00h
+176,00h
+177,00h
+178,00h
+179,00h
+180,00h
+181,00h
+182,00h
+183,00h
+184,00h
+185,00h
+186,00h
+187,00h
+188,00h
+189,00h
+190,00h
+191,00h
+192,00h
+193,00h
+194,00h
+195,00h
+196,00h
+197,00h
+198,00h
+199,00h
+200,00h
+201,00h
+202,00h
+203,00h
+204,00h
+205,00h
+206,00h
+207,00h
+208,00h
+209,00h
+210,00h
+211,00h
+212,00h
+213,00h
+214,00h
+215,00h
+216,00h
+217,00h
+230,0Ch
+287,00h
+288,00h
+289,01h
+290,00h
+291,00h
+292,90h
+293,31h
+294,00h
+295,00h
+296,01h
+297,00h
+298,00h
+299,00h
+303,00h
+304,00h
+305,01h
+306,00h
+307,00h
+308,90h
+309,31h
+310,00h
+311,00h
+312,01h
+313,00h
+314,00h
+315,00h
+319,00h
+320,00h
+321,01h
+322,00h
+323,00h
+324,90h
+325,31h
+326,00h
+327,00h
+328,01h
+329,00h
+330,00h
+331,00h
+335,00h
+336,00h
+337,00h
+338,00h
+339,00h
+340,90h
+341,31h
+342,00h
+343,00h
+344,01h
+345,00h
+346,00h
+347,00h"""
+        f.write(reg_map)
+        assert f.read() == reg_map
+        assert len(tmpdir.listdir()) == 1
+        test_si5338_driver.si5338._write_register_map(f, False)
+
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 6) & 0x1D == 0x08 & 0x1D
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 27) & 0x80 == 0x00 & 0x80
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 28) == 0x16
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 29) == 0x90
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 30) == 0xB0
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 31) == 0xC0
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 32) == 0xC0
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 33) == 0xE3
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 34) == 0xE3
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 35) == 0x0A
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 36) & 0x1F == 0x06 & 0x1F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 37) & 0x1F == 0x06 & 0x1F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 38) & 0x1F == 0x00 & 0x1F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 39) & 0x1F == 0x00 & 0x1F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 40) == 0x84
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 41) & 0x7F == 0x0C & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 42) & 0x3F == 0x23 & 0x3F
+
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 48) == 0x32
+
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 50) == 0xC3
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 51) == 0x07
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 52) == 0x10
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 53) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 54) == 0xD5
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 55) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 56) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 57) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 58) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 59) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 60) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 61) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 62) & 0x3F == 0x00 & 0x3F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 63) & 0x7F == 0x10 & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 64) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 65) == 0x12
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 66) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 67) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 68) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 69) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 70) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 71) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 72) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 73) & 0x3F == 0x00 & 0x3F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 74) & 0x7F == 0x10 & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 75) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 76) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 77) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 78) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 79) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 80) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 81) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 82) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 83) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 84) & 0x3F == 0x00 & 0x3F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 85) & 0x7F == 0x10 & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 86) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 87) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 88) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 89) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 90) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 91) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 92) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 93) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 94) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 95) & 0x3F == 0x00 & 0x3F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 97) == 0xC0
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 98) == 0x33
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 99) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 100) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 101) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 102) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 103) == 0x02
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 104) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 105) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 106) & 0xBF == 0x80 & 0xBF
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 107) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 108) & 0x7F == 0x00 & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 109) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 110) == 0x40
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 111) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 112) & 0x7F == 0x00 & 0x7F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 113) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 114) == 0x40
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 115) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 116) == 0x80
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 117) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 118) == 0x40
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 119) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 120) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 121) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 122) == 0x40
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 123) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 124) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 125) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 126) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 127) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 128) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 129) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 130) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 131) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 132) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 133) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 134) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 135) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 136) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 137) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 138) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 139) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 140) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 141) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 142) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 143) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 144) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 152) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 153) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 154) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 155) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 156) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 157) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 158) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 159) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 160) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 161) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 162) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 163) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 164) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 165) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 166) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 167) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 168) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 169) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 170) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 171) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 172) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 173) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 174) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 175) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 176) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 177) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 178) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 179) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 180) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 181) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 182) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 183) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 184) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 185) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 186) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 187) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 188) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 189) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 190) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 191) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 192) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 193) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 194) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 195) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 196) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 197) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 198) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 199) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 200) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 201) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 202) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 203) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 204) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 205) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 206) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 207) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 208) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 209) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 210) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 211) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 212) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 213) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 214) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 215) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 216) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 217) == 0x00
+
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 287) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 288) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 289) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 290) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 291) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 292) == 0x90
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 293) == 0x31
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 294) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 295) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 296) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 297) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 298) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 299) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 303) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 304) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 305) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 306) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 307) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 308) == 0x90
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 309) == 0x31
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 310) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 311) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 312) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 313) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 314) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 315) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 319) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 320) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 321) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 322) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 323) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 324) == 0x90
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 325) == 0x31
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 326) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 327) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 328) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 329) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 330) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 331) & 0x0F == 0x00 & 0x0F
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 335) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 336) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 337) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 338) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 339) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 340) == 0x90
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 341) == 0x31
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 342) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 343) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 344) == 0x01
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 345) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 346) == 0x00
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 347) & 0x0F == 0x00 & 0x0F
