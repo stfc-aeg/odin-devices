@@ -723,17 +723,17 @@ class SI5338(I2CDevice):
                 for line in lines:
                     # if the line is empty, skip it
                     if line == "":
-                        continue
+                        continue  # pragma: no cover
                     # if the line starts with a #, it is a comment and should be skipped
                     if line.strip()[0] == "#":
-                        continue
+                        continue  # pragma: no cover
                     # if the line does not provide an address and value, skip it
                     if len(line.split(",")) != 2:
-                        continue
+                        continue  # pragma: no cover
                     address = int(line.split(",")[0])
                     # Skip address 27 again because it is skipped in the writing stage
                     if address == 27:
-                        continue
+                        continue  # pragma: no cover
                     # get the value and convert it from hex to decimal
                     value = int(line.split(",")[1].replace("h", ""), 16)
                     # read the value from the location
@@ -750,7 +750,7 @@ class SI5338(I2CDevice):
                             + str(address)
                             + " does not match expected value "
                             + str(value)
-                        )
+                        )  # pragma: no cover
                 logging.debug("Verification complete.")
 
     def paged_write8(self, reg, value):
@@ -886,15 +886,10 @@ class SI5338(I2CDevice):
                 + "\n"
                 + str(address)
                 + ","
-                + hex(self.paged_read8(address)).replace("0x", "")
+                + hex(self.paged_read8(address)).replace("0x", "").upper()
                 + "h"
             )
         # write the contents of text to a file at the path provided
         with open(path_to_export_to, "w") as file:
             file.write(text)
 
-
-if __name__ == "__main__":
-    clockGen = SI5338(0x70, 3)
-    path = input("Enter path: ")
-    clockGen.apply_register_map(path, False, True)
