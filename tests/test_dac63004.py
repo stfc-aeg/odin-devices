@@ -378,6 +378,12 @@ class TestDAC63004:
         with pytest.raises(KeyError, match="No register found matching name 'INCORRECT_NAME'."):
             test_dac63004_driver.dac63004.read_register_by_name("INCORRECT_NAME", False)
 
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x19, 0b1100110010011001)
+        test_dac63004_driver.dac63004.read_register_by_name("DAC_0_DATA") == 0b1100110010011001
+        
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x20, 0b1100110010011001)
+        test_dac63004_driver.dac63004.read_register_by_name("COMMON_TRIGGER") == 0b1100110010011001
+
     def test_set_dac_voltage(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
 
