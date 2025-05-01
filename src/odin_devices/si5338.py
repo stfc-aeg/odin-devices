@@ -635,8 +635,8 @@ class SI5338(I2CDevice):
         """
         # Wait for valid input clock status
         while self.paged_read8(218) & 100 == 0b100:
-            time.sleep(0.05)
-            logging.debug("Checking input clock.")
+            time.sleep(0.05)  # pragma: no cover
+            logging.debug("Checking input clock.")  # pragma: no cover
         # Configure PLL for locking
         self.paged_read_modify_write(49, 0b10000000, 0b00000000)
         # Initiate locking of PLL
@@ -646,8 +646,8 @@ class SI5338(I2CDevice):
         self.paged_read_modify_write(241, 0b11111111, 0x65)
         # Wait to confirm PLL lock
         while self.paged_read8(218) & 10000 == 0b10000:
-            time.sleep(0.05)
-            logging.debug("Checking PLL lock status.")
+            time.sleep(0.05)  # pragma: no cover
+            logging.debug("Checking PLL lock status.")  # pragma: no cover
         # Copy FCAL values to active registers
         self.paged_read_modify_write(47, 0b00000011, self.paged_read8(237))
         self.paged_write8(46, self.paged_read8(236))
@@ -750,7 +750,7 @@ class SI5338(I2CDevice):
                             + str(address)
                             + " does not match expected value "
                             + str(value)
-                        )
+                        ) 
                 logging.debug("Verification complete.")
 
     def paged_write8(self, reg, value):
@@ -815,8 +815,7 @@ class SI5338(I2CDevice):
 
         previousValue = self.paged_read8(reg)
         maskedValue = (value & system_mask & provided_mask) | (
-            previousValue & ~(system_mask & provided_mask)
-        )
+            previousValue & ~(system_mask & provided_mask))
 
         # carry out modulus division on the address so that it is always less than 256
         self.write8(reg % 256, maskedValue)
@@ -864,7 +863,7 @@ class SI5338(I2CDevice):
                 self.currentPage = 1
             # If they haven't entered 0 or 1, it is not a valid page index so print an err
             else:
-                logging.error("Invalid page provided: " + str(page))
+                raise IndexError("Invalid page provided: " + str(page) + ". Accepted values are 0 and 1.")
 
     def export_register_map(self, path_to_export_to):
         """Read back various registers, generate a string from them and write that string to a file
@@ -887,15 +886,10 @@ class SI5338(I2CDevice):
                 + "\n"
                 + str(address)
                 + ","
-                + hex(self.paged_read8(address)).replace("0x", "")
+                + hex(self.paged_read8(address)).replace("0x", "").upper()
                 + "h"
             )
         # write the contents of text to a file at the path provided
         with open(path_to_export_to, "w") as file:
             file.write(text)
 
-
-if __name__ == "__main__":
-    clockGen = SI5338(0x70, 3)
-    path = input("Enter path: ")
-    clockGen.apply_register_map(path, False, True)
