@@ -205,7 +205,7 @@ class DAC63004(I2CDevice):
                 "Wrote value "
                 + str(bin(value))
                 + " to register at address "
-                + str(hex(register_address)))
+                + str(hex(register_address)))  # pragma: no cover
 
     def read_register_by_name(self, name, debug=True):
         """Read a 16-bit value from a register accessed using the name
@@ -265,7 +265,7 @@ class DAC63004(I2CDevice):
                 + str(hex(register_address))
                 + " as "
                 + str(bin(result))
-            )
+            )  # pragma: no cover
         return result
 
     def write16flipped(self, reg, value):
@@ -622,14 +622,3 @@ class DAC63004(I2CDevice):
         self.put_dac_into_current_mode(2, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
         self.put_dac_into_current_mode(3, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
 
-
-if __name__ == "__main__":
-    u34 = DAC63004(0x48, 3)
-    u34.read_all_registers()
-    # u34.set_all_dacs_to_voltage()
-    u34.set_all_dacs_to_current(DAC63004.CurrentRange.RANGE_0_250)
-    current = int(input("Enter current "))
-    u34.set_dac_current_micro_amps(0, current)
-    u34.set_dac_current_micro_amps(1, current)
-    u34.set_dac_current_micro_amps(2, current)
-    u34.set_dac_current_micro_amps(3, current)
