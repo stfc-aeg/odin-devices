@@ -105,6 +105,18 @@ def test_dac63004_driver():
 
 
 class TestDAC63004:
+    def test_flipped_read(self, test_dac63004_driver):
+        test_dac63004_driver.virtual_registers_en(True)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x00, 0b1001100101100110)
+        assert test_dac63004_driver.dac63004.readU16flipped(0x00) == 0b0110011010011001
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x00, 0x00)
+
+    def test_flipped_write(self, test_dac63004_driver):
+        test_dac63004_driver.virtual_registers_en(True)
+        test_dac63004_driver.dac63004.write16flipped(0x00, 0b1001100101100110)
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x00) == 0b0110011010011001
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x00, 0x00)
+
     def test_set_current_range(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
 
