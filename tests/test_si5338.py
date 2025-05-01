@@ -814,7 +814,7 @@ class TestSI5338:
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 49) & 0b10000000 == 0b10000000
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 230) & 0b00010000 == 0b00000000
 
-    def test_apply_register_map(self, test_si5338_driver, tmpdir):
+    def test_write_register_map(self, test_si5338_driver, tmpdir):
         test_si5338_driver.virtual_registers_en(True)
         with pytest.raises(FileNotFoundError, match="No such file or directory: ''"):
             test_si5338_driver.si5338._write_register_map("", False)
@@ -1066,7 +1066,7 @@ class TestSI5338:
         f.write(reg_map)
         assert f.read() == reg_map
         assert len(tmpdir.listdir()) == 1
-        test_si5338_driver.si5338._write_register_map(f, False)
+        test_si5338_driver.si5338._write_register_map(f, True)
 
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 6) & 0x1D == 0x08 & 0x1D
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 27) & 0x80 == 0x00 & 0x80

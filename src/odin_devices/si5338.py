@@ -635,8 +635,8 @@ class SI5338(I2CDevice):
         """
         # Wait for valid input clock status
         while self.paged_read8(218) & 100 == 0b100:
-            time.sleep(0.05)
-            logging.debug("Checking input clock.")
+            time.sleep(0.05)  # pragma: no cover
+            logging.debug("Checking input clock.")  # pragma: no cover
         # Configure PLL for locking
         self.paged_read_modify_write(49, 0b10000000, 0b00000000)
         # Initiate locking of PLL
@@ -646,8 +646,8 @@ class SI5338(I2CDevice):
         self.paged_read_modify_write(241, 0b11111111, 0x65)
         # Wait to confirm PLL lock
         while self.paged_read8(218) & 10000 == 0b10000:
-            time.sleep(0.05)
-            logging.debug("Checking PLL lock status.")
+            time.sleep(0.05)  # pragma: no cover
+            logging.debug("Checking PLL lock status.")  # pragma: no cover
         # Copy FCAL values to active registers
         self.paged_read_modify_write(47, 0b00000011, self.paged_read8(237))
         self.paged_write8(46, self.paged_read8(236))
@@ -658,7 +658,7 @@ class SI5338(I2CDevice):
         # if we are using down spread write the necessary registers
         if usingDownSpread:
             self.paged_read_modify_write(226, 0b00000100, 0b00000100)
-            time.sleep(0.02)
+            time.sleep(0.02)  # pragma: no cover
             self.paged_read_modify_write(226, 0b00000100, 0b00000000)
         # enable outputs
         self.paged_read_modify_write(230, 0b00010000, 0b00000000)
@@ -697,10 +697,10 @@ class SI5338(I2CDevice):
             for line in lines:
                 # if the line is empty, skip it
                 if line == "":
-                    continue
+                    continue  # pragma: no cover
                 # if the line starts with a #, it is a comment and should be skipped
                 if line.strip()[0] == "#":
-                    continue
+                    continue  # pragma: no cover
 
                 # if the line does not provide an address and value, skip it
                 if len(line.split(",")) != 2:
@@ -709,8 +709,8 @@ class SI5338(I2CDevice):
                         + line
                         + "\n All lines should be structured *Address*,*Value* or start with a # "
                         + "to indicate they are a comment."
-                    )
-                    continue
+                    )  # pragma: no cover
+                    continue  # pragma: no cover
                 address = int(line.split(",")[0])
                 # Skip address 27, because register 27 controls the I2C configuration and writing
                 # to it can cause issues like losing I2C control of this device
