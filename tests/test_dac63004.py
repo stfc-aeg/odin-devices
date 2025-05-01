@@ -393,6 +393,12 @@ class TestDAC63004:
 
         test_dac63004_driver.dac63004.set_external_reference_voltage(1.5)
         test_dac63004_driver.dac63004.set_VDD_reference_voltage(5)
+        
+        test_dac63004_driver.dac63004.read_modify_write("DAC_0_VOUT_CMP_CONFIG", 0b1110000000000, 0b1110000000000)
+        with pytest.raises(Exception, match=re.escape("Error - reference voltage setting not recognized (0b111)")):
+            test_dac63004_driver.dac63004.set_dac_voltage(0, 1)
+
+        test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.EXT_REF_1x, 0)
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.EXT_REF_1x, 0)
         test_dac63004_driver.dac63004.set_dac_voltage(0, 0.15)
