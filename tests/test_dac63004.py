@@ -105,6 +105,52 @@ def test_dac63004_driver():
 
 
 class TestDAC63004:
+    def test_read_register_address(self, test_dac63004_driver):
+        assert test_dac63004_driver.dac63004.read_register_address("NOOP") == 0x00
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_MARGIN_HIGH") == 0x01
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_MARGIN_LOW") == 0x02
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_VOUT_CMP_CONFIG") == 0x03
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_IOUT_MISC_CONFIG") == 0x04
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_CMP_MODE_CONFIG") == 0x05
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_FUNC_CONFIG") == 0x06
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_MARGIN_HIGH") == 0x07
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_MARGIN_LOW") == 0x08
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_VOUT_CMP_CONFIG") == 0x09
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_IOUT_MISC_CONFIG") == 0x0A
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_CMP_MODE_CONFIG") == 0x0B
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_FUNC_CONFIG") == 0x0C
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_MARGIN_HIGH") == 0x0D
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_MARGIN_LOW") == 0x0E
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_VOUT_CMP_CONFIG") == 0x0F
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_IOUT_MISC_CONFIG") == 0x10
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_CMP_MODE_CONFIG") == 0x11
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_FUNC_CONFIG") == 0x12
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_MARGIN_HIGH") == 0x13
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_MARGIN_LOW") == 0x14
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_VOUT_CMP_CONFIG") == 0x15
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_IOUT_MISC_CONFIG") == 0x16
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_CMP_MODE_CONFIG") == 0x17
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_FUNC_CONFIG") == 0x18
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_DATA") == 0x19
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_DATA") == 0x1A
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_DATA") == 0x1B
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_DATA") == 0x1C
+        assert test_dac63004_driver.dac63004.read_register_address("COMMON_CONFIG") == 0x1F
+        assert test_dac63004_driver.dac63004.read_register_address("COMMON_TRIGGER") == 0x20
+        assert test_dac63004_driver.dac63004.read_register_address("COMMON_DAC_TRIG") == 0x21
+        assert test_dac63004_driver.dac63004.read_register_address("GENERAL_STATUS") == 0x22
+        assert test_dac63004_driver.dac63004.read_register_address("CMP_STATUS") == 0x23
+        assert test_dac63004_driver.dac63004.read_register_address("GPIO_CONFIG") == 0x24
+        assert test_dac63004_driver.dac63004.read_register_address("DEVICE_MODE_CONFIG") == 0x25
+        assert test_dac63004_driver.dac63004.read_register_address("INTERFACE_CONFIG") == 0x26
+        assert test_dac63004_driver.dac63004.read_register_address("SRAM_CONFIG") == 0x2B
+        assert test_dac63004_driver.dac63004.read_register_address("SRAM_DATA") == 0x2C
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_0_DATA_8BIT") == 0x40
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_1_DATA_8BIT") == 0x41
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_2_DATA_8BIT") == 0x42
+        assert test_dac63004_driver.dac63004.read_register_address("DAC_3_DATA_8BIT") == 0x43
+        assert test_dac63004_driver.dac63004.read_register_address("BRDCAST_DATA") == 0x50
+
     def test_flipped_read(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
         test_dac63004_driver.write_virtual_regmap(0x70, 0x00, 0b1001100101100110)
