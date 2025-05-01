@@ -106,6 +106,8 @@ def test_dac63004_driver():
 
 class TestDAC63004:
     def test_read_register_address(self, test_dac63004_driver):
+        with pytest.raises(KeyError, match="Register INCORRECT_NAME does not match any known registers."):
+            test_dac63004_driver.dac63004.read_register_address("INCORRECT_NAME")
         assert test_dac63004_driver.dac63004.read_register_address("NOOP") == 0x00
         assert test_dac63004_driver.dac63004.read_register_address("DAC_0_MARGIN_HIGH") == 0x01
         assert test_dac63004_driver.dac63004.read_register_address("DAC_0_MARGIN_LOW") == 0x02
@@ -346,29 +348,29 @@ class TestDAC63004:
         with pytest.raises(Exception, match="Invalid current - current must be between -240 and 250."):
             test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -300)
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 200)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 194
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 200)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 194
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 100)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 193
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 100)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 193
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 35)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 168
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 35)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 168
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 20)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 204
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 20)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 204
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -200)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -200)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -90)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 171
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -90)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 171
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -35)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 166
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -35)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 166
 
-            test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -20)
-            test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -20)
+        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
 
     def test_read_register_by_name(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)

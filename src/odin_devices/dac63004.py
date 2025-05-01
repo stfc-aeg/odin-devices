@@ -152,23 +152,6 @@ class DAC63004(I2CDevice):
         self.external_reference_voltage = external_reference_voltage
         self.VDD_reference_voltage = VDD_reference_voltage
 
-    def read_all_registers(self):
-        """Iterate over each register in the device_registers dictionary,
-        read them and print the result."""
-        for i in self.device_registers:
-            if self.device_registers[i]["flipped"]:
-                print(
-                    "Read register "
-                    + i
-                    + " as "
-                    + str(hex(self.readU16flipped(self.read_register_address(i)))))
-            else:
-                print(
-                    "Read register "
-                    + i
-                    + " as "
-                    + str(hex(self.readU16(self.read_register_address(i)))))
-
     def read_register_address(self, register_name):
         """Get the address of the specified register by name, returning none
         if the name does not match any registers.
@@ -179,8 +162,7 @@ class DAC63004(I2CDevice):
         if register_name in self.device_registers:
             return self.device_registers[register_name]["address"]
         else:
-            print(f"Register '{register_name}' not found.")
-            return None
+            raise KeyError("Register " + register_name + " does not match any known registers.")
 
     def read_modify_write(self, register_name, mask, value):
         """Perform a read-modify-write operation on a register.
