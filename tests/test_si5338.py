@@ -804,7 +804,7 @@ class TestSI5338:
 
     def test_post_write(self, test_si5338_driver):
         test_si5338_driver.virtual_registers_en(True)
-        test_si5338_driver.si5338.post_write()
+        test_si5338_driver.si5338.post_write(True)
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 246) & 0b00000010 == 0b00000010
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 241) & 0b11111111 == 0x65
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 47) & 0b00000011 == test_si5338_driver.read_virtual_regmap(0x70, 237) & 0b00000011
@@ -812,6 +812,7 @@ class TestSI5338:
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 45) == test_si5338_driver.read_virtual_regmap(0x70, 235) & 0b00000011
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 47) & 0b11111100 == 0b00010100
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 49) & 0b10000000 == 0b10000000
+        assert test_si5338_driver.read_virtual_regmap_paged(0x70, 226) & 0b00000100 == 0b00000000
         assert test_si5338_driver.read_virtual_regmap_paged(0x70, 230) & 0b00010000 == 0b00000000
 
     def test_export_register_map(self, test_si5338_driver, tmpdir):
