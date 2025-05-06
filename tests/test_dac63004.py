@@ -6,6 +6,7 @@ Jack Santiago, STFC Detector Systems Software Group
 import sys
 import pytest  # type: ignore
 import re
+import subprocess
 
 if sys.version_info[0] == 3:  # pragma: no cover
     from unittest.mock import Mock, mock_open, patch
@@ -277,41 +278,53 @@ class TestDAC63004:
         # HiZ
         test_dac63004_driver.dac63004.put_dac_into_current_mode(0)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111 == 0b110
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(1)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000 == 0b110000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(2)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000 == 0b110000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(3)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000000 == 0b110000000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) == 0
 
         # 10k
         test_dac63004_driver.dac63004.put_dac_into_current_mode(0, DAC63004.VoltagePowerDownMode.POW_DOWN_10k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111 == 0b010
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(1, DAC63004.VoltagePowerDownMode.POW_DOWN_10k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000 == 0b010000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(2, DAC63004.VoltagePowerDownMode.POW_DOWN_10k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000 == 0b010000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(3, DAC63004.VoltagePowerDownMode.POW_DOWN_10k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000000 == 0b010000000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) == 0
 
         # 100K
         test_dac63004_driver.dac63004.put_dac_into_current_mode(0, DAC63004.VoltagePowerDownMode.POW_DOWN_100k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111 == 0b100
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(1, DAC63004.VoltagePowerDownMode.POW_DOWN_100k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000 == 0b100000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(2, DAC63004.VoltagePowerDownMode.POW_DOWN_100k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000 == 0b100000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) == 0
 
         test_dac63004_driver.dac63004.put_dac_into_current_mode(3, DAC63004.VoltagePowerDownMode.POW_DOWN_100k)
         assert (((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1F) & 0x00FF) << 8)) & 0b111000000000 == 0b100000000000
+        assert test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) == 0
 
     def test_set_voltage_mode(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
@@ -342,6 +355,10 @@ class TestDAC63004:
 
     def test_set_dac_current(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x19, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1A, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1B, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1C, 0b0)
 
         with pytest.raises(Exception, match="Invalid current - current must be between -240 and 250."):
             test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 300)
@@ -349,28 +366,28 @@ class TestDAC63004:
             test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -300)
 
         test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 200)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 194
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x19) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x19) & 0x00FF) << 8) >> 8 == 194
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 100)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 193
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(1, 100)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) & 0x00FF) << 8) >> 8 == 193
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 35)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 168
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(2, 35)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) & 0x00FF) << 8) >> 8 == 168
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, 20)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 204
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(3, 20)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) & 0x00FF) << 8) >> 8 == 204
 
         test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -200)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x19) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x19) & 0x00FF) << 8) >> 8 == 192
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -90)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 171
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(1, -90)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1A) & 0x00FF) << 8) >> 8 == 171
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -35)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 166
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(2, -35)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1B) & 0x00FF) << 8) >> 8 == 166
 
-        test_dac63004_driver.dac63004.set_dac_current_micro_amps(0, -20)
-        test_dac63004_driver.read_virtual_regmap(0x70, 0x19) == 192
+        test_dac63004_driver.dac63004.set_dac_current_micro_amps(3, -20)
+        assert ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) & 0xFF00) >> 8) | ((test_dac63004_driver.read_virtual_regmap(0x70, 0x1C) & 0x00FF) << 8) >> 8 == 192
 
     def test_read_register_by_name(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
@@ -378,14 +395,18 @@ class TestDAC63004:
         with pytest.raises(KeyError, match="No register found matching name 'INCORRECT_NAME'."):
             test_dac63004_driver.dac63004.read_register_by_name("INCORRECT_NAME", False)
 
-        test_dac63004_driver.write_virtual_regmap(0x70, 0x19, 0b1100110010011001)
-        test_dac63004_driver.dac63004.read_register_by_name("DAC_0_DATA") == 0b1100110010011001
-        
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x19, 0b1100110010010000)
+        assert test_dac63004_driver.dac63004.read_register_by_name("DAC_0_DATA") == 0b1001000011001100
+
         test_dac63004_driver.write_virtual_regmap(0x70, 0x20, 0b1100110010011001)
-        test_dac63004_driver.dac63004.read_register_by_name("COMMON_TRIGGER") == 0b1100110010011001
+        assert test_dac63004_driver.dac63004.read_register_by_name("COMMON_TRIGGER") == 0b1100110010011001
 
     def test_set_dac_voltage(self, test_dac63004_driver):
         test_dac63004_driver.virtual_registers_en(True)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x19, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1A, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1B, 0b0)
+        test_dac63004_driver.write_virtual_regmap(0x70, 0x1C, 0b0)
 
         test_dac63004_driver.dac63004.set_dac_voltage_gain(DAC63004.VoltageGain.EXT_REF_1x, 0)
         with pytest.raises(Exception, match=re.escape("No reference voltage value provided for the current reference voltage setting (Check you have set values for the VDD and external reference inputs).")):
