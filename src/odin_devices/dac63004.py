@@ -319,7 +319,7 @@ class DAC63004(I2CDevice):
         self, index, voltageTermination=VoltagePowerDownMode.POW_DOWN_HI_Z
     ):
         """Set the dac at the provided index into current output mode, powering down the voltage
-        mode in the method specified
+        mode in the method specified and resetting the output value to zero
 
         Args:
             index (int): the index (0,1,2 or 3) of the dac to set into current output mode
@@ -336,6 +336,8 @@ class DAC63004(I2CDevice):
         """
         # There are only 4 dacs, so check there is a valid index
         if index >= 0 and index <= 3:
+            # reset the output for this dac to zero so that no unexpected current is produced when we switch into voltage mode
+            self.read_modify_write("DAC_" + str(index) + "_DATA", 0b1111111111110000, 0b0)
             # Build the mask and value to write based on the index of the dac we want to enable.
             # To set a dac to current, we want to write 110 to the appropriate section on the
             # COMMON_CONFIG register.
@@ -350,7 +352,7 @@ class DAC63004(I2CDevice):
             raise IndexError("Index " + str(index) + " is not a valid index (0,1,2 or 3).")
 
     def put_dac_into_voltage_mode(self, index):
-        """Set the dac at the provided input to voltage output mode, powering down current mode
+        """Set the dac at the provided input to voltage output mode, powering down current mode, and resetting the output to zero
 
         Args:
             index (int): a number between zero and 3, telling us which dac we want to put into
@@ -363,6 +365,8 @@ class DAC63004(I2CDevice):
 
         # There are only 4 dacs, so check there is a valid index
         if index >= 0 and index <= 3:
+            # reset the output for this dac to zero so that no unexpected voltage is produced when we switch into voltage mode
+            self.read_modify_write("DAC_" + str(index) + "_DATA", 0b1111111111110000, 0b0)
             # Build the mask and value to write based on the index of the dac we want to enable.
             # To set a dac to voltage, we want to write 001 to the appropriate section on the
             # COMMON_CONFIG register.
@@ -621,4 +625,3 @@ class DAC63004(I2CDevice):
         self.put_dac_into_current_mode(1, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
         self.put_dac_into_current_mode(2, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
         self.put_dac_into_current_mode(3, DAC63004.VoltagePowerDownMode.POW_DOWN_HI_Z)
-
