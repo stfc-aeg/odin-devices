@@ -151,6 +151,7 @@ class DAC63004(I2CDevice):
         I2CDevice.__init__(self, address, busnum, **kwargs)
         self.external_reference_voltage = external_reference_voltage
         self.VDD_reference_voltage = VDD_reference_voltage
+        self.debug=kwargs.get('debug', False)
 
     def read_register_address(self, register_name):
         """Get the address of the specified register by name, returning none
@@ -182,6 +183,7 @@ class DAC63004(I2CDevice):
             self.read_register_address(register_name),
             modified_value,
             self.device_registers[register_name]["flipped"],
+            debug=self.debug
         )
 
     def write_register(self, register_address, value, flipped=False, debug=False):
@@ -201,7 +203,7 @@ class DAC63004(I2CDevice):
         else:
             self.write16(register_address, value)
         if debug:
-            print(
+            logging.debug(
                 "Wrote value "
                 + str(bin(value))
                 + " to register at address "
@@ -231,7 +233,7 @@ class DAC63004(I2CDevice):
             else:
                 result = self.readU16(register_address)
             if debug:
-                print(
+                logging.debug(
                     "Read register at address "
                     + str(hex(register_address))
                     + " as "
@@ -260,7 +262,7 @@ class DAC63004(I2CDevice):
         else:
             result = self.readU16(register_address)
         if debug:
-            print(
+            logging.debug(
                 "Read register at address "
                 + str(hex(register_address))
                 + " as "
@@ -378,6 +380,31 @@ class DAC63004(I2CDevice):
             self.read_modify_write("COMMON_CONFIG", mask, write)
         else:
             raise IndexError("Index " + str(index) + " is not a valid index (0,1,2 or 3).")
+
+    def put_dac_into_no_mode(self, index):
+        """Set the dac at the provided input to neither current or voltage output mode.
+
+        Args:
+            index (int): a number between zero and 3, telling us which dac we want to disable.
+
+        Raises:
+            IndexError: Raised when an invalid index is provided - only accepted indexes are 0, 1,
+            2 or 3
+        """
+        # There are only 4 dacs, so check there is a valid index
+        if index >= 0 and index <= 3:
+            # Build the mask and value to write based on the index of the dac we want to enable.
+            # To set a dac to voltage, we want to write 001 to the appropriate section on the
+            # COMMON_CONFIG register.
+            # The 11 sets the voltage output for the dac to powered down mode
+            # The 1 sets the current output for the dac to powered down mode
+            # See page 61 in the data sheet for more info on the COMMON_CONFIG register
+            mask = 0b111 << (3 * index)
+            write = 0b111 << (3 * index)
+            self.read_modify_write("COMMON_CONFIG", mask, write)
+        else:
+            raise IndexError("Index " + str(index) + " is not a valid index (0,1,2 or 3).")
+
 
     def set_dac_current_range(self, current_range: CurrentRange, index):
         """specify a current range for the dac at the provided index
