@@ -117,7 +117,7 @@ class ZLx(object):
         ID2 = self.read_register(0x31)
 
         if ID1 == 255 or ID2 == 255:
-            raise ('Failure reading device ID, got ID1: {}, ID2: {}'.format(ID1, ID2))
+            raise RuntimeError('Failure reading device ID, got ID1: {}, ID2: {}'.format(ID1, ID2))
 
         readback_id = (ID1 << 4) | ((ID2 & 0xF0) >> 4)
 
