@@ -369,7 +369,6 @@ class MAX6620():
     def set_oscillator_mode(self, value: OscillatorMode, debug: bool=False):
         self.write_bits("CONFIG", "OSCILLATORMODE", value.value, debug)
         
-    
     def get_fault(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
@@ -401,10 +400,10 @@ class MAX6620():
         self.write_bits("FAN" + str(index) + "CONFIG", "RPM/DACMODE", value.value, debug)
     
     class SpinUp(Enum):
-        NoSpinUp: 0b0
-        TwoTachPulsesOrHalfASecond: 0b1
-        TwoTachPulsesOr1Second: 0b10
-        TwoTachPulsesOr2Seconds: 0b11
+        NoSpinUp = 0b0
+        TwoTachPulsesOrHalfASecond = 0b1
+        TwoTachPulsesOr1Second = 0b10
+        TwoTachPulsesOr2Seconds = 0b11
     
     def get_spin_up(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
