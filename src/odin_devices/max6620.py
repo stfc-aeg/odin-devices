@@ -12,36 +12,80 @@ import logging
 from enum import Enum
 from abc import ABC, abstractmethod
 
+class MAX6620Error(Exception):
+    """Base class for wrapping exceptions"""
+
 class BitMap():
-    def __init__(self,  start, length, readonly = False):
+    def __init__(self, start: int, length: int, readonly: bool = False):
         self.start = start
         self.length = length
         self.readonly = readonly
         
 class I2CInterface(ABC):
+    """Abstract base class used by the max6620 fan controller.
+    
+    Used by SMBUSInterface and other interfaces to allow access to the fan controller through custom interfaces."""
     @abstractmethod
-    def setup(self, address, busnum, **kwargs):
+    def setup(self, address: int, busnum: int, **kwargs):
+        """Setup function used for initialisation
+        
+        Args:
+            address (int): the i2c address 
+            busnum (int): the i2c bus number
+        """
         pass
 
     @abstractmethod
-    def write8(self, address, value):
+    def write8(self, address: int, value: int):
+        """Write a provided 8 bit value to the address provided
+
+        Args:
+            address (int): the address of the register to write to
+            value (int): value to write.
+        """
         pass
 
     @abstractmethod
-    def readU8(self, address):
+    def readU8(self, address: int):
+        """Read a provided 8 bit register
+        
+        Args:
+            address (int): the address of the register to read
+        """
         pass
         
         
 class SMBUSInterface(I2CInterface):
-    def setup(self, address, busnum, **kwargs):
+    """Implementation of I2CInterface for accessing a max6620 fan controller using the SMBUS"""
+    def setup(self, address: int, busnum: int, **kwargs):
+        """Setup function used for initialisation
+        
+        Args:
+            address (int): the i2c address 
+            busnum (int): the i2c bus number
+        """
         self.i2cDevice = I2CDevice(address, busnum, **kwargs)
         
-    def write8(self, address, value):
+    def write8(self, address: int, value: int):
+        """Write a provided 8 bit value to the address provided
+        
+        Args:
+            address (int): the address of the register to write to
+            value (int): value to write.
+        """
         self.i2cDevice.write8(address, value)
-        
-    def readU8(self, address):
+
+    def readU8(self, address: int):
+        """Read a provided 8 bit register
+                
+        Args:
+            address (int): the address of the register to read
+            
+        Returns:
+            int: the 8 bit value read from the register
+        """
         return self.i2cDevice.readU8(address)
-        
+
 
 class MAX6620():
     """MAX6620 Fan Controller
@@ -131,16 +175,38 @@ class MAX6620():
         
     def __init__(
         self,
-        address,
-        busnum,
+        address: int,
+        busnum: int,
         i2cInterface: I2CInterface = SMBUSInterface(),
-        pulsesPerRev = 2
+        pulsesPerRev: int = 2
     ):
+        """Constructor for MAX6620 class
+
+        Args:
+            address (int): I2C address
+            busnum (int): the I2C bus number
+            i2cInterface (I2CInterface, optional): a class to use to access the fan controller, defaults to prewritten SMBUSInterface
+            pulsesPerRev (int, optional): the number of tachometer pulses per revolution for the fan (defaults to 2)
+        """
         self.i2cInterface = i2cInterface
         self.i2cInterface.setup(address, busnum)
         self.pulsesPerRev = pulsesPerRev
         
-    def read_bits(self, name, bits_name, debug=False):
+    def read_bits(self, name: str, bits_name: str, debug: bool=False):
+        """Read the value from a named set of bits in a named register
+        
+        Args:
+            name (string): Name of the register the bits we want to read are in
+            bits_name (string): Name of the bits we want to read
+            debug (boolean, optional): whether to print debug statements. Defaults to false.
+            
+        Raises:
+            MAX6620Error: If no register is found with a name matching that provided, or no 
+            bits are found with a name matching that provided a MAX6620Error is raised.
+            
+        Returns:
+            int: the value stored in the bits that were read
+        """
         if name in self.device_registers.keys():
             if bits_name in self.device_registers[name]["Bits"].keys():
                 bitMap = self.device_registers[name]["Bits"][bits_name]
@@ -150,16 +216,29 @@ class MAX6620():
                 value = register & mask 
                 return value >> bitMap.start
             else:
-                raise KeyError("No bits found matching name '" + name + "'.")
+                raise MAX6620Error("No bits found matching name '" + name + "'.")
         else:
-            raise KeyError("No register found matching name '" + name + "'.")
+            raise MAX6620Error("No register found matching name '" + name + "'.")
         
-    def write_bits(self, name, bits_name, value, debug=False):
+    def write_bits(self, name: str, bits_name: str, value: int, debug: bool=False):
+        """Write to a specific named set of bits in a named register
+                
+        Args:
+            name (string): Name of the register the bits we want to write are in
+            bits_name (string): Name of the bits we want to write to
+            value (int): the value to write to the bits
+            debug (boolean, optional): whether to print debug statements. Defaults to false
+            
+        Raises:
+            MAX6620Error: If no register is found with a name matching that provided, or no 
+            bits are found with a name matching that provided, or the bits selected are
+            readonly a MAX6620Error is raised.
+        """
         if name in self.device_registers.keys():
             if bits_name in self.device_registers[name]["Bits"].keys():
                 bitMap = self.device_registers[name]["Bits"][bits_name]
                 if (bitMap.readonly):
-                    raise KeyError("Bits '" + bits_name + "' in register '" + name + "' are readonly.")
+                    raise MAX6620Error("Bits '" + bits_name + "' in register '" + name + "' are readonly.")
                 if (value < 0):
                     raise OverflowError("Negative values not supported in " + str(bitMap.length) + " bit section '" + bits_name + "' in register '" + name + "'.")
                 if value > pow(2, bitMap.length) - 1:
@@ -169,23 +248,27 @@ class MAX6620():
                 value_to_write = value << bitMap.start
                 self.read_modify_write_register(name, value_to_write, mask, debug)
             else:
-                raise KeyError("No bits found matching name '" + name + "'.")
+                raise MAX6620Error("No bits found matching name '" + name + "'.")
         else:
-            raise KeyError("No register found matching name '" + name + "'.")
+            raise MAX6620Error("No register found matching name '" + name + "'.")
 
-    def read_modify_write_register(self, name, value, mask=0, debug=False):
+    def read_modify_write_register(self, name: str, value: int, mask: int=0, debug: bool=False):
         """Perform a read-modify-write operation on a register.
 
         Args:
             register_name (string): Name of the register to modify.
             mask (int): Bit mask specifying the bits to modify.
             value (int): value to write.
+            debug (boolean, optional): whether to print debug statements. Defaults to false.
+            
+        Returns:
+            int: the value stored in the register that was read
         """
         current_value = self.read_register_by_name(name, debug)
         modified_value = (current_value & ~mask) | (value & mask)
         self.write_register_by_name(name, modified_value,debug)
 
-    def write_register_by_name(self, name, value, debug=False):
+    def write_register_by_name(self, name: str, value: int, debug: bool=False):
         """Write a value to a register accessed using the name
 
         Args:
@@ -193,6 +276,10 @@ class MAX6620():
             value (int): value to write to the register.
             debug (bool, optional): If true, print the operation that happened. Used for testing
             and debugging. Defaults to False.
+            
+        Raises:
+            MAX6620Error: If no register is found with a name matching that provided, or a readonly register is provided a MAX6620Error is
+            raised.
         """
         if name in self.device_registers.keys():
             if not self.device_registers[name]["readonly"]:
@@ -212,20 +299,20 @@ class MAX6620():
                         + " to register at address "
                         + str(hex(register_address)))  # pragma: no cover
             else:
-                raise KeyError("Register '" + name + "' is readonly.")
+                raise MAX6620Error("Register '" + name + "' is readonly.")
         else:
-            raise KeyError("No register found matching name '" + name + "'.")
+            raise MAX6620Error("No register found matching name '" + name + "'.")
         
 
-    def read_register_by_name(self, name, debug=False):
+    def read_register_by_name(self, name: str, debug: bool=False):
         """Read a value from a register accessed using the name
 
         Args:
             name (string): name of the register to read from.
-            debug (bool, optional): prints the output
+            debug (bool, optional): prints the output. Defaults to false.
 
         Raises:
-            KeyError: If no register is found with a name matching that provided, a KeyError is
+            MAX6620Error: If no register is found with a name matching that provided, a MAX6620Error is
             raised as an invalid name was entered.
 
         Returns:
@@ -247,53 +334,53 @@ class MAX6620():
                 )
             return result
         else:
-            raise KeyError("No register found matching name '" + name + "'.")
+            raise MAX6620Error("No register found matching name '" + name + "'.")
         
         
-    def get_running(self, debug = False):
+    def get_running(self, debug: bool=False):
         return not bool(self.read_bits("CONFIG", "RUNNING", debug))
     
-    def set_running(self, value, debug = False):
+    def set_running(self, value: int, debug: bool=False):
         self.write_bits("CONFIG", "RUNNING", int(not value), debug)
     
-    def trigger_reset(self, debug = False):
+    def trigger_reset(self, debug: bool=False):
         self.write_bits("CONFIG", "RESET", 1, debug)
     
-    def get_i2c_timeout(self, debug = False):
+    def get_i2c_timeout(self, debug: bool=False):
         return not bool(self.read_bits("CONFIG", "I2CTIMEOUT", debug))
     
-    def set_i2c_timeout(self, value, debug = False):
+    def set_i2c_timeout(self, value: int, debug: bool=False):
         self.write_bits("CONFIG", "I2CTIMEOUT", int(not value), debug)
     
-    def get_fans_max_on_fail(self, debug = False):
+    def get_fans_max_on_fail(self, debug: bool=False):
         return not bool(self.read_bits("CONFIG", "MAXONFAIL", debug))
     
-    def set_fans_max_on_fail(self, value, debug = False):
+    def set_fans_max_on_fail(self, value: int, debug: bool=False):
         self.write_bits("CONFIG", "MAXONFAIL", int(not value), debug)
     
     class OscillatorMode(Enum):
         internal = 0
         external_crystal = 1
     
-    def get_oscillator_mode(self, debug = False):
+    def get_oscillator_mode(self, debug: bool=False):
         value = self.read_bits("CONFIG", "OSCILLATORMODE", debug)
         return self.OscillatorMode(value)
     
-    def set_oscillator_mode(self, value: OscillatorMode, debug = False):
+    def set_oscillator_mode(self, value: OscillatorMode, debug: bool=False):
         self.write_bits("CONFIG", "OSCILLATORMODE", value.value, debug)
         
     
-    def get_fault(self, index, debug=False):
+    def get_fault(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         return bool(self.read_bits("FAULT", "FAN" + str(index) + "FAULTMASK", debug))
     
-    def get_fault_mask(self, index, debug=False):
+    def get_fault_mask(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         return self.read_bits("FAULT", "FAN" + str(index) + "FAULT", debug)
     
-    def set_fault_mask(self, index, value, debug=False):
+    def set_fault_mask(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAULT", "FAN" + str(index) + "FAULT", value, debug)
@@ -302,13 +389,13 @@ class MAX6620():
         DAC = 0
         RPM = 1
         
-    def get_DAC_mode(self, index, debug=False):
+    def get_DAC_mode(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "CONFIG", "RPM/DACMODE", debug)
         return self.RpmDACMode(value)
     
-    def set_DAC_mode(self, index, value: RpmDACMode, debug=False):
+    def set_DAC_mode(self, index: int, value: RpmDACMode, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "CONFIG", "RPM/DACMODE", value.value, debug)
@@ -319,23 +406,23 @@ class MAX6620():
         TwoTachPulsesOr1Second: 0b10
         TwoTachPulsesOr2Seconds: 0b11
     
-    def get_spin_up(self, index, debug=False):
+    def get_spin_up(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "CONFIG", "SPINUP", debug)
         return self.SpinUp(value)
     
-    def set_spin_up(self, index, value: SpinUp, debug=False):
+    def set_spin_up(self, index: int, value: SpinUp, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "CONFIG", "SPINUP", value.value, debug)
     
-    def get_tach_input_enabled(self, index, debug=False):
+    def get_tach_input_enabled(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         return bool(self.read_bits("FAN" + str(index) + "CONFIG", "TACHINPUTENABLED", debug))
     
-    def set_tach_input_enabled(self, index, value, debug=False):
+    def set_tach_input_enabled(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "CONFIG", "TACHINPUTENABLED", value, debug)
@@ -344,13 +431,13 @@ class MAX6620():
         TachCount = 0
         LockedRotor = 1
     
-    def get_tach_or_locked_rotor(self, index, debug=False):
+    def get_tach_or_locked_rotor(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "CONFIG", "TACHORLOCK", debug)
         return self.TachInputMode(value)
     
-    def set_tach_or_locked_rotor(self, index, value: TachInputMode, debug=False):
+    def set_tach_or_locked_rotor(self, index: int, value: TachInputMode, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "CONFIG", "TACHORLOCK", value.value, debug)
@@ -359,31 +446,31 @@ class MAX6620():
         Low = 0
         High = 1
         
-    def get_locked_rotor_polarity(self, index, debug=False):
+    def get_locked_rotor_polarity(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "CONFIG", "LOCKPOLARITY", debug)
         return self.Polarity(value)
     
-    def set_locked_rotor_polarity(self, index, value: Polarity, debug=False):
+    def set_locked_rotor_polarity(self, index: int, value: Polarity, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "CONFIG", "LOCKPOLARITY", value.value, debug)
         
-    def tach_period_to_speed_range(self, value):
+    def tach_period_to_speed_range(self, value: int):
         return math.log2(value)
         
-    def speed_range_to_tach_period(self, value):
+    def speed_range_to_tach_period(self, value: int):
         value = min(value, 0b101)
         return pow(2, value)
     
-    def get_speed_range(self, index, debug=False):
+    def get_speed_range(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "DYNAMICS", "SPEEDRANGE", debug)
         return self.speed_range_to_tach_period(value)
         
-    def set_speed_range(self, index, value, debug=False):
+    def set_speed_range(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "DYNAMICS", "SPEEDRANGE", self.tach_period_to_speed_range(value), debug)
@@ -398,52 +485,52 @@ class MAX6620():
         _0_5 = 0b110
         _1 = 0b111
     
-    def get_DAC_rate_of_change(self, index, debug=False):
+    def get_DAC_rate_of_change(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "DYNAMICS", "DACRATEOFCHANGE", debug)
         return self.VoltageIncrement(value)
     
-    def set_DAC_rate_of_change(self, index, value: VoltageIncrement, debug=False):
+    def set_DAC_rate_of_change(self, index: int, value: VoltageIncrement, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "DYNAMICS", "DACRATEOFCHANGE", value.value, debug)
     
-    def get_tach(self, index, debug=False):
+    def get_tach(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "TACH", "TACHCOUNT", debug)
         return value
     
-    def get_voltage(self, index, debug=False):
+    def get_voltage(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "VOLTAGE", "VOLTAGE", debug)
         return value
     
-    def get_target_tach(self, index, debug=False):
+    def get_target_tach(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "TARGETTACH", "TACHCOUNT", debug)
         return value
     
-    def set_target_tach(self, index, value, debug=False):
+    def set_target_tach(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "TARGETTACH", "TACHCOUNT", value, debug)
         
-    def get_target_voltage(self, index, debug=False):
+    def get_target_voltage(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         value = self.read_bits("FAN" + str(index) + "TARGETVOLTAGE", "VOLTAGE", debug)
         return value
     
-    def set_target_voltage(self, index, value, debug=False):
+    def set_target_voltage(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         self.write_bits("FAN" + str(index) + "TARGETVOLTAGE", "VOLTAGE", value, debug) 
 
-    def getRequiredSpeedRange(self, rpm):
+    def getRequiredSpeedRange(self, rpm: float):
         speedRanges = [1, 2, 4, 8, 16, 32]
         bestSpeedRange = -1
         bestTachCount = -1
@@ -455,19 +542,19 @@ class MAX6620():
 
         return bestSpeedRange  
         
-    def get_rpm(self, index, debug=False):
+    def get_rpm(self, index: int, debug: bool=False):
         speedRange = self.get_speed_range(index, debug)
         tachCount = self.get_tach(index, debug)
 
         return (491520 * speedRange) / (self.pulsesPerRev * tachCount)
         
-    def get_target_rpm(self, index, debug=False):
+    def get_target_rpm(self, index: int, debug: bool=False):
         speedRange = self.get_speed_range(index, debug)
         tachCount = self.get_target_tach(index, debug)
 
         return (491520 * speedRange) / (self.pulsesPerRev * tachCount)
         
-    def set_target_rpm(self, index, value, debug=False):
+    def set_target_rpm(self, index: int, value: float, debug: bool=False):
         speedRange = self.getRequiredSpeedRange(value)
         self.set_speed_range(index, speedRange, debug)
 
