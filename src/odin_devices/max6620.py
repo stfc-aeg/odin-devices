@@ -294,13 +294,12 @@ class MAX6620():
                 for i in range(0, length):
                     value_section = (value >> (8*((length-1) - i))) & 0b11111111           
                     self.i2cInterface.write8(register_address+i, value_section)
-                    if debug:
-                        logging.debug(
-                            "Wrote value "
-                            + str(bin(value_section))
-                            + " to register at address "
-                            + str(hex(register_address+((length-1) - i))))  # pragma: no cover
-                self.read_register_by_name(name, debug)
+                if debug:
+                    logging.debug(
+                        "Wrote value "
+                        + str(bin(value))
+                        + " to register at address "
+                        + str(hex(register_address)))  # pragma: no cover    
             else:
                 raise MAX6620Error("Register '" + name + "' is readonly.")
         else:
@@ -328,13 +327,13 @@ class MAX6620():
             for i in range(0, length):
                 section = self.i2cInterface.readU8(register_address + i)
                 result += section << (8*((length-1)-i))
-                if debug:
-                    logging.debug(
-                        "Read register at address "
-                        + str(hex(register_address + i))
-                        + " as "
-                        + str(bin(section))
-                    )
+            if debug:
+                logging.debug(
+                    "Read register at address "
+                    + str(hex(register_address + i))
+                    + " as "
+                    + str(bin(result))
+                )
             return result
         else:
             raise MAX6620Error("No register found matching name '" + name + "'.")
