@@ -293,7 +293,7 @@ class MAX6620():
                     raise OverflowError("Value to large for " + str(8 * length) + " bit register '" + name + "'.")
                 for i in range(0, length):
                     value_section = (value >> (8*i)) & 0b11111111
-                    self.i2cInterface.write8(register_address+i, value_section)
+                    self.i2cInterface.write8(register_address+((length-1) - i), value_section)
                 if debug:
                     logging.debug(
                         "Wrote value "
