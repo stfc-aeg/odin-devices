@@ -300,6 +300,7 @@ class MAX6620():
                         + str(bin(value))
                         + " to register at address "
                         + str(hex(register_address)))  # pragma: no cover
+                    self.read_register_by_name(name, debug)
             else:
                 raise MAX6620Error("Register '" + name + "' is readonly.")
         else:
