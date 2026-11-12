@@ -293,14 +293,15 @@ class MAX6620():
                     raise OverflowError("Value to large for " + str(8 * length) + " bit register '" + name + "'.")
                 for i in range(0, length):
                     value_section = (value >> (8*i)) & 0b11111111
+                    
                     self.i2cInterface.write8(register_address+((length-1) - i), value_section)
-                if debug:
-                    logging.debug(
-                        "Wrote value "
-                        + str(bin(value))
-                        + " to register at address "
-                        + str(hex(register_address)))  # pragma: no cover
-                    self.read_register_by_name(name, debug)
+                    if debug:
+                        logging.debug(
+                            "Wrote value "
+                            + str(bin(value_section))
+                            + " to register at address "
+                            + str(hex(register_address+((length-1) - i))))  # pragma: no cover
+                self.read_register_by_name(name, debug)
             else:
                 raise MAX6620Error("Register '" + name + "' is readonly.")
         else:
