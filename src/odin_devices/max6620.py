@@ -329,13 +329,13 @@ class MAX6620():
             for i in range(0, length):
                 section = self.i2cInterface.readU8(register_address + i)
                 result += section << (8*((length-1)-i))
-            if debug:
-                logging.debug(
-                    "Read register at address "
-                    + str(hex(register_address))
-                    + " as "
-                    + str(bin(result))
-                )
+                if debug:
+                    logging.debug(
+                        "Read register at address "
+                        + str(hex(register_address + i))
+                        + " as "
+                        + str(bin(section))
+                    )
             return result
         else:
             raise MAX6620Error("No register found matching name '" + name + "'.")
