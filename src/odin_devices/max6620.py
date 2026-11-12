@@ -372,12 +372,12 @@ class MAX6620():
     def get_fault(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
-        return bool(self.read_bits("FAULT", "FAN" + str(index) + "FAULTMASK", debug))
+        return bool(self.read_bits("FAULT", "FAN" + str(index) + "FAULT", debug))
     
     def get_fault_mask(self, index: int, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
-        return self.read_bits("FAULT", "FAN" + str(index) + "FAULT", debug)
+        return self.read_bits("FAULT", "FAN" + str(index) + "FAULTMASK", debug)
     
     def set_fault_mask(self, index: int, value: int, debug: bool=False):
         if (index < 1 or index > 4):
