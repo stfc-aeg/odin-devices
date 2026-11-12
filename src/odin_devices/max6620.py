@@ -265,7 +265,9 @@ class MAX6620():
             int: the value stored in the register that was read
         """
         current_value = self.read_register_by_name(name, debug)
-        modified_value = (current_value & ~mask) | (value & mask)
+        flipMask = (1 << (8*self.device_registers[name]["length"])) - 1
+        inverted_mask = ~mask & flipMask
+        modified_value = (current_value & inverted_mask) | (value & mask)
         self.write_register_by_name(name, modified_value,debug)
 
     def write_register_by_name(self, name: str, value: int, debug: bool=False):
@@ -290,7 +292,7 @@ class MAX6620():
                 if value > pow(2, length * 8) - 1:
                     raise OverflowError("Value to large for " + str(8 * length) + " bit register '" + name + "'.")
                 for i in range(0, length):
-                    value_section = (value >> (8*i)) & 11111111
+                    value_section = (value >> (8*i)) & 0b11111111
                     self.i2cInterface.write8(register_address+i, value_section)
                 if debug:
                     logging.debug(
