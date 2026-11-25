@@ -178,6 +178,7 @@ class MAX6620():
         address: int,
         busnum: int,
         i2cInterface: I2CInterface = SMBUSInterface(),
+        fanDriveVoltage = 12,
         pulsesPerRev: int = 2
     ):
         """Constructor for MAX6620 class
@@ -186,11 +187,13 @@ class MAX6620():
             address (int): I2C address
             busnum (int): the I2C bus number
             i2cInterface (I2CInterface, optional): a class to use to access the fan controller, defaults to prewritten SMBUSInterface
+            fanDriveVoltage (int, optional): the drive voltage provided to the fan, defaults to 12. The only valid values are 12 or 5.
             pulsesPerRev (int, optional): the number of tachometer pulses per revolution for the fan (defaults to 2)
         """
         self.i2cInterface = i2cInterface
         self.i2cInterface.setup(address, busnum)
         self.pulsesPerRev = pulsesPerRev
+        self.fanDriveVoltage = fanDriveVoltage
         
     def read_bits(self, name: str, bits_name: str, debug: bool=False):
         """Read the value from a named set of bits in a named register
@@ -271,7 +274,7 @@ class MAX6620():
         self.write_register_by_name(name, modified_value,debug)
 
     def write_register_by_name(self, name: str, value: int, debug: bool=False):
-        """Write a value to a register accessed using the name
+        """Write a value to a register accessed using the name.
 
         Args:
             name (string): Address of the register to write.
@@ -307,7 +310,7 @@ class MAX6620():
         
 
     def read_register_by_name(self, name: str, debug: bool=False):
-        """Read a value from a register accessed using the name
+        """Read a value from a register accessed using the name.
 
         Args:
             name (string): name of the register to read from.
@@ -340,18 +343,51 @@ class MAX6620():
         
         
     def get_running(self, debug: bool=False):
+        """Return whether the fans are enabled.
+        
+        Args:
+            debug (bool, optional): prints the output. Defaults to false.
+
+        Returns:
+            bool: whether the fans are running
+        """
         return not bool(self.read_bits("CONFIG", "RUNNING", debug))
     
-    def set_running(self, value: int, debug: bool=False):
+    def set_running(self, value: bool, debug: bool=False):
+        """Enable or disable the fans.
+                
+        Args:
+            value (bool): whether the fans should be enabled
+            debug (bool, optional): prints the output. Defaults to false.
+        """
         self.write_bits("CONFIG", "RUNNING", int(not value), debug)
     
     def trigger_reset(self, debug: bool=False):
+        """Trigger the fan controller to reset to power on state.
+                        
+        Args:
+            debug (bool, optional): prints the output. Defaults to false.
+        """
         self.write_bits("CONFIG", "RESET", 1, debug)
     
     def get_i2c_timeout(self, debug: bool=False):
+        """Get whether the i2c has a timeout.
+        
+        Args:
+            debug (bool, optional): prints the output. Defaults to false.
+            
+         Returns:
+            bool: whether the i2c has timeout
+        """
         return not bool(self.read_bits("CONFIG", "I2CTIMEOUT", debug))
     
-    def set_i2c_timeout(self, value: int, debug: bool=False):
+    def set_i2c_timeout(self, value: bool, debug: bool=False):
+        """Set whether the i2c has a timeout.
+                
+        Args:
+            value (bool): whether to have a timeout for the i2c
+            debug (bool, optional): prints the output. Defaults to false.
+        """
         self.write_bits("CONFIG", "I2CTIMEOUT", int(not value), debug)
     
     def get_fans_max_on_fail(self, debug: bool=False):
@@ -565,3 +601,30 @@ class MAX6620():
         tachCount = round(tachCount)
         
         self.write_bits("FAN" + str(index) + "TARGETTACH", "TACHCOUNT", tachCount, debug)
+
+    def get_voltage_actual(self, index: int, debug: bool=False):
+        if (index < 1 or index > 4):
+            raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
+        
+        value = self.get_voltage(index, debug)
+        if (self.fanDriveVoltage == 5):
+            return value/113.4
+        else:
+            return value/value/44.58
+    
+    def get_target_voltage_actual(self, index: int, debug: bool=False):
+        if (index < 1 or index > 4):
+            raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
+        value = self.get_target_voltage(index, debug)
+        if (self.fanDriveVoltage == 5):
+            return value/113.4
+        else:
+            return value/value/44.58
+    
+    def set_target_voltage_actual(self, index: int, value: int, debug: bool=False):
+        if (index < 1 or index > 4):
+            raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
+        actual_value = value * 44.58
+        if (self.fanDriveVoltage == 5):
+            actual_value = value * 113.4
+        self.set_target_voltage(index, actual_value, debug)
