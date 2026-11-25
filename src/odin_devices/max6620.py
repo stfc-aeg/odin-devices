@@ -586,8 +586,8 @@ class MAX6620():
         value = self.get_target_voltage(index, debug)
         return value/self.fanDriveVoltage.value
     
-    def set_target_voltage_actual(self, index: int, value: int, debug: bool=False):
+    def set_target_voltage_actual(self, index: int, value: float, debug: bool=False):
         if (index < 1 or index > 4):
             raise IndexError("Fan index " + str(index) + " is not a valid index (1-4)")
         actual_value = value * self.fanDriveVoltage.value
-        self.set_target_voltage(index, actual_value, debug)
+        self.set_target_voltage(index, round(actual_value), debug)
