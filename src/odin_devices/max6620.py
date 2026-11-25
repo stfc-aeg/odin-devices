@@ -173,7 +173,7 @@ class MAX6620():
         "FAN4TARGETVOLTAGE": {"address": 0x2E, "length": 2, "readonly": False, "Bits": {"VOLTAGE": BitMap(7, 9),}},
     }
     
-    class FanDriveVoltage(enum):
+    class FanDriveVoltage(Enum):
         five = 113.4
         twelve = 44.58
         
